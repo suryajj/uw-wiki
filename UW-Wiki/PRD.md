@@ -49,7 +49,7 @@ Unlike official club websites (marketing material), Reddit (scattered and unsear
 - **Structured honesty:** Student-toned content reviewed by an independent editorial board, not controlled by the clubs themselves
 - **AI-native search:** Natural-language questions answered with synthesized, cited responses drawn from across all wiki pages
 - **Version-controlled transparency:** Every edit is tracked, every contributor is logged internally, and the full history of a page is preserved
-- **Anonymous contribution:** Opt-in attribution removes the fear of retaliation, encouraging candid information that official channels will never publish
+- **Anonymous contribution:** Account required but opt-in attribution removes the fear of retaliation, encouraging candid information that official channels will never publish
 - **Community-driven accuracy:** PR-style edit proposals, inline comments for disputed content, and crowdsourced metadata keep information current and honest
 
 ### Core Principles
@@ -302,7 +302,7 @@ Every org has a single wiki page with a full version history -- all edits tracke
 
 - Each accepted edit proposal creates a new version with a diff stored against the previous version
 - The version history view shows a chronological list of changes: version number, date, one-line summary, contributor attribution (if opted in)
-- Internally, every contributor is logged (account ID if authenticated, IP/fingerprint if anonymous) for abuse tracking, even when publicly anonymous
+- Internally, every contributor is logged (account ID) for abuse tracking, even when publicly anonymous
 
 ### 6.4 PR-Style Edit Proposals
 
@@ -314,7 +314,7 @@ Any user can propose an edit to a wiki page, similar to a GitHub pull request. T
 2. The Tiptap editor loads with the current page content pre-filled
 3. User makes changes anywhere on the page (full-page editing per PR -- not scoped to a single section)
 4. User writes a short rationale explaining why their edit aligns with platform values
-5. If the user is not already email-verified, they are prompted to verify their email (lightweight auth -- no full account required)
+5. If the user is not signed in, they are prompted to sign in or create an account (Google OAuth or email/password)
 6. On submission, the system diffs the proposed content against the current version and creates an edit proposal record
 
 **AI pre-screening:**
@@ -337,7 +337,7 @@ Users can highlight any text on a wiki page and leave a comment anchored to that
 
 **Core behavior:**
 
-- Any user can leave a comment -- no account required (lower friction than PR submission)
+- Commenting requires a user account (Google OAuth or email/password)
 - Comments can be anonymous or attributed, at the commenter's choice
 - **Threaded replies:** Users can reply to existing comments, creating discussion threads anchored to specific passages
 - Comments serve as secondary perspectives: they surface disagreements, add nuance, or provide additional data points
@@ -359,7 +359,7 @@ The Pulse is a standalone voting widget on each wiki page that allows users to s
 - The Pulse widget is displayed on the page as a collapsible card (not part of the main content area)
 - Users rate each applicable metric: Selectivity (categorical dropdown), Vibe Check (1-5 slider), Co-op Boost (1-5 stars)
 - Tech Stack / Tooling is contributed as freeform tags, deduplicated and aggregated
-- No account is required to vote, but rate-limiting prevents ballot-stuffing (one vote per session/IP per org per metric)
+- No account is required to vote, but rate-limiting prevents ballot-stuffing (one vote per session per org per metric)
 - Displayed values are aggregates: median for numeric ratings, mode for categorical, count of total votes shown for transparency
 
 **Cold-start seeding:** When the cold-start agent generates a first-draft page, it also populates initial Pulse values based on publicly available information (e.g., if a team's website says "applications open each term," Selectivity is set to "Application-Based"). These AI-seeded values are clearly tagged and weighted lower than human-submitted ratings once crowdsourced data starts flowing.
@@ -435,8 +435,8 @@ Staleness thresholds are configurable per org category, because different types 
 | Role | Who | Access |
 |---|---|---|
 | **Viewer** | Anyone | No account required to read any page or use RAG search |
-| **Commenter** | Anyone | No account required to leave inline comments (anonymous by default) |
-| **Contributor** | Any email-verified user | Can submit edit proposals (PRs) after email verification |
+| **Commenter** | Any authenticated user | Account required to leave inline comments (anonymous by default) |
+| **Contributor** | Any authenticated user | Account required to submit edit proposals (PRs) |
 | **Reviewer** | Editorial board member | Can accept/reject PRs, see AI pre-screen results, manage pending queue |
 | **Admin** | Platform operators | Can run cold start agent, approve page claims, manage editorial board, configure lifecycle thresholds |
 
@@ -448,7 +448,7 @@ A small independent editorial board of 3-5 people at launch, platform-affiliated
 
 ### Anonymity Model
 
-Anonymous by default. Contributors may optionally attach a name or attribution to their edit proposals and comments. Even when publicly anonymous, the system logs the contributor's identity internally (account ID if authenticated, IP address and browser fingerprint if anonymous) for abuse tracking and moderation purposes.
+Anonymous by default. Contributors may optionally attach a name or attribution to their edit proposals and comments. Even when publicly anonymous, the system logs the contributor's identity internally (account ID) for abuse tracking and moderation purposes. Since both commenting and submitting PRs require an account, all contributions are traceable to a specific user.
 
 ### AI Pre-Screening
 
@@ -492,9 +492,9 @@ The following values define what content is accepted and what gets rejected. The
 |---|---|---|
 | Browse pages and directory | None | No |
 | Use RAG search | None | No |
-| Leave inline comments | None (anonymous by default) | IP/fingerprint |
-| Rate Pulse metrics | None | IP/fingerprint (rate-limited) |
-| Submit edit proposals (PRs) | Email verification | Email + IP/fingerprint |
+| Leave inline comments | Account (Google OAuth or email/password) | Account ID |
+| Rate Pulse metrics | None | Session (rate-limited) |
+| Submit edit proposals (PRs) | Account (Google OAuth or email/password) | Account ID |
 | View contribution history | Account | Account ID |
 | Bookmark pages | Account | Account ID |
 | Review PRs (editorial board) | Full account + reviewer role | Account ID |
@@ -509,22 +509,12 @@ The following values define what content is accepted and what gets rejected. The
 
 **Post-MVP:** UW SSO / CAS integration for stronger institutional trust signal. Deferred from MVP due to implementation complexity.
 
-### Lightweight Auth for Contributors
+### Account Features
 
-Contributors submitting PRs are required to verify their email address, but do not need to create a full account. The email verification flow:
+All authenticated users (Google OAuth or email/password) have access to:
 
-1. User clicks "Propose Edit" on a page
-2. If not already email-verified in this session, user enters their email
-3. System sends a one-time verification code
-4. User enters the code and proceeds to the editor
-5. The email is logged internally but not displayed publicly unless the contributor opts in
-
-This reduces friction while providing a traceable identity for abuse prevention.
-
-### Account Features (Optional)
-
-Users who choose to create a full account (Google OAuth or email/password) unlock:
-
+- **Commenting:** Leave inline comments on wiki pages (anonymous or attributed)
+- **Edit proposals:** Submit PRs to propose changes to wiki pages
 - **Contribution history:** View all PRs submitted and their status (pending, accepted, rejected)
 - **Bookmarks:** Save pages for quick access
 - **Notifications:** Receive alerts when a bookmarked page is updated, when your PR is accepted/rejected, and when someone replies to your comment
@@ -533,8 +523,8 @@ Users who choose to create a full account (Google OAuth or email/password) unloc
 ### Abuse Prevention
 
 - **Manual moderation:** The editorial board reviews all PRs -- no content goes live without human approval
-- **Rate limiting:** Pulse voting is limited to one vote per session/IP per org per metric. Comment submission is rate-limited per IP.
-- **Internal tracking:** All anonymous activity is logged with IP address and browser fingerprint. This data is used exclusively for abuse investigation and is not publicly exposed.
+- **Rate limiting:** Pulse voting is limited to one vote per session per org per metric. Comment submission is rate-limited per account.
+- **Internal tracking:** All comments and edit proposals are linked to an authenticated account. Even when publicly anonymous, the contributor's account ID is logged for abuse investigation.
 - **No CAPTCHA for MVP:** With manual moderation on all PRs and rate-limiting on comments/votes, CAPTCHA is unnecessary at launch scale. Revisit if spam volume increases.
 
 ---
@@ -634,7 +624,7 @@ graph TD
 | `page_versions` | Version history (diff-based) | `id`, `page_id`, `version_number`, `content_json` (ProseMirror), `diff_json`, `summary`, `contributor_id`, `created_at` |
 | `edit_proposals` | Pending PRs | `id`, `page_id`, `proposed_content_json`, `rationale`, `ai_verdict`, `ai_reason`, `status` (pending/accepted/rejected), `contributor_email`, `reviewer_id`, `submitted_at`, `reviewed_at` |
 | `comments` | Inline comments | `id`, `page_id`, `page_version_id`, `anchor_text`, `anchor_offset`, `body`, `parent_comment_id` (threading), `is_anonymous`, `contributor_id`, `created_at` |
-| `pulse_ratings` | Individual votes | `id`, `org_id`, `metric` (selectivity/vibe/coop_boost), `value`, `session_fingerprint`, `created_at` |
+| `pulse_ratings` | Individual votes | `id`, `org_id`, `metric` (selectivity/vibe/coop_boost), `value`, `session_id`, `created_at` |
 | `pulse_aggregates` | Computed aggregates | `org_id`, `metric`, `aggregate_value`, `vote_count`, `last_computed_at` |
 | `external_links` | Structured links | `id`, `org_id`, `type` (website/instagram/linkedin/github/custom), `url`, `label` |
 | `users` | Authenticated accounts | `id`, `email`, `display_name`, `avatar_url`, `role` (user/reviewer/admin), `created_at` |
@@ -807,7 +797,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 - Reviewer dashboard for editorial board (PR queue, accept/reject)
 - Automated lifecycle management with configurable thresholds per category
 - Google OAuth + email/password authentication (Supabase Auth)
-- Lightweight email verification for contributors
+- Account required for comments and edit proposals (Google OAuth or email/password)
 - Server-side rendering for SEO (Next.js SSR)
 - Third-party analytics (PostHog or Plausible)
 
@@ -817,6 +807,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 - User accounts with contribution history, bookmarks, and reputation system
 - Notification system (page updates, PR status changes, comment replies)
 - Upvoting or endorsing specific sections or comments
+- Sentence-level upvote/downvote system: users can vote on individual sentences within a wiki page. Sentences with higher net upvotes are rendered progressively bolder, giving readers a visual signal of which claims are strongly backed by the community. Heavily downvoted sentences appear lighter/muted. This creates a heat map effect where the most trusted information stands out at a glance.
 - Expansion to other Canadian universities (same platform, scoped by `university_id`)
 - Email digests for orgs when their page is updated
 - Alumni contributions as a distinct, labelled tier
