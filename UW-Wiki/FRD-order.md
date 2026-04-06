@@ -27,8 +27,9 @@ Each FRD represents a single unit of full functionality that can be implemented,
 |---|---|---|---|---|
 | 0 | [Setup Document](#frd-0-setup-document) | 10, 11 | -- | Project scaffolding, Supabase setup, DB schema, app shells |
 | 1 | [RAG Pipeline](./FRDs/FRD-1-rag-pipeline.md) | 6.1 | FRD 0 | Embedding service, chunking, hybrid retrieval, search_wiki tool, RAG streaming endpoint, re-embedding pipeline |
-| 2 | Comments System | 6.5 | FRD 0 | Inline section comments, threaded replies, anchor text management, comment persistence across edits |
-| -- | *Additional FRDs TBD* | -- | -- | Wiki pages, PR proposals, directory, Pulse, page claiming, cold start, lifecycle management |
+| 2 | [Wiki Pages, Directory, Editor, and Edit Proposals](./FRDs/FRD-2-wiki-pages.md) | 6.2, 6.3, 6.4, 6.6, 6.7, 6.9 | FRD 0 | Browsable directory, three-column wiki page view, Tiptap editor, PR submission flow, AI pre-screening, reviewer dashboard, Pulse sidebar + voting, lifecycle banners, page claiming, version history |
+| 3 | Comments System | 6.5 | FRD 0, FRD 2 | Inline section comments, threaded replies, anchor text management, comment persistence across edits |
+| -- | *Additional FRDs TBD* | -- | -- | Cold start agent |
 
 ---
 
@@ -65,11 +66,21 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 ---
 
-### FRD 2: Comments System
+### FRD 2: Wiki Pages, Directory, Editor, and Edit Proposals
+
+**PRD Sections:** 6.2, 6.3, 6.4, 6.6, 6.7, 6.9
+
+**Scope:** See [FRD-2-wiki-pages.md](./FRDs/FRD-2-wiki-pages.md)
+
+**Exit criteria:** Directory renders with grid/list toggle and category sections; wiki pages render in three-column layout (TOC, content, Pulse sidebar); Tiptap inline editor works with image upload and autosave; PR submission with diff/preview, AI pre-screen, and reviewer dashboard; lifecycle banners; page claiming with Official section; version history.
+
+---
+
+### FRD 3: Comments System
 
 **PRD Section:** 6.5
 
-**Scope:** TBD -- to be planned after FRD 1 is confirmed.
+**Scope:** TBD -- to be planned after FRD 2 is confirmed.
 
 **Exit criteria:** TBD.
 
@@ -80,6 +91,7 @@ Each FRD represents a single unit of full functionality that can be implemented,
 ```
 FRD 0 (Setup)
 ├── FRD 1 (RAG Pipeline)
-├── FRD 2 (Comments System)
+├── FRD 2 (Wiki Pages, Directory, Editor, Edit Proposals)
+│   └── FRD 3 (Comments System)
 ├── ... (additional FRDs TBD)
 ```
