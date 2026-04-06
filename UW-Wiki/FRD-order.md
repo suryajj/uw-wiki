@@ -80,9 +80,9 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 **PRD Section:** 6.5
 
-**Scope:** TBD -- to be planned after FRD 2 is confirmed.
+**Scope:** See [FRD-3-comments-system.md](./FRDs/FRD-3-comments-system.md)
 
-**Exit criteria:** TBD.
+**Exit criteria:** Inline text-anchored comments with Medium-style text selection; margin indicators per H2 section; comments sidebar with document-position sorting; bottom section with Most Recent / Top Voted sorting; two-level threading; upvote/downvote voting (account required); exact-match re-anchoring with orphaned comment handling; highlighting system (light on sidebar open, dark on selection); basic markdown formatting; 1500-char limit; anonymous-by-default attribution; post-hoc moderation with reporting; RAG integration with comment chunks.
 
 ---
 
