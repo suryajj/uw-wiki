@@ -1,15 +1,15 @@
 # Feature Requirements Document: FRD 2 -- Wiki Pages, Directory, Editor, and Edit Proposals (v1.0)
 
-| Field | Value |
-|---|---|
-| **Project** | UW Wiki |
-| **Parent Document** | [PRD v0.1](../PRD.md) |
-| **FRD Order** | [FRD Order](../FRD-order.md) |
-| **PRD Sections** | 6.2 (Browsable Directory), 6.3 (Wiki Pages and Version Control), 6.4 (PR-Style Edit Proposals), 6.6 (The Pulse), 6.7 (Page Claiming), 6.9 (Automated Lifecycle Management) |
-| **Type** | Core product feature |
-| **Depends On** | FRD 0 (Setup Document) |
-| **Delivers** | Browsable directory with grid/list toggle, three-column wiki page view with auto-TOC, Pulse sidebar and voting widget, inline Tiptap editor with PR submission flow, AI pre-screening, reviewer dashboard, version history, lifecycle banners, page claiming |
-| **Created** | 2026-04-06 |
+| Field               | Value                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Project**         | UW Wiki                                                                                                                                                                                                                                                      |
+| **Parent Document** | [PRD v0.1](../PRD.md)                                                                                                                                                                                                                                        |
+| **FRD Order**       | [FRD Order](../FRD-order.md)                                                                                                                                                                                                                                 |
+| **PRD Sections**    | 6.2 (Browsable Directory), 6.3 (Wiki Pages and Version Control), 6.4 (PR-Style Edit Proposals), 6.6 (The Pulse), 6.7 (Page Claiming), 6.9 (Automated Lifecycle Management)                                                                                   |
+| **Type**            | Core product feature                                                                                                                                                                                                                                         |
+| **Depends On**      | FRD 0 (Setup Document)                                                                                                                                                                                                                                       |
+| **Delivers**        | Browsable directory with grid/list toggle, three-column wiki page view with auto-TOC, Pulse sidebar and voting widget, inline Tiptap editor with PR submission flow, AI pre-screening, reviewer dashboard, version history, lifecycle banners, page claiming |
+| **Created**         | 2026-04-06                                                                                                                                                                                                                                                   |
 
 ---
 
@@ -17,38 +17,40 @@
 
 FRD 2 builds the core content layer of UW Wiki -- everything a user sees and interacts with when browsing, reading, editing, and reviewing wiki pages. The feature set spans three layers. The **viewing layer** delivers a browsable landing-page directory (grid/list toggle, category sections, org cards with taglines), a three-column wiki page view (auto-generated TOC on the left, ProseMirror-rendered content in the center, Pulse infobox sidebar on the right), lifecycle staleness banners, and a page-claiming flow for orgs to establish an official section. The **editing layer** provides an inline Tiptap WYSIWYG editor (headings, lists, tables, images, code blocks, blockquotes, dividers) that transforms the page in place when a user clicks "Propose Edit," autosaves drafts to localStorage, and gates authentication to the submission step rather than the editing step. The **review layer** includes a PR submission flow with inline diff and rendered preview tabs, a rationale field, an AI pre-screener (GPT-4o-mini pass/fail verdict), a reviewer dashboard with accept/reject/request-changes actions, and a version history view. Accepting a PR creates a new page version, updates the page, resets lifecycle timers, and triggers the re-embedding pipeline from FRD 1.
 
+**Supersession Note:** FRD 4 is the canonical source for PR-Edit workflow implementation details (section-scoped proposals, patchsets/rebase, mergeability, and reviewer decision policy). FRD 2 remains canonical for page UX, editor primitives, and surrounding page experience.
+
 ---
 
 ## Given Context (Preconditions)
 
 The following are assumed to be in place from FRD 0:
 
-| Prerequisite | FRD 0 Deliverable |
-|---|---|
-| Next.js 15 App Router project scaffolded | Project root with `src/app/` directory |
-| Supabase project with PostgreSQL 17 + pgvector enabled | Supabase project configuration |
-| Supabase Auth configured (Google OAuth + email/password) | `src/lib/supabase/client.ts`, `src/lib/supabase/server.ts` |
-| `universities`, `organizations`, `pages`, `page_versions`, `edit_proposals`, `pulse_ratings`, `pulse_aggregates`, `external_links`, `users`, `lifecycle_config` tables exist | Supabase migrations |
-| shadcn/ui + TailwindCSS v4 with UW dark theme configured | Frontend setup with color palette from PRD Section 12 |
-| Tiptap base packages installed (`@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm`) | `package.json` dependencies |
-| OpenRouter API key configured | `.env.local` with `OPENROUTER_API_KEY` |
-| Supabase Storage bucket for image uploads | Supabase project configuration |
-| Environment variables template | `.env.example` |
+| Prerequisite                                                                                                                                                                 | FRD 0 Deliverable                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Next.js 15 App Router project scaffolded                                                                                                                                     | Project root with `src/app/` directory                     |
+| Supabase project with PostgreSQL 17 + pgvector enabled                                                                                                                       | Supabase project configuration                             |
+| Supabase Auth configured (Google OAuth + email/password)                                                                                                                     | `src/lib/supabase/client.ts`, `src/lib/supabase/server.ts` |
+| `universities`, `organizations`, `pages`, `page_versions`, `edit_proposals`, `pulse_ratings`, `pulse_aggregates`, `external_links`, `users`, `lifecycle_config` tables exist | Supabase migrations                                        |
+| shadcn/ui + TailwindCSS v4 with UW dark theme configured                                                                                                                     | Frontend setup with color palette from PRD Section 12      |
+| Tiptap base packages installed (`@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm`)                                                                                        | `package.json` dependencies                                |
+| OpenRouter API key configured                                                                                                                                                | `.env.local` with `OPENROUTER_API_KEY`                     |
+| Supabase Storage bucket for image uploads                                                                                                                                    | Supabase project configuration                             |
+| Environment variables template                                                                                                                                               | `.env.example`                                             |
 
 ### Terms
 
-| Term | Definition |
-|---|---|
-| ProseMirror JSON | The structured document format used by the Tiptap editor to store wiki page content. A tree of nodes (headings, paragraphs, lists, images) with attributes and text content. |
-| Inline edit mode | The state where the wiki page content area transforms in place into an editable Tiptap instance. The user edits directly on the page rather than navigating to a separate editor. |
+| Term               | Definition                                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ProseMirror JSON   | The structured document format used by the Tiptap editor to store wiki page content. A tree of nodes (headings, paragraphs, lists, images) with attributes and text content.        |
+| Inline edit mode   | The state where the wiki page content area transforms in place into an editable Tiptap instance. The user edits directly on the page rather than navigating to a separate editor.   |
 | Edit proposal (PR) | A proposed set of changes to a wiki page, submitted by a contributor and reviewed by the editorial board before being merged. Stored as the full proposed ProseMirror JSON content. |
-| Diff | A visual representation of changes between the current page content and a proposed edit, rendered as inline additions (green) and deletions (red). |
-| AI pre-screen | An automated pass/fail assessment of an edit proposal against the Platform Editorial Values, run by GPT-4o-mini on submission. |
-| Pulse | The set of crowdsourced quantitative metrics displayed in a sidebar infobox: Selectivity, Vibe Check, Co-op Boost, Tech Stack, Health Status. |
-| Lifecycle banner | A colored warning banner displayed at the top of a wiki page when it has not been updated within configurable time thresholds. |
-| Page claiming | The process by which an org establishes an official presence on its wiki page, gaining an "Official" section. |
-| TOC | Table of Contents -- an auto-generated navigation sidebar derived from heading nodes in the page content. |
-| Tagline | A one-line description of an org, set by contributors, displayed on directory cards. |
+| Diff               | A visual representation of changes between the current page content and a proposed edit, rendered as inline additions (green) and deletions (red).                                  |
+| AI pre-screen      | An automated pass/fail assessment of an edit proposal against the Platform Editorial Values, run by GPT-4o-mini on submission.                                                      |
+| Pulse              | The set of crowdsourced quantitative metrics displayed in a sidebar infobox: Selectivity, Vibe Check, Co-op Boost, Tech Stack, Health Status.                                       |
+| Lifecycle banner   | A colored warning banner displayed at the top of a wiki page when it has not been updated within configurable time thresholds.                                                      |
+| Page claiming      | The process by which an org establishes an official presence on its wiki page, gaining an "Official" section.                                                                       |
+| TOC                | Table of Contents -- an auto-generated navigation sidebar derived from heading nodes in the page content.                                                                           |
+| Tagline            | A one-line description of an org, set by contributors, displayed on directory cards.                                                                                                |
 
 ---
 
@@ -285,11 +287,11 @@ Each org is rendered as a card in the directory. Cards are the same component in
 
 **Card content:**
 
-| Field | Source | Description |
-|---|---|---|
-| Org name | `organizations.name` | Primary text, bold, white |
-| Category badge | `organizations.category` | Small badge with category name, gold accent |
-| Tagline | `organizations.tagline` | One-line description, muted text. Editable through the standard PR flow. If null, shows "No tagline yet." |
+| Field          | Source                   | Description                                                                                               |
+| -------------- | ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Org name       | `organizations.name`     | Primary text, bold, white                                                                                 |
+| Category badge | `organizations.category` | Small badge with category name, gold accent                                                               |
+| Tagline        | `organizations.tagline`  | One-line description, muted text. Editable through the standard PR flow. If null, shows "No tagline yet." |
 
 **Grid view:** 3 columns on desktop, 2 on tablet, 1 on mobile. Cards are equal-height with consistent padding.
 
@@ -415,11 +417,11 @@ Each wiki page is rendered at `/wiki/[slug]` as a three-column layout: auto-gene
 
 ### 2.2 Three-Column Layout
 
-| Column | Width | Content |
-|---|---|---|
-| **TOC (left)** | ~15% (200px min) | Auto-generated table of contents from heading nodes. Sticky within viewport on desktop. Hidden on mobile (collapses into a dropdown). |
-| **Content (center)** | ~60% (flex-grow) | Rendered ProseMirror JSON content. Scrollable. All sections always expanded. |
-| **Pulse sidebar (right)** | ~25% (280px min) | Pulse infobox card, external links, "Rate This Org" widget. Scrolls with content. |
+| Column                    | Width            | Content                                                                                                                               |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **TOC (left)**            | ~15% (200px min) | Auto-generated table of contents from heading nodes. Sticky within viewport on desktop. Hidden on mobile (collapses into a dropdown). |
+| **Content (center)**      | ~60% (flex-grow) | Rendered ProseMirror JSON content. Scrollable. All sections always expanded.                                                          |
+| **Pulse sidebar (right)** | ~25% (280px min) | Pulse infobox card, external links, "Rate This Org" widget. Scrolls with content.                                                     |
 
 On screens below 1024px, the layout collapses: TOC becomes a floating dropdown button, Pulse sidebar moves above the content, and content goes full-width.
 
@@ -527,13 +529,19 @@ The system shall:
 ```typescript
 // src/app/wiki/[slug]/page.tsx
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}) {
   const org = await getOrgBySlug(params.slug);
   const overview = extractOverviewText(org.currentVersion.contentJson);
 
   return {
     title: `${org.name} -- UW Wiki`,
-    description: overview?.slice(0, 160) || `Student-sourced information about ${org.name} at the University of Waterloo.`,
+    description:
+      overview?.slice(0, 160) ||
+      `Student-sourced information about ${org.name} at the University of Waterloo.`,
     openGraph: {
       title: `${org.name} -- UW Wiki`,
       description: overview?.slice(0, 160),
@@ -544,14 +552,14 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 ### 2.7 URL Structure
 
-| Route | Purpose |
-|---|---|
-| `/` | Landing page (directory + search bar) |
-| `/wiki/[slug]` | Wiki page view |
-| `/wiki/[slug]/history` | Version history |
-| `/search` | RAG search (FRD 1) |
-| `/admin/proposals` | Reviewer dashboard |
-| `/admin/claims` | Claim management |
+| Route                  | Purpose                               |
+| ---------------------- | ------------------------------------- |
+| `/`                    | Landing page (directory + search bar) |
+| `/wiki/[slug]`         | Wiki page view                        |
+| `/wiki/[slug]/history` | Version history                       |
+| `/search`              | RAG search (FRD 1)                    |
+| `/admin/proposals`     | Reviewer dashboard                    |
+| `/admin/claims`        | Claim management                      |
 
 ### 2.8 Empty Page States
 
@@ -601,13 +609,13 @@ The Pulse infobox is a card rendered in the right column of the wiki page. It di
 
 ### 3.2 Metrics Display
 
-| Metric | Display | Source |
-|---|---|---|
-| **Selectivity** | Badge: "Open Membership", "Application-Based", or "Invite-Only" | `pulse_aggregates` where `metric = 'selectivity'` |
-| **Vibe Check** | 5-dot indicator (filled/empty) + numeric value + scale labels | `pulse_aggregates` where `metric = 'vibe_check'` |
-| **Co-op Boost** | 5-star rating + numeric value | `pulse_aggregates` where `metric = 'coop_boost'` |
-| **Tech Stack** | Tag chips (up to 10 shown, "+N more" overflow) | `pulse_aggregates` where `metric = 'tech_stack'` (stored as JSON array) |
-| **Health Status** | Colored dot + label (Active/Stale/Potentially Defunct) | Computed from `pages.last_modified_at` and `lifecycle_config` |
+| Metric            | Display                                                         | Source                                                                  |
+| ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Selectivity**   | Badge: "Open Membership", "Application-Based", or "Invite-Only" | `pulse_aggregates` where `metric = 'selectivity'`                       |
+| **Vibe Check**    | 5-dot indicator (filled/empty) + numeric value + scale labels   | `pulse_aggregates` where `metric = 'vibe_check'`                        |
+| **Co-op Boost**   | 5-star rating + numeric value                                   | `pulse_aggregates` where `metric = 'coop_boost'`                        |
+| **Tech Stack**    | Tag chips (up to 10 shown, "+N more" overflow)                  | `pulse_aggregates` where `metric = 'tech_stack'` (stored as JSON array) |
+| **Health Status** | Colored dot + label (Active/Stale/Potentially Defunct)          | Computed from `pages.last_modified_at` and `lifecycle_config`           |
 
 Vote counts are shown next to each numeric metric for transparency (e.g., "18 votes").
 
@@ -617,12 +625,12 @@ A collapsible "Rate This Org" section below the infobox. Expanded by default on 
 
 **Voting fields:**
 
-| Field | Input Type | Validation |
-|---|---|---|
-| Selectivity | Dropdown: Open / Application-Based / Invite-Only | Required |
-| Vibe Check | Slider: 1 (Social) to 5 (Corporate) | Required |
-| Co-op Boost | Star rating: 1 to 5 | Required |
-| Tech Stack | Tag input with autocomplete (freeform, deduplicated) | Optional |
+| Field       | Input Type                                           | Validation |
+| ----------- | ---------------------------------------------------- | ---------- |
+| Selectivity | Dropdown: Open / Application-Based / Invite-Only     | Required   |
+| Vibe Check  | Slider: 1 (Social) to 5 (Corporate)                  | Required   |
+| Co-op Boost | Star rating: 1 to 5                                  | Required   |
+| Tech Stack  | Tag input with autocomplete (freeform, deduplicated) | Optional   |
 
 The user submits all ratings in one form. A "Submit Rating" button fires the API route.
 
@@ -670,24 +678,30 @@ export async function recomputeAggregate(orgId: string, metric: string) {
       [...tagCounts.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 15)
-        .map(([tag]) => tag)
+        .map(([tag]) => tag),
     );
   } else {
-    const values = ratings.map((r) => parseFloat(r.value)).sort((a, b) => a - b);
+    const values = ratings
+      .map((r) => parseFloat(r.value))
+      .sort((a, b) => a - b);
     const mid = Math.floor(values.length / 2);
-    const median = values.length % 2 !== 0
-      ? values[mid]
-      : (values[mid - 1] + values[mid]) / 2;
+    const median =
+      values.length % 2 !== 0
+        ? values[mid]
+        : (values[mid - 1] + values[mid]) / 2;
     aggregateValue = median.toFixed(1);
   }
 
-  await supabase.from("pulse_aggregates").upsert({
-    org_id: orgId,
-    metric,
-    aggregate_value: aggregateValue,
-    vote_count: ratings.length,
-    last_computed_at: new Date().toISOString(),
-  }, { onConflict: "org_id,metric" });
+  await supabase.from("pulse_aggregates").upsert(
+    {
+      org_id: orgId,
+      metric,
+      aggregate_value: aggregateValue,
+      vote_count: ratings.length,
+      last_computed_at: new Date().toISOString(),
+    },
+    { onConflict: "org_id,metric" },
+  );
 }
 ```
 
@@ -707,14 +721,14 @@ The Tiptap editor provides the inline editing experience. When a user clicks "Pr
 
 The editor loads the following Tiptap extensions:
 
-| Extension | Purpose |
-|---|---|
-| `StarterKit` | Paragraphs, bold, italic, strike, code, hard break, heading (H2, H3 only), bullet list, ordered list, blockquote, horizontal rule, history (undo/redo) |
-| `Link` | Inline hyperlinks with `autolink: true` and `openOnClick: false` in edit mode |
-| `Image` | Inline images with custom upload handler |
-| `Table`, `TableRow`, `TableHeader`, `TableCell` | Table support |
-| `CodeBlockLowlight` | Syntax-highlighted code blocks |
-| `Placeholder` | Placeholder text for empty paragraphs ("Start writing...") |
+| Extension                                       | Purpose                                                                                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `StarterKit`                                    | Paragraphs, bold, italic, strike, code, hard break, heading (H2, H3 only), bullet list, ordered list, blockquote, horizontal rule, history (undo/redo) |
+| `Link`                                          | Inline hyperlinks with `autolink: true` and `openOnClick: false` in edit mode                                                                          |
+| `Image`                                         | Inline images with custom upload handler                                                                                                               |
+| `Table`, `TableRow`, `TableHeader`, `TableCell` | Table support                                                                                                                                          |
+| `CodeBlockLowlight`                             | Syntax-highlighted code blocks                                                                                                                         |
+| `Placeholder`                                   | Placeholder text for empty paragraphs ("Start writing...")                                                                                             |
 
 Heading levels are restricted to H2 and H3 only. H1 is reserved for the page title (org name), which is not editable through the Tiptap editor.
 
@@ -726,14 +740,14 @@ A fixed toolbar at the top of the editor area (Google Docs style). The toolbar i
 [H2] [H3] | [B] [I] [S] | [UL] [OL] [Quote] | [Link] [Image] [Table] | [Code] [---] | [Undo] [Redo]
 ```
 
-| Group | Buttons |
-|---|---|
-| Headings | H2, H3 |
-| Inline formatting | Bold, Italic, Strikethrough |
-| Block elements | Bullet list, Ordered list, Blockquote |
-| Inserts | Link, Image upload, Table |
-| Special | Code block, Horizontal divider |
-| History | Undo, Redo |
+| Group             | Buttons                               |
+| ----------------- | ------------------------------------- |
+| Headings          | H2, H3                                |
+| Inline formatting | Bold, Italic, Strikethrough           |
+| Block elements    | Bullet list, Ordered list, Blockquote |
+| Inserts           | Link, Image upload, Table             |
+| Special           | Code block, Horizontal divider        |
+| History           | Undo, Redo                            |
 
 Active formatting states are indicated by a gold highlight on the corresponding button.
 
@@ -760,9 +774,9 @@ export async function uploadEditorImage(file: File): Promise<string> {
 
   if (error) throw new Error(`Image upload failed: ${error.message}`);
 
-  const { data: { publicUrl } } = supabase.storage
-    .from("wiki-images")
-    .getPublicUrl(filename);
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("wiki-images").getPublicUrl(filename);
 
   return publicUrl;
 }
@@ -780,19 +794,47 @@ When a user creates a new page (no existing content), the editor loads with the 
 export const SUGGESTED_TEMPLATE = {
   type: "doc",
   content: [
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Overview" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Overview" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Time Commitment" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Time Commitment" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Culture and Vibe" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Culture and Vibe" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Subteams and Roles" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Subteams and Roles" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Past Projects" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Past Projects" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Exec History" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "Exec History" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
-    { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "How to Apply" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "How to Apply" }],
+    },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
   ],
 };
@@ -820,7 +862,11 @@ interface Draft {
   savedAt: string;
 }
 
-export function saveDraft(pageId: string, content: object, pageVersionId: string) {
+export function saveDraft(
+  pageId: string,
+  content: object,
+  pageVersionId: string,
+) {
   const draft: Draft = {
     content,
     pageVersionId,
@@ -829,7 +875,10 @@ export function saveDraft(pageId: string, content: object, pageVersionId: string
   localStorage.setItem(`uw-wiki-draft:${pageId}`, JSON.stringify(draft));
 }
 
-export function loadDraft(pageId: string, currentVersionId: string): Draft | null {
+export function loadDraft(
+  pageId: string,
+  currentVersionId: string,
+): Draft | null {
   const raw = localStorage.getItem(`uw-wiki-draft:${pageId}`);
   if (!raw) return null;
 
@@ -937,7 +986,9 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
 import { PRE_SCREEN_PROMPT } from "./prompts";
 
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY!,
+});
 
 export async function preScreenProposal(input: {
   orgName: string;
@@ -951,8 +1002,7 @@ export async function preScreenProposal(input: {
       verdict: z.enum(["pass", "fail"]),
       reason: z.string().max(100),
     }),
-    prompt: PRE_SCREEN_PROMPT
-      .replace("{{ORG_NAME}}", input.orgName)
+    prompt: PRE_SCREEN_PROMPT.replace("{{ORG_NAME}}", input.orgName)
       .replace("{{CATEGORY}}", input.category)
       .replace("{{DIFF}}", input.diffText)
       .replace("{{RATIONALE}}", input.rationale),
@@ -1001,7 +1051,7 @@ export interface DiffSegment {
 
 export function generateDiff(
   currentJson: object,
-  proposedJson: object
+  proposedJson: object,
 ): DiffSegment[] {
   const currentText = prosemirrorToPlainText(currentJson);
   const proposedText = prosemirrorToPlainText(proposedJson);
@@ -1032,7 +1082,11 @@ function prosemirrorToPlainText(doc: any): string {
     }
     if (node.content) {
       for (const child of node.content) {
-        if (!["heading", "paragraph", "bulletList", "orderedList"].includes(child.type)) {
+        if (
+          !["heading", "paragraph", "bulletList", "orderedList"].includes(
+            child.type,
+          )
+        ) {
           walk(child);
         }
       }
@@ -1076,13 +1130,13 @@ The list shows all proposals with `status = 'pending'` or `status = 'changes_req
 
 **List columns:**
 
-| Column | Content |
-|---|---|
-| Org | `organizations.name` (linked to the wiki page) |
-| Submitter | Display name if attributed, "Anonymous" otherwise |
-| AI Verdict | Pass (green badge) or Fail (red badge) |
-| Submitted | Relative time (e.g., "2 hours ago") |
-| Status | "Pending" (yellow) or "Changes Requested" (orange) |
+| Column     | Content                                            |
+| ---------- | -------------------------------------------------- |
+| Org        | `organizations.name` (linked to the wiki page)     |
+| Submitter  | Display name if attributed, "Anonymous" otherwise  |
+| AI Verdict | Pass (green badge) or Fail (red badge)             |
+| Submitted  | Relative time (e.g., "2 hours ago")                |
+| Status     | "Pending" (yellow) or "Changes Requested" (orange) |
 
 ### 8.3 Proposal Detail
 
@@ -1097,11 +1151,11 @@ Clicking a row expands an inline detail panel showing:
 
 Three action buttons at the bottom of the detail panel:
 
-| Action | Behavior |
-|---|---|
-| **Accept** | Creates a new `page_versions` record. Updates `pages.current_version_id` and `pages.last_modified_at`. Sets `edit_proposals.status = 'accepted'` and `edit_proposals.reviewer_id`. Clears lifecycle banners. Triggers `reembedPage` from FRD 1. Clears localStorage drafts for this page (via a broadcast channel). |
-| **Reject** | Sets `edit_proposals.status = 'rejected'` and `edit_proposals.reviewer_id`. Optionally stores a rejection reason in `edit_proposals.reviewer_comment`. |
-| **Request Changes** | Sets `edit_proposals.status = 'changes_requested'` and stores the reviewer's comment in `edit_proposals.reviewer_comment`. The contributor can revise and resubmit (future: notification triggers). |
+| Action              | Behavior                                                                                                                                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accept**          | Creates a new `page_versions` record. Updates `pages.current_version_id` and `pages.last_modified_at`. Sets `edit_proposals.status = 'accepted'` and `edit_proposals.reviewer_id`. Clears lifecycle banners. Triggers `reembedPage` from FRD 1. Clears localStorage drafts for this page (via a broadcast channel). |
+| **Reject**          | Sets `edit_proposals.status = 'rejected'` and `edit_proposals.reviewer_id`. Optionally stores a rejection reason in `edit_proposals.reviewer_comment`.                                                                                                                                                              |
+| **Request Changes** | Sets `edit_proposals.status = 'changes_requested'` and stores the reviewer's comment in `edit_proposals.reviewer_comment`. The contributor can revise and resubmit (future: notification triggers).                                                                                                                 |
 
 ### 8.5 Conflict of Interest Guard
 
@@ -1115,9 +1169,14 @@ The system shall:
 ```typescript
 // src/app/api/proposals/[id]/accept/route.ts
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
   const supabase = createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // Verify reviewer role
   const { data: profile } = await supabase
@@ -1182,8 +1241,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // Trigger re-embedding (FRD 1) -- async, non-blocking
   const orgMeta = await getOrgMeta(proposal.pages.org_id);
-  reembedPage(proposal.page_id, orgMeta, proposal.proposed_content_json)
-    .catch(console.error);
+  reembedPage(proposal.page_id, orgMeta, proposal.proposed_content_json).catch(
+    console.error,
+  );
 
   return Response.json({ success: true, versionId: newVersion.id });
 }
@@ -1205,13 +1265,13 @@ Each wiki page has a version history accessible via a "View History" link in the
 
 A vertical list of version entries, ordered by `version_number` descending (newest first):
 
-| Field | Source |
-|---|---|
-| Version number | `page_versions.version_number` (e.g., "v12") |
-| Date | `page_versions.created_at` (formatted as "April 5, 2026 at 2:30 PM") |
-| Summary | `page_versions.summary` (the contributor's rationale, truncated to 100 chars) |
-| Contributor | Display name if not anonymous, "Anonymous contributor" otherwise |
-| AI verdict | Badge showing the pre-screen verdict from the corresponding `edit_proposals` record |
+| Field          | Source                                                                              |
+| -------------- | ----------------------------------------------------------------------------------- |
+| Version number | `page_versions.version_number` (e.g., "v12")                                        |
+| Date           | `page_versions.created_at` (formatted as "April 5, 2026 at 2:30 PM")                |
+| Summary        | `page_versions.summary` (the contributor's rationale, truncated to 100 chars)       |
+| Contributor    | Display name if not anonymous, "Anonymous contributor" otherwise                    |
+| AI verdict     | Badge showing the pre-screen verdict from the corresponding `edit_proposals` record |
 
 ### 9.4 Data Fetching
 
@@ -1220,11 +1280,13 @@ A vertical list of version entries, ordered by `version_number` descending (newe
 
 const { data: versions } = await supabase
   .from("page_versions")
-  .select(`
+  .select(
+    `
     id, version_number, summary, created_at, is_anonymous,
     contributor:users(display_name),
     edit_proposals(ai_verdict)
-  `)
+  `,
+  )
   .eq("page_id", page.id)
   .order("version_number", { ascending: false });
 ```
@@ -1245,14 +1307,14 @@ Wiki pages that have not been updated within configurable time thresholds displa
 
 Thresholds are stored in the `lifecycle_config` table and loaded at page render time:
 
-| Category | Needs Update (months) | Stale (months) | Potentially Defunct (months) |
-|---|---|---|---|
-| Design Teams | 9 | 15 | 24 |
-| Engineering Clubs | 6 | 12 | 18 |
-| Non-Engineering Clubs | 6 | 12 | 18 |
-| Academic Programs | 12 | 24 | 36 |
-| Student Societies | 6 | 12 | 18 |
-| Campus Organizations | 12 | 24 | 36 |
+| Category              | Needs Update (months) | Stale (months) | Potentially Defunct (months) |
+| --------------------- | --------------------- | -------------- | ---------------------------- |
+| Design Teams          | 9                     | 15             | 24                           |
+| Engineering Clubs     | 6                     | 12             | 18                           |
+| Non-Engineering Clubs | 6                     | 12             | 18                           |
+| Academic Programs     | 12                    | 24             | 36                           |
+| Student Societies     | 6                     | 12             | 18                           |
+| Campus Organizations  | 12                    | 24             | 36                           |
 
 ### 10.3 Computation
 
@@ -1261,15 +1323,24 @@ The lifecycle status is computed server-side on each page load (not stored as a 
 ```typescript
 // src/lib/lifecycle.ts
 
-export type LifecycleStatus = "active" | "needs_update" | "stale" | "potentially_defunct";
+export type LifecycleStatus =
+  | "active"
+  | "needs_update"
+  | "stale"
+  | "potentially_defunct";
 
 export function computeLifecycleStatus(
   lastModifiedAt: string,
-  config: { needs_update_months: number; stale_months: number; defunct_months: number }
+  config: {
+    needs_update_months: number;
+    stale_months: number;
+    defunct_months: number;
+  },
 ): LifecycleStatus {
   const lastModified = new Date(lastModifiedAt);
   const now = new Date();
-  const monthsSinceUpdate = (now.getTime() - lastModified.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+  const monthsSinceUpdate =
+    (now.getTime() - lastModified.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
 
   if (monthsSinceUpdate >= config.defunct_months) return "potentially_defunct";
   if (monthsSinceUpdate >= config.stale_months) return "stale";
@@ -1282,11 +1353,11 @@ export function computeLifecycleStatus(
 
 Banners are rendered at the top of the wiki page content area, below the page header and above the three-column layout:
 
-| Status | Color | Message |
-|---|---|---|
-| `needs_update` | Yellow (`bg-yellow-900/30 border-yellow-600`) | "This page hasn't been updated in a while. Information may be outdated." |
-| `stale` | Orange (`bg-orange-900/30 border-orange-600`) | "This page is stale. The information here may no longer be accurate." |
-| `potentially_defunct` | Red (`bg-red-900/30 border-red-600`) | "This organization may be defunct. This page has not been updated in over [N] months." |
+| Status                | Color                                         | Message                                                                                |
+| --------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `needs_update`        | Yellow (`bg-yellow-900/30 border-yellow-600`) | "This page hasn't been updated in a while. Information may be outdated."               |
+| `stale`               | Orange (`bg-orange-900/30 border-orange-600`) | "This page is stale. The information here may no longer be accurate."                  |
+| `potentially_defunct` | Red (`bg-red-900/30 border-red-600`)          | "This organization may be defunct. This page has not been updated in over [N] months." |
 
 Each banner includes a "Propose Edit" link to encourage contribution.
 
@@ -1393,32 +1464,32 @@ CREATE INDEX idx_user_affiliations_user_id ON user_affiliations (user_id);
 
 ## 13. API Routes
 
-| Route | Method | Auth | Purpose |
-|---|---|---|---|
-| `/api/proposals` | POST | Required | Submit an edit proposal |
-| `/api/proposals/[id]` | GET | None | Get proposal status (for polling AI verdict) |
-| `/api/proposals/[id]/accept` | POST | Reviewer | Accept a proposal |
-| `/api/proposals/[id]/reject` | POST | Reviewer | Reject a proposal |
-| `/api/proposals/[id]/request-changes` | POST | Reviewer | Request changes with comment |
-| `/api/pulse/vote` | POST | None | Submit a Pulse rating |
-| `/api/claims` | POST | Required | Submit a claim request |
-| `/api/claims/[id]/approve` | POST | Admin | Approve a claim |
-| `/api/claims/[id]/reject` | POST | Admin | Reject a claim |
+| Route                                 | Method | Auth     | Purpose                                      |
+| ------------------------------------- | ------ | -------- | -------------------------------------------- |
+| `/api/proposals`                      | POST   | Required | Submit an edit proposal                      |
+| `/api/proposals/[id]`                 | GET    | None     | Get proposal status (for polling AI verdict) |
+| `/api/proposals/[id]/accept`          | POST   | Reviewer | Accept a proposal                            |
+| `/api/proposals/[id]/reject`          | POST   | Reviewer | Reject a proposal                            |
+| `/api/proposals/[id]/request-changes` | POST   | Reviewer | Request changes with comment                 |
+| `/api/pulse/vote`                     | POST   | None     | Submit a Pulse rating                        |
+| `/api/claims`                         | POST   | Required | Submit a claim request                       |
+| `/api/claims/[id]/approve`            | POST   | Admin    | Approve a claim                              |
+| `/api/claims/[id]/reject`             | POST   | Admin    | Reject a claim                               |
 
 ---
 
 ## 14. Non-Functional Requirements
 
-| Requirement | Target |
-|---|---|
-| **Wiki page load (SSR)** | < 2 seconds for full server-rendered page |
-| **Editor initialization** | < 1 second from "Propose Edit" click to editable state |
-| **Diff generation** | < 500ms for typical page-length documents |
-| **AI pre-screen latency** | < 5 seconds (async, does not block submission) |
-| **Image upload** | < 3 seconds for a 2MB image |
-| **Directory page load** | < 1 second (all orgs fetched in one query) |
-| **SEO** | All wiki pages server-side rendered with og:title and og:description |
-| **Accessibility** | WCAG 2.1 AA: keyboard navigation, screen reader labels, color contrast ratios |
+| Requirement               | Target                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| **Wiki page load (SSR)**  | < 2 seconds for full server-rendered page                                     |
+| **Editor initialization** | < 1 second from "Propose Edit" click to editable state                        |
+| **Diff generation**       | < 500ms for typical page-length documents                                     |
+| **AI pre-screen latency** | < 5 seconds (async, does not block submission)                                |
+| **Image upload**          | < 3 seconds for a 2MB image                                                   |
+| **Directory page load**   | < 1 second (all orgs fetched in one query)                                    |
+| **SEO**                   | All wiki pages server-side rendered with og:title and og:description          |
+| **Accessibility**         | WCAG 2.1 AA: keyboard navigation, screen reader labels, color contrast ratios |
 
 ---
 
@@ -1426,35 +1497,35 @@ CREATE INDEX idx_user_affiliations_user_id ON user_affiliations (user_id);
 
 FRD 2 is complete when ALL of the following are satisfied:
 
-| # | Criterion | Verification |
-|---|---|---|
-| 1 | Landing page renders the directory with category sections | Visit `/` and verify all 6 category sections appear with org cards |
-| 2 | Grid/list toggle works | Switch between grid and list views and verify layout changes |
-| 3 | Directory text filter works | Type a partial org name and verify only matching orgs appear |
-| 4 | Wiki page renders with three-column layout | Visit `/wiki/[slug]` and verify TOC, content, and Pulse sidebar columns |
-| 5 | Auto-generated TOC highlights on scroll | Scroll through a page and verify the active TOC entry updates |
-| 6 | Page header shows org name, category badge, and last updated | Verify all metadata is visible in the header |
-| 7 | Pulse sidebar displays all metrics | Verify Selectivity, Vibe Check, Co-op Boost, Tech Stack, and Health Status appear |
-| 8 | Pulse voting widget submits a rating | Submit a rating and verify the aggregate updates |
-| 9 | Pulse rate limiting prevents duplicate votes | Attempt to vote twice in the same session and verify the second is rejected |
-| 10 | "Propose Edit" transforms page into inline editor | Click the button and verify the Tiptap toolbar appears and content becomes editable |
-| 11 | All Tiptap extensions work | Test headings, bold, lists, links, images, tables, code blocks, blockquotes, dividers |
-| 12 | Image upload works via paste, drag-drop, and toolbar | Upload an image via each method and verify it appears in the editor |
-| 13 | Autosave to localStorage works | Edit content, navigate away, return, and verify the draft recovery banner appears |
-| 14 | Submission dialog shows diff and preview tabs | Click "Submit Proposal" and verify both tabs render correctly |
-| 15 | Auth modal appears for unauthenticated users on submit | Attempt to submit without signing in and verify the auth modal |
-| 16 | AI pre-screen returns a verdict | Submit a proposal and verify a pass/fail badge appears on the confirmation page |
-| 17 | Reviewer dashboard lists pending proposals | Sign in as a reviewer, visit `/admin/proposals`, and verify pending PRs appear |
-| 18 | Accept creates a new page version | Accept a proposal and verify the page content updates and version number increments |
-| 19 | Request Changes stores reviewer comment | Request changes and verify the comment is stored on the proposal |
-| 20 | Re-embedding triggers on accept | Accept a proposal and verify new chunks are created in the `chunks` table (FRD 1 integration) |
-| 21 | Version history displays correctly | Click "View History" and verify the version list with summaries and dates |
-| 22 | Lifecycle banner appears on stale pages | Set a page's `last_modified_at` to 13 months ago (for an Engineering Club) and verify an orange "Stale" banner appears |
-| 23 | Lifecycle banner clears on accept | Accept a PR for the stale page and verify the banner disappears |
-| 24 | Official section renders on claimed pages | Claim a page and add official content; verify the gold-bordered section appears after Overview |
-| 25 | Empty page shows CTA | View a page with no content and verify the placeholder template and "Propose Edit" CTA |
-| 26 | SEO metadata is set | Check the page source for og:title and og:description on a wiki page |
-| 27 | Conflict of interest guard works | Attempt to accept a PR for an affiliated org and verify the Accept button is disabled |
+| #   | Criterion                                                    | Verification                                                                                                           |
+| --- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Landing page renders the directory with category sections    | Visit `/` and verify all 6 category sections appear with org cards                                                     |
+| 2   | Grid/list toggle works                                       | Switch between grid and list views and verify layout changes                                                           |
+| 3   | Directory text filter works                                  | Type a partial org name and verify only matching orgs appear                                                           |
+| 4   | Wiki page renders with three-column layout                   | Visit `/wiki/[slug]` and verify TOC, content, and Pulse sidebar columns                                                |
+| 5   | Auto-generated TOC highlights on scroll                      | Scroll through a page and verify the active TOC entry updates                                                          |
+| 6   | Page header shows org name, category badge, and last updated | Verify all metadata is visible in the header                                                                           |
+| 7   | Pulse sidebar displays all metrics                           | Verify Selectivity, Vibe Check, Co-op Boost, Tech Stack, and Health Status appear                                      |
+| 8   | Pulse voting widget submits a rating                         | Submit a rating and verify the aggregate updates                                                                       |
+| 9   | Pulse rate limiting prevents duplicate votes                 | Attempt to vote twice in the same session and verify the second is rejected                                            |
+| 10  | "Propose Edit" transforms page into inline editor            | Click the button and verify the Tiptap toolbar appears and content becomes editable                                    |
+| 11  | All Tiptap extensions work                                   | Test headings, bold, lists, links, images, tables, code blocks, blockquotes, dividers                                  |
+| 12  | Image upload works via paste, drag-drop, and toolbar         | Upload an image via each method and verify it appears in the editor                                                    |
+| 13  | Autosave to localStorage works                               | Edit content, navigate away, return, and verify the draft recovery banner appears                                      |
+| 14  | Submission dialog shows diff and preview tabs                | Click "Submit Proposal" and verify both tabs render correctly                                                          |
+| 15  | Auth modal appears for unauthenticated users on submit       | Attempt to submit without signing in and verify the auth modal                                                         |
+| 16  | AI pre-screen returns a verdict                              | Submit a proposal and verify a pass/fail badge appears on the confirmation page                                        |
+| 17  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/proposals`, and verify pending PRs appear                                         |
+| 18  | Accept creates a new page version                            | Accept a proposal and verify the page content updates and version number increments                                    |
+| 19  | Request Changes stores reviewer comment                      | Request changes and verify the comment is stored on the proposal                                                       |
+| 20  | Re-embedding triggers on accept                              | Accept a proposal and verify new chunks are created in the `chunks` table (FRD 1 integration)                          |
+| 21  | Version history displays correctly                           | Click "View History" and verify the version list with summaries and dates                                              |
+| 22  | Lifecycle banner appears on stale pages                      | Set a page's `last_modified_at` to 13 months ago (for an Engineering Club) and verify an orange "Stale" banner appears |
+| 23  | Lifecycle banner clears on accept                            | Accept a PR for the stale page and verify the banner disappears                                                        |
+| 24  | Official section renders on claimed pages                    | Claim a page and add official content; verify the gold-bordered section appears after Overview                         |
+| 25  | Empty page shows CTA                                         | View a page with no content and verify the placeholder template and "Propose Edit" CTA                                 |
+| 26  | SEO metadata is set                                          | Check the page source for og:title and og:description on a wiki page                                                   |
+| 27  | Conflict of interest guard works                             | Attempt to accept a PR for an affiliated org and verify the Accept button is disabled                                  |
 
 ---
 
@@ -1621,20 +1692,20 @@ export function OrgCard({ org, layout }: OrgCardProps) {
 
 ## Design Decisions Log
 
-| Decision | Rationale |
-|---|---|
-| **Inline editor (same page) over separate /edit page** | Reduces context switching. The user sees exactly what they're editing in the same layout they're reading. Simpler routing. The three-column layout naturally accommodates the transformation. |
-| **Fixed toolbar over floating bubble** | Fixed toolbar is more discoverable and familiar (Google Docs pattern). Floating bubbles are elegant but harder to use for block-level formatting (headings, lists, tables). |
-| **localStorage autosave over server-side drafts** | Zero-auth requirement for drafts. No server round-trips. Instantaneous saves. At launch, the editorial overhead of server-side draft management is unnecessary. |
-| **Full proposed content JSON stored, not just diff** | Enables rendering the preview tab without reconstructing from diff. Diffs are computed on demand so they stay current if the page is edited between submission and review. Slightly more storage but negligible at launch scale. |
-| **Word-level diff over ProseMirror structural diff** | Structural ProseMirror diffing (prosemirror-changeset) is complex and produces diffs that are hard for non-technical users to read. Word-level diff via the `diff` npm package is simple, readable, and sufficient for editorial review. |
-| **Auth gated at submit, not at edit** | Letting users invest effort before asking for auth dramatically increases completion rates. The sunk-cost effect works in the platform's favor. Users who have already written content are far more likely to create an account than those stopped at the door. |
-| **GPT-4o-mini for pre-screening over Gemini Flash** | The pre-screener is a simple classification task (pass/fail against 5 criteria). GPT-4o-mini is the cheapest model that reliably produces structured JSON output. Gemini Flash would work but GPT-4o-mini's structured output support (JSON mode) is more reliable. |
-| **Inline diff over side-by-side diff** | Inline diff takes less horizontal space (important in the three-column layout and the reviewer dashboard). Side-by-side requires duplicating the full page content. The diff library produces clean inline output. |
-| **Three actions (Accept/Reject/Request Changes) over binary** | Request Changes enables a conversation between reviewer and contributor without rejecting the PR entirely. This encourages iteration and keeps contributors engaged rather than discouraging them with outright rejections. |
-| **Summary-only version history over full reconstruction** | Full version reconstruction requires replaying diffs or storing full content snapshots for every version. At launch, the version history is primarily for transparency ("who changed what when"), not for restoring old content. Keeps the implementation simple. |
-| **Lifecycle status computed on load, not stored** | Avoids a cron job or scheduled function to update status fields. The computation is trivial (date comparison) and runs server-side during SSR. No stale data risk. |
-| **TOC in left column over sidebar/top-of-page** | Left-column TOC is a well-understood pattern (MDN, Tailwind docs, Stripe docs). It stays visible while scrolling without occupying the content area. Combined with the Pulse sidebar on the right, it creates a natural three-column layout that uses screen width effectively. |
-| **All sections expanded over collapsible** | Wiki pages are meant to be scanned and searched. Collapsed sections hide content from both users and search engines. The TOC provides navigation without requiring collapse/expand interaction. |
-| **Pulse voting with session fingerprint over account-required** | Requiring an account for voting adds too much friction for a low-stakes action. Session fingerprinting prevents casual ballot-stuffing while keeping the barrier to contribution zero. Determined abuse is handled by the editorial board monitoring aggregates. |
-| **Categories as sections on one page over separate routes** | At launch scale (<50 orgs, 6 categories), a single scrollable page is faster to browse than navigating between 6 separate pages. The filter bar provides instant refinement. Separate category pages can be added later if the directory grows. |
+| Decision                                                        | Rationale                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Inline editor (same page) over separate /edit page**          | Reduces context switching. The user sees exactly what they're editing in the same layout they're reading. Simpler routing. The three-column layout naturally accommodates the transformation.                                                                                   |
+| **Fixed toolbar over floating bubble**                          | Fixed toolbar is more discoverable and familiar (Google Docs pattern). Floating bubbles are elegant but harder to use for block-level formatting (headings, lists, tables).                                                                                                     |
+| **localStorage autosave over server-side drafts**               | Zero-auth requirement for drafts. No server round-trips. Instantaneous saves. At launch, the editorial overhead of server-side draft management is unnecessary.                                                                                                                 |
+| **Full proposed content JSON stored, not just diff**            | Enables rendering the preview tab without reconstructing from diff. Diffs are computed on demand so they stay current if the page is edited between submission and review. Slightly more storage but negligible at launch scale.                                                |
+| **Word-level diff over ProseMirror structural diff**            | Structural ProseMirror diffing (prosemirror-changeset) is complex and produces diffs that are hard for non-technical users to read. Word-level diff via the `diff` npm package is simple, readable, and sufficient for editorial review.                                        |
+| **Auth gated at submit, not at edit**                           | Letting users invest effort before asking for auth dramatically increases completion rates. The sunk-cost effect works in the platform's favor. Users who have already written content are far more likely to create an account than those stopped at the door.                 |
+| **GPT-4o-mini for pre-screening over Gemini Flash**             | The pre-screener is a simple classification task (pass/fail against 5 criteria). GPT-4o-mini is the cheapest model that reliably produces structured JSON output. Gemini Flash would work but GPT-4o-mini's structured output support (JSON mode) is more reliable.             |
+| **Inline diff over side-by-side diff**                          | Inline diff takes less horizontal space (important in the three-column layout and the reviewer dashboard). Side-by-side requires duplicating the full page content. The diff library produces clean inline output.                                                              |
+| **Three actions (Accept/Reject/Request Changes) over binary**   | Request Changes enables a conversation between reviewer and contributor without rejecting the PR entirely. This encourages iteration and keeps contributors engaged rather than discouraging them with outright rejections.                                                     |
+| **Summary-only version history over full reconstruction**       | Full version reconstruction requires replaying diffs or storing full content snapshots for every version. At launch, the version history is primarily for transparency ("who changed what when"), not for restoring old content. Keeps the implementation simple.               |
+| **Lifecycle status computed on load, not stored**               | Avoids a cron job or scheduled function to update status fields. The computation is trivial (date comparison) and runs server-side during SSR. No stale data risk.                                                                                                              |
+| **TOC in left column over sidebar/top-of-page**                 | Left-column TOC is a well-understood pattern (MDN, Tailwind docs, Stripe docs). It stays visible while scrolling without occupying the content area. Combined with the Pulse sidebar on the right, it creates a natural three-column layout that uses screen width effectively. |
+| **All sections expanded over collapsible**                      | Wiki pages are meant to be scanned and searched. Collapsed sections hide content from both users and search engines. The TOC provides navigation without requiring collapse/expand interaction.                                                                                 |
+| **Pulse voting with session fingerprint over account-required** | Requiring an account for voting adds too much friction for a low-stakes action. Session fingerprinting prevents casual ballot-stuffing while keeping the barrier to contribution zero. Determined abuse is handled by the editorial board monitoring aggregates.                |
+| **Categories as sections on one page over separate routes**     | At launch scale (<50 orgs, 6 categories), a single scrollable page is faster to browse than navigating between 6 separate pages. The filter bar provides instant refinement. Separate category pages can be added later if the directory grows.                                 |
