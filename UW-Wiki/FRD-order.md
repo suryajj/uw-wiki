@@ -30,7 +30,8 @@ Each FRD represents a single unit of full functionality that can be implemented,
 | 2   | [Wiki Pages, Directory, Editor, and Core Page UX](./FRDs/FRD-2-wiki-pages.md) | 6.2, 6.3, 6.6, 6.7, 6.9 | FRD 0                      | Browsable directory, three-column wiki page view, Tiptap editor primitives, Pulse sidebar + voting, lifecycle banners, page claiming, version history shell                  |
 | 3   | [Comments System](./FRDs/FRD-3-comments-system.md)                            | 6.5                     | FRD 0, FRD 2               | Inline section comments, threaded replies, anchor text management, comment persistence across edits                                                                          |
 | 4   | [PR-Edit System (Section-Scoped)](./FRDs/FRD-4-pr-edit-system.md)             | 6.3, 6.4, 7, 8, 9       | FRD 0, FRD 1, FRD 2, FRD 3 | Section-scoped edit proposals, contributor rationale, AI pre-screen visibility, reviewer accept/reject decisions, conflict-of-interest enforcement, patchset/rebase workflow |
-| --  | _Additional FRDs TBD_                                                         | --                      | --                         | Cold start agent                                                                                                                                                             |
+| 5   | [Cold Start Agent](./FRDs/FRD-5-cold-start-agent.md)                          | 6.8, 6.6, 13            | FRD 0, FRD 2               | Admin-triggered agent: org identification (name or URL), Tavily web research, ProseMirror JSON synthesis, Pulse seeding, draft preview and publish flow                      |
+| --  | _Additional FRDs TBD_                                                         | --                      | --                         |                                                                                                                                                                              |
 
 ---
 
@@ -97,6 +98,16 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 ---
 
+### FRD 5: Cold Start Agent
+
+**PRD Sections:** 6.8, 6.6, 13
+
+**Scope:** See [FRD-5-cold-start-agent.md](./FRDs/FRD-5-cold-start-agent.md)
+
+**Exit criteria:** Admin can identify a UW org by name or URL via smart input; confirmation card is editable; research runs with step-by-step progress tracking; synthesis produces valid ProseMirror JSON and Pulse estimates; draft preview renders correctly; publish creates org + page + page_version + Pulse seed ratings; published page displays with AI-generated banner; non-admin access is blocked; rate limiting prevents runaway costs.
+
+---
+
 ## Dependency Graph
 
 ```
@@ -105,5 +116,6 @@ FRD 0 (Setup)
 ├── FRD 2 (Wiki Pages, Directory, Editor, Core Page UX)
 │   └── FRD 3 (Comments System)
 │       └── FRD 4 (PR-Edit System)
+├── FRD 5 (Cold Start Agent) [depends on FRD 0 + FRD 2]
 ├── ... (additional FRDs TBD)
 ```
