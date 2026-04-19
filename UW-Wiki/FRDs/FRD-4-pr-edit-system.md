@@ -1,4 +1,4 @@
-# Feature Requirements Document: FRD 4 -- PR-Edit System (Section-Scoped) (v1.0)
+# Feature Requirements Document: FRD 4 -- PR-Edit System (Section-Scoped) (v1.1)
 
 | Field               | Value                                                                                                                                                              |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -8,16 +8,17 @@
 | **PRD Sections**    | 6.3 (Wiki Pages and Version Control), 6.4 (PR-Style Edit Proposals), 7 (Editorial Model and Trust), 8 (Platform Editorial Values), 9 (Identity and Authentication) |
 | **Type**            | Core workflow feature                                                                                                                                              |
 | **Depends On**      | FRD 0, FRD 1, FRD 2, FRD 3                                                                                                                                         |
-| **Delivers**        | Section-scoped edit proposals, AI pre-screening, reviewer decision workflow, conflict-safe merge, patchset revisions, conflict-of-interest enforcement             |
+| **Delivers**        | Multi-section-scoped edit proposals, AI pre-screening, reviewer decision workflow, per-section conflict-safe merge, patchset revisions, conflict-of-interest enforcement |
 | **Created**         | 2026-04-06                                                                                                                                                         |
+| **Updated**         | 2026-04-07 -- v1.1: Upgraded from single-section to multi-section selection (contributors can include one or more sections in one proposal)                        |
 
 ---
 
 ## Summary
 
-FRD 4 defines the PR-Edit system as a dedicated, section-scoped proposal workflow inspired by wiki moderation patterns and code review discipline. Contributors propose edits to a single section, provide rationale aligned to platform values, and receive an AI pre-screen assessment visible to both contributor and reviewers. Reviewers make the final accept/reject decision; AI is advisory only.
+FRD 4 defines the PR-Edit system as a **section-scoped proposal workflow** where contributors select one or more sections to edit in a single proposal. This gives contributors the flexibility to make related changes across multiple sections (e.g., updating both "Time Commitment" and "Culture and Vibe" together) while preserving clean, per-section diffs for reviewers. Every section in a proposal is reviewed independently, but accepted atomically as a single version change.
 
-This FRD introduces deterministic mergeability checks, patchset-based resubmission for stale proposals, and hard conflict-of-interest rules so reviewers cannot approve proposals for organizations they are affiliated with.
+The system includes deterministic per-section mergeability checks (a proposal is only mergeable if every selected section is unchanged since the base version), patchset-based resubmission for stale proposals, and hard conflict-of-interest rules so reviewers cannot approve proposals for organizations they are affiliated with. AI pre-screening evaluates the full set of proposed section changes as a single editorial assessment.
 
 ---
 
@@ -51,21 +52,23 @@ Superseded areas in FRD 2 (implementation replaced by FRD 4):
 
 ### Terms
 
-| Term                    | Definition                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| Section-scoped proposal | A proposal that edits exactly one section (H2 scope, including nested H3 content) |
-| Base version            | The `page_versions.id` that the contributor edited against                        |
-| Patchset                | A new revision of the same proposal after requested changes or rebase             |
-| Mergeability            | Whether the proposed section can be safely applied to the current page version    |
-| Needs rebase            | Proposal cannot be accepted because target section changed since base version     |
-| Non-uploader approval   | Reviewer approving a proposal must not be the proposal author                     |
+| Term                     | Definition                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Section-scoped proposal  | A proposal that targets one or more sections (H2 scope, including nested H3 content per selected H2)           |
+| Selected sections        | The set of H2 sections a contributor has chosen to include in one proposal (minimum 1, maximum all sections)   |
+| Base version             | The `page_versions.id` that the contributor edited against -- all selected sections must share the same base   |
+| Section diff             | The per-section change record stored inside a patchset: original JSON, proposed JSON, computed diff            |
+| Patchset                 | A new revision of the same proposal after requested changes or rebase                                           |
+| Mergeability             | Whether all selected sections can be safely applied to the current page version                                 |
+| Needs rebase             | Proposal cannot be accepted because at least one selected section changed since base version                    |
+| Non-uploader approval    | Reviewer approving a proposal must not be the proposal author                                                   |
 
 ---
 
 ## Executive Summary (Gherkin-Style)
 
 ```gherkin
-Feature: Section-scoped PR edit proposals
+Feature: Section-scoped PR edit proposals (multi-section)
 
   Background:
     Given FRD 0-3 are complete
@@ -76,18 +79,25 @@ Feature: Section-scoped PR edit proposals
     When a user clicks "Propose Edit" on the "Time Commitment" section
     Then the editor opens scoped to that section only
     And the user edits section content and adds rationale
-    And the proposal is submitted with base_page_version_id and section_slug
+    And the proposal is submitted with base_page_version_id and section_slugs
+
+  Scenario: User proposes edits to multiple sections
+    When a user opens the multi-section editor
+    And selects "Time Commitment" and "Culture and Vibe"
+    Then both sections are editable in a tabbed editor
+    And the proposal is submitted with both section_slugs in a single PR
+    And the reviewer sees a per-section diff card for each selected section
 
   Scenario: AI pre-screen runs on submission
-    When a proposal is submitted
-    Then GPT-4o-mini evaluates the diff against editorial values
-    And stores pass/fail + one-line reason
+    When a proposal is submitted (one or more sections)
+    Then GPT-4o-mini evaluates all proposed section changes against editorial values
+    And stores a single pass/fail + one-line reason for the proposal
     And both contributor and reviewers can see the assessment
 
   Scenario: Reviewer makes final decision
     Given a proposal is pending review
-    When a reviewer checks diff, rationale, and AI assessment
-    Then the reviewer can accept or reject
+    When a reviewer checks the per-section diffs, rationale, and AI assessment
+    Then the reviewer can accept or reject the whole proposal
     And AI output is advisory only
 
   Scenario: Conflict-of-interest rule
@@ -95,16 +105,17 @@ Feature: Section-scoped PR edit proposals
     When reviewer opens a proposal for that organization
     Then accept action is blocked by policy
 
-  Scenario: Proposal becomes stale
-    Given page version changed after proposal submission
-    And target section changed since base version
+  Scenario: One section becomes stale (out of several)
+    Given a multi-section proposal is pending
+    And one of its target sections changed since base version
     When reviewer attempts to accept
-    Then proposal status becomes needs_rebase
-    And contributor must submit a new patchset
+    Then the whole proposal status becomes needs_rebase
+    And contributor must rebase all sections against the new page version
 
   Scenario: Accepted proposal updates page version
     When reviewer accepts a mergeable proposal
-    Then system creates a new page version
+    Then system replaces all selected sections in the page content
+    And creates a single new page version
     And updates pages.current_version_id
     And triggers FRD 1 re-embedding
     And triggers FRD 3 comment re-anchoring checks
@@ -133,40 +144,70 @@ Feature: Section-scoped PR edit proposals
 
 ## 1. Workflow Scope and UX
 
-### 1.1 Section-Scoped Editing (Primary Requirement)
+### 1.1 Section-Scoped Editing with Multi-Section Selection
 
-The PR-Edit workflow in FRD 4 is section-scoped by default.
+The PR-Edit workflow is section-scoped. Contributors select one or more H2 sections to edit in a single proposal.
 
 Rules:
 
-1. A proposal targets one section slug (H2 scope).
-2. Nested H3 content under that H2 is included in scope.
-3. Contributor cannot edit content outside the selected section in a single proposal.
-4. Multi-section edits require multiple proposals.
+1. A proposal targets one or more section slugs (H2 scope).
+2. Nested H3 content under each selected H2 is included in scope.
+3. Contributors cannot edit content outside their selected sections in a single proposal.
+4. All selected sections must share the same `base_page_version_id` -- the contributor cannot edit one section from an older version and another from a newer version.
+5. There is no hard cap on the number of sections per proposal, but the UI presents all H2 sections as checkboxes so the natural maximum is the number of H2 sections on the page (typically 7 for the standard template).
 
 ### 1.2 Entry Points
 
 Contributors can initiate a proposal from:
 
-1. Section header action button (`Propose Edit`) next to each H2 heading.
-2. Overflow menu in section TOC.
-3. Keyboard shortcut while focused in section (`e`) for accessibility.
+1. **Single-section entry:** `Propose Edit` button next to any H2 section heading. Opens the editor with that section pre-selected.
+2. **Multi-section entry:** `Propose Multi-Section Edit` in the page action menu (top of content area). Opens the section selection UI where contributors check which sections to include.
+3. **Overflow menu in section TOC:** Same single-section entry as (1).
+4. **Keyboard shortcut while focused in section (`e`):** Opens single-section editor for the focused section.
 
-### 1.3 Section Editor
+### 1.3 Section Selection UI (Multi-Section Entry)
 
-The section editor must present:
+When a contributor opens the multi-section editor, the system shows a checklist of all H2 sections on the page:
 
-1. Original section content (read-only snapshot).
-2. Editable proposed section content.
-3. Live diff preview (insertions/deletions).
-4. Rationale field (required).
-5. Attribution toggle (anonymous default).
+```
+Select sections to edit:
 
-### 1.4 Rationale and Validation
+☐ Overview
+☑ Time Commitment          ← checked
+☑ Culture and Vibe         ← checked
+☐ Subteams and Roles
+☐ Past Projects
+☐ Exec History
+☐ How to Apply
+
+[ Continue to Editor → ]
+```
+
+Rules:
+1. At least one section must be selected before continuing.
+2. Selected sections are stored as `section_slugs: string[]` on the proposal.
+3. After selection, the editor opens all selected sections in a **tabbed layout** -- one tab per section.
+
+### 1.4 Section Editor (Tabbed Layout for Multi-Section)
+
+When editing multiple sections, the editor presents:
+
+1. **Section tabs** at the top: one tab per selected section (e.g., "Time Commitment", "Culture and Vibe"). The active tab is highlighted in gold.
+2. For the active tab:
+   - Original section content (read-only snapshot on the left or in a toggleable panel).
+   - Editable proposed section content.
+   - Live diff indicator (badge showing added/removed word count).
+3. **Rationale field** (single, shared across all selected sections) below the tabbed editor area.
+4. **Attribution toggle** (anonymous default).
+5. **Submit Proposal** button -- submits all edited sections as one proposal.
+
+For single-section proposals, the tab bar is hidden and the layout is the same as before.
+
+### 1.5 Rationale and Validation
 
 Rationale constraints:
 
-1. Required.
+1. Required (one rationale per proposal, covering all selected sections).
 2. Minimum 20 characters.
 3. Maximum 500 characters.
 4. Must not be whitespace-only.
@@ -175,14 +216,15 @@ Submission constraints:
 
 1. Auth required at submit time.
 2. Proposal requires current `base_page_version_id`.
-3. Proposal requires `section_slug` and `base_section_hash`.
+3. Proposal requires `section_slugs` (array, minimum length 1) and a `base_section_hash` per section.
 
-### 1.5 Official Section Guard
+### 1.6 Official Section Guard
 
-When section is inside the organization's Official block:
+When any selected section is inside the organization's Official block:
 
 1. Only users affiliated with the org (or reviewer/admin) may submit proposals to that section.
-2. Non-affiliated users receive a policy error message and cannot submit.
+2. Non-affiliated users receive a policy error and cannot submit a proposal that includes the Official section.
+3. Non-affiliated users can still propose edits to non-Official sections on the same page in a separate proposal.
 
 ---
 
@@ -220,8 +262,9 @@ A proposal can have multiple patchsets, inspired by change revision workflows:
 
 On acceptance:
 
-1. Other pending proposals on same page + same section are marked `superseded`.
-2. Contributor receives message to reopen from latest version.
+1. Other pending proposals on the same page that share **any** section slug with the accepted proposal are marked `superseded`.
+2. Contributors of superseded proposals receive a message to reopen from the latest page version.
+3. Proposals that target entirely non-overlapping sections are not affected.
 
 ---
 
@@ -229,19 +272,24 @@ On acceptance:
 
 ### 3.1 `edit_proposals` Extensions
 
+The key change from a single `section_slug` to `section_slugs TEXT[]` captures multi-section proposals. Per-section hashes and content live in the patchset's `section_diffs` JSONB array.
+
 ```sql
 ALTER TABLE edit_proposals
   ADD COLUMN proposal_scope TEXT NOT NULL DEFAULT 'section'
     CHECK (proposal_scope IN ('section')),
-  ADD COLUMN section_slug TEXT NOT NULL,
+  ADD COLUMN section_slugs TEXT[] NOT NULL,
   ADD COLUMN base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
-  ADD COLUMN base_section_hash TEXT NOT NULL,
   ADD COLUMN current_patchset_number INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN mergeability_status TEXT NOT NULL DEFAULT 'unknown'
     CHECK (mergeability_status IN ('unknown','mergeable','needs_rebase','conflict'));
 ```
 
+`section_slugs` must contain at least one element. The overall `mergeability_status` is `mergeable` only when every section in `section_slugs` passes its individual mergeability check (see Section 4.3).
+
 ### 3.2 Patchset Table
+
+Per-section data (original content, proposed content, diff, hash) is stored as a JSONB array in `section_diffs`. This keeps the schema flat while naturally supporting any number of sections per patchset.
 
 ```sql
 CREATE TABLE edit_proposal_patchsets (
@@ -249,10 +297,19 @@ CREATE TABLE edit_proposal_patchsets (
   proposal_id UUID NOT NULL REFERENCES edit_proposals(id) ON DELETE CASCADE,
   patchset_number INTEGER NOT NULL,
   base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
-  base_section_hash TEXT NOT NULL,
-  original_section_json JSONB NOT NULL,
-  proposed_section_json JSONB NOT NULL,
-  diff_json JSONB,
+  -- section_diffs is a JSONB array with one element per selected section:
+  -- [
+  --   {
+  --     "section_slug": "time-commitment",
+  --     "base_section_hash": "abc123",
+  --     "original_section_json": {...},
+  --     "proposed_section_json": {...},
+  --     "diff_json": {...},
+  --     "mergeability_status": "mergeable" | "needs_rebase" | "conflict" | "unknown"
+  --   },
+  --   { ... }
+  -- ]
+  section_diffs JSONB NOT NULL,
   rationale TEXT NOT NULL,
   ai_verdict TEXT CHECK (ai_verdict IN ('pass','fail')),
   ai_reason TEXT,
@@ -271,9 +328,12 @@ CREATE UNIQUE INDEX idx_edit_proposal_patchsets_current
 ### 3.3 Integrity Constraints
 
 1. `edit_proposals.contributor_id` must equal current patchset `contributor_id`.
-2. Patchset numbers must be monotonic.
-3. `accepted` and `rejected` are terminal.
-4. Accept operation requires current patchset AI verdict present (pass or fail). No silent skip.
+2. `section_slugs` must have at least 1 element.
+3. `section_diffs` array length must equal `section_slugs` array length.
+4. `section_diffs[*].section_slug` values must match `section_slugs` exactly.
+5. Patchset numbers must be monotonic.
+6. `accepted` and `rejected` are terminal.
+7. Accept operation requires current patchset AI verdict present (pass or fail). No silent skip.
 
 ### 3.4 Performance Indexes
 
@@ -281,8 +341,8 @@ CREATE UNIQUE INDEX idx_edit_proposal_patchsets_current
 CREATE INDEX idx_edit_proposals_status_created
   ON edit_proposals (status, submitted_at);
 
-CREATE INDEX idx_edit_proposals_page_section
-  ON edit_proposals (page_id, section_slug);
+CREATE INDEX idx_edit_proposals_page_sections
+  ON edit_proposals USING GIN (section_slugs);
 
 CREATE INDEX idx_edit_proposals_base_version
   ON edit_proposals (base_page_version_id);
@@ -294,7 +354,7 @@ CREATE INDEX idx_edit_proposals_base_version
 
 ### 4.1 Diff Representation
 
-Section diff is generated from ProseMirror JSON with change tracking using `prosemirror-changeset`.
+Each section diff is generated from ProseMirror JSON using `prosemirror-changeset`.
 
 Rationale:
 
@@ -303,7 +363,7 @@ Rationale:
 
 ### 4.2 Section Extraction
 
-Given a page `content_json`, extract section by H2 slug:
+Given a page `content_json`, extract a section by H2 slug:
 
 1. Traverse ProseMirror doc.
 2. Identify H2 node with matching slug.
@@ -311,39 +371,60 @@ Given a page `content_json`, extract section by H2 slug:
 4. Serialize to `section_json`.
 5. Compute normalized hash for mergeability checks.
 
+For a multi-section proposal, this extraction runs once per selected section.
+
 ### 4.3 Mergeability Algorithm
 
-At accept time:
+**Per-section check** (runs for each element in `section_diffs`):
 
-1. Load proposal current patchset.
+At accept time, for each section in the proposal:
+
+1. Load the section diff entry from the current patchset.
 2. Load page current version content.
-3. Extract current section by `section_slug`.
+3. Extract the current section by `section_slug`.
 4. Compute current section hash.
-5. Compare with patchset `base_section_hash`.
+5. Compare with `section_diffs[i].base_section_hash`.
 
-Outcomes:
+Per-section outcomes:
 
-1. Hash matches: `mergeable`.
-2. Hash differs: `needs_rebase`.
-3. Section missing entirely: `conflict`.
+| Outcome        | Condition                          |
+| -------------- | ---------------------------------- |
+| `mergeable`    | Hash matches                       |
+| `needs_rebase` | Hash differs (section was changed) |
+| `conflict`     | Section no longer exists on page   |
+
+**Overall proposal mergeability** (stored on `edit_proposals.mergeability_status`):
+
+| Overall Status | Condition                                               |
+| -------------- | ------------------------------------------------------- |
+| `mergeable`    | All sections are `mergeable`                            |
+| `needs_rebase` | At least one section is `needs_rebase` or `conflict`   |
+| `conflict`     | All sections are `conflict` (entire page rewritten)     |
+
+A proposal can only be accepted when overall `mergeability_status = 'mergeable'`.
+
+Per-section statuses are written back to `section_diffs[i].mergeability_status` for display in the reviewer UI (so reviewers can see which specific sections have drifted).
 
 ### 4.4 Rebase Flow
 
 If `needs_rebase`:
 
 1. Proposal cannot be accepted.
-2. Contributor opens rebase UI with latest section content.
-3. Contributor submits new patchset with updated base version/hash.
-4. Proposal returns to `pending`.
+2. Contributor opens rebase UI showing all sections -- each with its current live content alongside the contributor's previously proposed content.
+3. Contributor updates each stale section against the new version.
+4. Contributor submits new patchset with all sections rebased against the updated `base_page_version_id`.
+5. Proposal returns to `pending`.
+
+A contributor is not required to re-edit sections that are still mergeable -- only the drifted sections need updating. However, all sections must be re-submitted together in the new patchset (no partial patchset updates).
 
 ### 4.5 Rendering Rules
 
 Diff view for reviewers must show:
 
-1. Added text (green).
-2. Removed text (red + strike).
-3. Unchanged context.
-4. Heading-level context label for the edited section.
+1. **Per-section diff cards:** one card per section in the proposal, labeled with the section heading.
+2. Within each card: added text (green), removed text (red + strikethrough), unchanged context.
+3. **Mergeability badge** on each card: `mergeable` (green), `needs_rebase` (amber), `conflict` (red).
+4. Sections are displayed in the order they appear on the page (top to bottom), not in the order the contributor selected them.
 
 ---
 
@@ -369,10 +450,12 @@ It evaluates whether proposal text aligns with Platform Editorial Values:
 ### 5.3 Inputs
 
 1. Organization name + category.
-2. Section slug + heading text.
-3. Before/after section text.
-4. Contributor rationale.
+2. All selected section slugs and their heading text.
+3. Before/after content for every selected section (full set of section diffs).
+4. Contributor rationale (shared across all sections).
 5. Editorial values rubric.
+
+The AI pre-screener receives the full multi-section proposal in a single call and returns one verdict for the proposal as a whole. It does not produce per-section verdicts.
 
 ### 5.4 Output Contract
 
@@ -406,10 +489,10 @@ Queue columns:
 
 1. Organization
 2. Page
-3. Section
+3. Sections (comma-separated list of section headings, e.g. "Time Commitment, Culture and Vibe")
 4. Contributor (or Anonymous)
 5. AI verdict badge
-6. Mergeability badge
+6. Overall mergeability badge
 7. Submitted timestamp
 
 Default sorting:
@@ -463,18 +546,19 @@ Server algorithm:
 1. Start DB transaction.
 2. Lock target page row (`FOR UPDATE`).
 3. Validate reviewer role and policy constraints.
-4. Re-run mergeability check against latest version.
-5. Replace target section in full page content with proposed section.
-6. Insert new `page_versions` row.
-7. Update `pages.current_version_id` and `pages.last_modified_at`.
-8. Mark proposal as `accepted`.
-9. Mark competing pending proposals for same section as `superseded`.
-10. Commit transaction.
+4. Re-run mergeability check for **each section** in `section_diffs` against latest version.
+5. If any section is `needs_rebase` or `conflict`, abort and set `mergeability_status = needs_rebase` on the proposal.
+6. For each section in `section_diffs`, replace that section in the full page content with the proposed section JSON.
+7. Insert single new `page_versions` row with the fully updated `content_json`.
+8. Update `pages.current_version_id` and `pages.last_modified_at`.
+9. Mark proposal as `accepted`.
+10. Mark competing pending proposals that overlap any of the same sections as `superseded`.
+11. Commit transaction.
 
 Post-commit async jobs:
 
 1. `reembedPage` (FRD 1).
-2. `reanchorCommentsForPageSection` (FRD 3).
+2. `reanchorCommentsForPageSections` (FRD 3) -- invoked for all sections that changed.
 3. Notification events (if enabled later).
 
 ### 7.2 Reject Pipeline
@@ -517,12 +601,17 @@ If accept fails after lock due to drift:
 ### 8.3 Request Payload: Create Proposal
 
 ```typescript
-interface CreateSectionProposalRequest {
-  pageId: string;
+interface SectionDiffInput {
   sectionSlug: string;
-  basePageVersionId: string;
   baseSectionHash: string;
   proposedSectionJson: Record<string, unknown>;
+}
+
+interface CreateSectionProposalRequest {
+  pageId: string;
+  sectionSlugs: string[];               // minimum length 1
+  basePageVersionId: string;
+  sectionDiffs: SectionDiffInput[];     // one entry per sectionSlugs element
   rationale: string;
   isAnonymous: boolean;
 }
@@ -531,11 +620,18 @@ interface CreateSectionProposalRequest {
 ### 8.4 Response Payload: Proposal Detail
 
 ```typescript
+interface PerSectionDiff {
+  sectionSlug: string;
+  baseSectionHash: string;
+  diffJson: unknown;
+  mergeabilityStatus: "unknown" | "mergeable" | "needs_rebase" | "conflict";
+}
+
 interface SectionProposalDetail {
   id: string;
   pageId: string;
   orgId: string;
-  sectionSlug: string;
+  sectionSlugs: string[];
   status:
     | "pending"
     | "needs_rebase"
@@ -550,7 +646,7 @@ interface SectionProposalDetail {
     rationale: string;
     aiVerdict: "pass" | "fail" | null;
     aiReason: string | null;
-    diffJson: unknown;
+    sectionDiffs: PerSectionDiff[];
     createdAt: string;
   };
 }
@@ -608,26 +704,30 @@ Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
 FRD 4 is complete when ALL of the following are satisfied:
 
-| #   | Criterion                                          | Verification                                                                  |
-| --- | -------------------------------------------------- | ----------------------------------------------------------------------------- |
-| 1   | Contributor can open section-scoped editor         | Click section-level propose action and verify only one section is editable    |
-| 2   | Submission requires rationale                      | Empty/short rationale fails validation                                        |
-| 3   | Submission stores base version and section hash    | Inspect saved proposal and patchset records                                   |
-| 4   | AI pre-screen runs and is persisted                | Proposal detail shows pass/fail + reason                                      |
-| 5   | Contributor can view AI assessment                 | Proposal detail page shows same result as reviewer queue                      |
-| 6   | Reviewer queue shows section-level proposals       | Queue displays org/page/section/AI/mergeability                               |
-| 7   | Reviewer can accept mergeable proposal             | Accept creates new page version and marks proposal accepted                   |
-| 8   | Reviewer can reject with reason                    | Reject persists reviewer comment and terminal status                          |
-| 9   | Affiliated reviewer cannot accept own-org proposal | Accept endpoint returns policy error                                          |
-| 10  | Reviewer cannot accept own proposal                | Endpoint enforces non-uploader approval                                       |
-| 11  | Stale section change produces needs_rebase         | Drifted section transitions proposal to needs_rebase                          |
-| 12  | Contributor can submit patchset 2+                 | New patchset increments number and becomes current                            |
-| 13  | Competing pending proposals superseded on accept   | Same page/section pending proposals marked superseded                         |
-| 14  | FRD 1 re-embedding triggers post-accept            | New chunks generation triggered asynchronously                                |
-| 15  | FRD 3 re-anchoring triggers post-accept            | Comment anchor maintenance routine is invoked                                 |
-| 16  | All decision actions are audit-logged              | Create/accept/reject/withdraw events exist in audit log                       |
-| 17  | Policy checks are server-enforced                  | Direct API call bypass attempts fail                                          |
-| 18  | End-to-end flow passes                             | submit -> pre-screen -> review -> accept/reject works without manual DB edits |
+| #   | Criterion                                                | Verification                                                                        |
+| --- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | Contributor can open single-section editor from heading | Click section-level propose action and verify only that section is editable         |
+| 2   | Contributor can open multi-section selector             | Open multi-section editor and verify all H2 sections appear as checkboxes           |
+| 3   | Contributor can select 2+ sections and edit all         | Select two sections, edit both in tabbed editor, submit as single proposal          |
+| 4   | Submission requires rationale                           | Empty/short rationale fails validation                                              |
+| 5   | Submission stores section_slugs array and per-section diffs | Inspect saved proposal and patchset records; verify section_diffs JSONB structure |
+| 6   | AI pre-screen runs and is persisted                     | Proposal detail shows pass/fail + reason for the full multi-section proposal        |
+| 7   | Contributor can view AI assessment                      | Proposal detail page shows same result as reviewer queue                            |
+| 8   | Reviewer queue shows section list for multi-section proposals | Queue displays all section headings in the Sections column                    |
+| 9   | Reviewer sees per-section diff cards                    | Proposal detail shows one diff card per section, in page order                     |
+| 10  | Each diff card shows per-section mergeability badge     | Drifted section shows amber badge even if other sections are mergeable              |
+| 11  | Reviewer can accept mergeable proposal                  | Accept creates new page version replacing all selected sections atomically          |
+| 12  | Reviewer can reject with reason                         | Reject persists reviewer comment and terminal status                                |
+| 13  | Affiliated reviewer cannot accept own-org proposal      | Accept endpoint returns policy error                                                |
+| 14  | Reviewer cannot accept own proposal                     | Endpoint enforces non-uploader approval                                             |
+| 15  | One stale section causes entire proposal needs_rebase   | Drift in any selected section transitions whole proposal to needs_rebase            |
+| 16  | Contributor can rebase and resubmit all sections        | New patchset increments number and becomes current                                  |
+| 17  | Competing proposals for any overlapping section superseded on accept | Proposals touching any same section are marked superseded             |
+| 18  | FRD 1 re-embedding triggers post-accept                 | New chunks generation triggered asynchronously                                      |
+| 19  | FRD 3 re-anchoring triggers for all changed sections    | Comment anchor maintenance routine invoked for each accepted section                |
+| 20  | All decision actions are audit-logged                   | Create/accept/reject/withdraw events exist in audit log                             |
+| 21  | Policy checks are server-enforced                       | Direct API call bypass attempts fail                                                |
+| 22  | End-to-end multi-section flow passes                    | Submit 2-section proposal → pre-screen → review → accept works without manual DB edits |
 
 ---
 
@@ -658,22 +758,28 @@ superseded (terminal)
 ALTER TABLE edit_proposals
   ADD COLUMN proposal_scope TEXT NOT NULL DEFAULT 'section'
     CHECK (proposal_scope IN ('section')),
-  ADD COLUMN section_slug TEXT NOT NULL,
+  ADD COLUMN section_slugs TEXT[] NOT NULL,
   ADD COLUMN base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
-  ADD COLUMN base_section_hash TEXT NOT NULL,
   ADD COLUMN current_patchset_number INTEGER NOT NULL DEFAULT 1,
   ADD COLUMN mergeability_status TEXT NOT NULL DEFAULT 'unknown'
     CHECK (mergeability_status IN ('unknown','mergeable','needs_rebase','conflict'));
+
+-- section_diffs JSONB structure (per-element):
+-- {
+--   "section_slug": "time-commitment",
+--   "base_section_hash": "abc123",
+--   "original_section_json": { ... ProseMirror JSON ... },
+--   "proposed_section_json": { ... ProseMirror JSON ... },
+--   "diff_json": { ... prosemirror-changeset output ... },
+--   "mergeability_status": "mergeable" | "needs_rebase" | "conflict" | "unknown"
+-- }
 
 CREATE TABLE edit_proposal_patchsets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   proposal_id UUID NOT NULL REFERENCES edit_proposals(id) ON DELETE CASCADE,
   patchset_number INTEGER NOT NULL,
   base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
-  base_section_hash TEXT NOT NULL,
-  original_section_json JSONB NOT NULL,
-  proposed_section_json JSONB NOT NULL,
-  diff_json JSONB,
+  section_diffs JSONB NOT NULL,
   rationale TEXT NOT NULL,
   ai_verdict TEXT CHECK (ai_verdict IN ('pass','fail')),
   ai_reason TEXT,
@@ -691,8 +797,8 @@ CREATE UNIQUE INDEX idx_edit_proposal_patchsets_current
 CREATE INDEX idx_edit_proposals_status_created
   ON edit_proposals (status, submitted_at);
 
-CREATE INDEX idx_edit_proposals_page_section
-  ON edit_proposals (page_id, section_slug);
+CREATE INDEX idx_edit_proposals_page_sections
+  ON edit_proposals USING GIN (section_slugs);
 
 CREATE INDEX idx_edit_proposals_base_version
   ON edit_proposals (base_page_version_id);
@@ -702,16 +808,21 @@ CREATE INDEX idx_edit_proposals_base_version
 
 ## Appendix C: Design Decisions Log
 
-| Decision                                             | Rationale                                                                                                |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Section-scoped proposals over full-page proposals    | Reduces review scope, lowers conflict rate, and aligns with wiki section-linked content model            |
-| Patchset support for rebases                         | Mirrors proven review systems where updates to same proposal are tracked without losing audit history    |
-| Non-uploader + non-affiliated accept rule            | Implements conflict-of-interest and reviewer independence expectations from PRD/editorial model          |
-| Mergeability based on base section hash              | Deterministic stale/conflict detection without brittle positional assumptions                            |
-| Structured diff with ProseMirror changeset           | Better fidelity for rich-text editor output than plain string diff alone                                 |
-| AI pre-screen as advisory only                       | Keeps human editorial authority while improving queue prioritization                                     |
-| Async post-accept jobs                               | Follows deferred update pattern to keep accept action fast while still updating search/comment artifacts |
-| Superseding competing section proposals after accept | Prevents duplicate/contradictory merges and forces contributor refresh on latest truth                   |
+| Decision                                                           | Rationale                                                                                                                                                        |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Multi-section selection within one proposal                        | Gives contributors full-page flexibility while keeping per-section diffs clean and reviewable; avoids the "blob diff" problem of full-page PRs                   |
+| Section-scoped proposals over full-page proposals                  | Reduces review cognitive load, lowers conflict probability, and aligns with wiki section-linked content model                                                    |
+| Tabbed editor for multi-section editing                            | Keeps each section's original/proposed content side-by-side without overwhelming the contributor with a wall of diff; one rationale field covers all sections     |
+| Single AI verdict for the whole proposal                           | AI pre-screen evaluates editorial fitness of the combined set of changes; per-section verdicts would fragment the assessment and make the queue harder to triage  |
+| Per-section mergeability inside JSONB `section_diffs`              | Keeps the schema flat (one patchset row) while supporting any number of sections; avoids a fan-out join table for a fundamentally bounded dataset                 |
+| Overall mergeability = AND of all per-section checks               | Ensures the accept operation is safe: a proposal with even one stale section cannot be silently merged, preventing partial content corruption                     |
+| Competing proposals superseded if any section overlaps             | Prevents contradictory concurrent merges; any proposal touching a section that was just accepted must be rebased against the new truth                           |
+| Patchset support for rebases                                       | Mirrors proven review systems where updates to the same proposal are tracked without losing audit history                                                        |
+| Non-uploader + non-affiliated accept rule                          | Implements conflict-of-interest and reviewer independence expectations from PRD/editorial model                                                                   |
+| Mergeability based on base section hash                            | Deterministic stale/conflict detection without brittle positional assumptions                                                                                    |
+| Structured diff with ProseMirror changeset                         | Better fidelity for rich-text editor output than plain string diff alone                                                                                         |
+| AI pre-screen as advisory only                                     | Keeps human editorial authority while improving queue prioritization                                                                                             |
+| Async post-accept jobs                                             | Follows deferred update pattern to keep accept action fast while still updating search/comment artifacts                                                         |
 
 Research-informed implementation notes used in this FRD:
 
@@ -721,4 +832,4 @@ Research-informed implementation notes used in this FRD:
 
 ---
 
-_This FRD defines the canonical PR-Edit workflow for UW Wiki. It narrows proposal scope to one section per proposal, preserves reviewer authority, and adds conflict-safe, auditable merge behavior aligned with the existing architecture._
+_This FRD defines the canonical PR-Edit workflow for UW Wiki. It supports multi-section proposals so contributors can group related section changes in one PR while preserving per-section diffs for clean, focused review. All sections in a proposal are merged atomically, and the overall proposal is only mergeable when every selected section remains unchanged from the contributor's base version._

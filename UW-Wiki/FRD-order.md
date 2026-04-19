@@ -31,7 +31,9 @@ Each FRD represents a single unit of full functionality that can be implemented,
 | 3   | [Comments System](./FRDs/FRD-3-comments-system.md)                            | 6.5                     | FRD 0, FRD 2               | Inline section comments, threaded replies, anchor text management, comment persistence across edits                                                                          |
 | 4   | [PR-Edit System (Section-Scoped)](./FRDs/FRD-4-pr-edit-system.md)             | 6.3, 6.4, 7, 8, 9       | FRD 0, FRD 1, FRD 2, FRD 3 | Section-scoped edit proposals, contributor rationale, AI pre-screen visibility, reviewer accept/reject decisions, conflict-of-interest enforcement, patchset/rebase workflow |
 | 5   | [Cold Start Agent](./FRDs/FRD-5-cold-start-agent.md)                          | 6.8, 6.6, 13            | FRD 0, FRD 2               | Admin-triggered agent: org identification (name or URL), Tavily web research, ProseMirror JSON synthesis, Pulse seeding, draft preview and publish flow                      |
-| --  | _Additional FRDs TBD_                                                         | --                      | --                         |                                                                                                                                                                              |
+| 6   | [Auth UI and Pending Action Preservation](./FRDs/FRD-6-auth-ui.md)            | 9, 12                   | FRD 0                      | `/auth/sign-in` page, AuthModal component, signup with magic-link verification, passwordless magic-link sign-in, password reset, Google OAuth, sign-out, header user state, pending-action localStorage (24h TTL) with auto-resume, `returnTo` routing, guard redirects, `/my/*` stubs |
+| 7   | [Admin Dashboard and Moderation](./FRDs/FRD-7-admin-dashboard.md)             | 6.7, 6.8, 7, 8          | FRD 0, FRD 2, FRD 3, FRD 4, FRD 5, FRD 6 | Reviewer PR queue, page claim approval, cold-start job history, lifecycle config editor, user role management, comment moderation queue                              |
+| 8   | [Bookmarks and Contribution History](./FRDs/FRD-8-bookmarks.md)               | 9                       | FRD 0, FRD 2, FRD 4, FRD 6 | Bookmark toggle (wiki page header + API), `/my/bookmarks` page, `/my/contributions` PR history page                                                                    |
 
 ---
 
@@ -108,7 +110,51 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 ---
 
-## Dependency Graph
+### FRD 6: Auth UI and Pending Action Preservation
+
+**PRD Sections:** 9 (Identity and Authentication), 12 (UX and UI Design)
+
+**Scope:** See [FRD-6-auth-ui.md](./FRDs/FRD-6-auth-ui.md)
+
+**Unblocks:** User-facing write paths in FRD 2 (PR submit), FRD 3 (comment submit + vote), FRD 4 (PR submit), FRD 5 (admin access).
+
+**Exit criteria:** `/auth/sign-in` page renders AuthModal as embedded card; header shows Sign In button (unauth) or avatar dropdown (auth); Google OAuth sign-in works end-to-end; email/password sign-up creates account and sends magic-link verification; passwordless magic-link sign-in works; password reset flow works end-to-end; pre-verified users can still comment/vote/submit PRs; verify-email banner appears and disappears after verification; pending actions (comment submit, comment vote, PR submit, bookmark toggle) survive OAuth redirect and auto-resume on first authenticated load; pending action survives browser close and new-tab sign-in within 24h; pending action is discarded after 24h; `returnTo` is sanitized to local paths; unauthenticated user hitting `/admin/*` is redirected to sign-in with returnTo; non-admin user hitting `/admin/*` is redirected to home with error toast; display name validation rejects invalid inputs; AuthModal meets WCAG 2.1 AA; Supabase dashboard checklist executed; branded email templates applied.
+
+---
+
+### FRD 7: Admin Dashboard and Moderation
+
+**PRD Sections:** 6.7, 6.8, 7, 8
+
+**Scope:** See [FRD-7-admin-dashboard.md](./FRDs/FRD-7-admin-dashboard.md)
+
+**Depends on:** FRD 0, FRD 2, FRD 3, FRD 4, FRD 5, FRD 6
+
+**Surfaces:**
+- **Reviewer queue** — paginated list of pending edit proposals with section diff cards, AI pre-screen verdict display, accept / reject / request-changes actions, conflict-of-interest enforcement
+- **Page claim approval queue** — review org claim requests, approve or deny with reason
+- **Cold-start job history** — view past and in-progress cold-start jobs, re-run failed jobs, view generated drafts
+- **Lifecycle config editor** — view and update per-category staleness thresholds; per-org threshold overrides
+- **User role management** — promote/demote users between viewer / reviewer / admin roles
+- **Comment moderation queue** — review reported comments, dismiss report, hide comment, ban user
+
+**Exit criteria:** All six admin surfaces render behind `requireAdmin()` / `requireReviewer()` guards; reviewer can accept and reject PRs end-to-end; page claim approval updates org `is_claimed`; conflict-of-interest check blocks affiliated reviewers; cold-start job history is paginated and shows live job status; lifecycle config saves to `lifecycle_config` table; role promotion persists to `public.users`; reported comments can be hidden from `comment_reports` queue.
+
+---
+
+### FRD 8: Bookmarks and Contribution History
+
+**PRD Section:** 9
+
+**Scope:** See [FRD-8-bookmarks.md](./FRDs/FRD-8-bookmarks.md)
+
+**Depends on:** FRD 0, FRD 2, FRD 4, FRD 6
+
+**Note:** FRD 6 delivers `/my/bookmarks` and `/my/contributions` as "Coming Soon" stubs and defines the `bookmark.toggle` pending action. This FRD implements the backing feature.
+
+**Delivers:** Bookmark toggle button in wiki page header; `POST /api/bookmarks/toggle` server action; `/my/bookmarks` page listing saved pages; `/my/contributions` page listing the authenticated user's edit proposals with status (pending / accepted / rejected).
+
+**Exit criteria:** Bookmark button appears on wiki pages for authenticated users; toggle saves / removes from `bookmarks` table; `/my/bookmarks` lists all saved pages with org name, category, and last-edited date; `/my/contributions` lists all user PRs with section names, status badge, and link to the proposal; unauthenticated users are redirected to sign-in with returnTo.
 
 ```
 FRD 0 (Setup)
@@ -117,5 +163,9 @@ FRD 0 (Setup)
 │   └── FRD 3 (Comments System)
 │       └── FRD 4 (PR-Edit System)
 ├── FRD 5 (Cold Start Agent) [depends on FRD 0 + FRD 2]
-├── ... (additional FRDs TBD)
+├── FRD 6 (Auth UI) [depends on FRD 0; unblocks write paths in FRDs 2, 3, 4, 5]
+│   └── FRD 7 (Admin Dashboard & Moderation) [depends on FRD 0, 2, 3, 4, 5, 6]
+│       └── FRD 8 (Bookmarks & Contribution History) [depends on FRD 0, 2, 4, 6]
 ```
+
+> **Note on External Links (formerly FRD 10):** The External Links section (PRD Appendix B) is specified directly within FRD 2. No separate FRD is needed — the `external_links` table schema is already in FRD 0 and the rendering logic belongs to the wiki page UX.

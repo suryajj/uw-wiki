@@ -551,7 +551,6 @@ All authenticated users (Google OAuth or email/password) have access to:
 | **Cold Start Agent** | Claude Sonnet 4 | Web research synthesis for first-draft page generation |
 | **Embeddings** | OpenAI text-embedding-3-small | Vector embeddings for RAG retrieval |
 | **Streaming** | Vercel AI SDK | Token-by-token streaming for RAG search responses |
-| **Analytics** | PostHog or Plausible | Third-party analytics (page views, usage patterns) |
 | **Deployment** | Vercel + Supabase | Fully serverless: Vercel hosts Next.js, Supabase hosts everything else |
 
 **Why these choices:**
@@ -591,7 +590,6 @@ graph TD
 
     subgraph External["External"]
         WebSearch["Web Search APIs\nCold Start Sources"]
-        PostHog["PostHog / Plausible\nAnalytics"]
     end
 
     Landing -->|browse| DB
@@ -611,7 +609,6 @@ graph TD
     Realtime -->|push notifications| Frontend
     EdgeFn -->|embed content| Embeddings
     Embeddings -->|store vectors| DB
-    Frontend -->|track events| PostHog
 ```
 
 ### Data Model Overview
@@ -799,7 +796,6 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 - Google OAuth + email/password authentication (Supabase Auth)
 - Account required for comments and edit proposals (Google OAuth or email/password)
 - Server-side rendering for SEO (Next.js SSR)
-- Third-party analytics (PostHog or Plausible)
 
 ### Post-MVP / Future
 
@@ -849,7 +845,6 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | Supabase | Managed platform | Service availability, pricing changes | Standard platform risk; Supabase is open-source and self-hostable as fallback |
 | OpenRouter API | External service | Rate limits, credit exhaustion, model deprecation | Budget monitoring; model fallback chain (if Gemini is unavailable, fall back to GPT-4o-mini for RAG) |
 | Vercel | Hosting platform | Hobby tier limits, pricing at scale | Generous free tier for Next.js; upgrade to Pro ($20/month) if needed |
-| PostHog / Plausible | Analytics | Service availability | Non-critical dependency; product functions without analytics |
 | Web search API (cold start) | External service | API availability, cost | Cold start is an admin-only tool run infrequently; manual page creation is the fallback |
 | Google OAuth | Auth provider | OAuth configuration, consent screen approval | Standard integration; well-documented |
 | Tiptap | Editor library | Open-source maintenance, breaking changes | Tiptap is actively maintained with a commercial entity (Tiptap GmbH) behind it; ProseMirror core is stable |
