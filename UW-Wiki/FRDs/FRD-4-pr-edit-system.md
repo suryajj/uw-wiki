@@ -285,6 +285,13 @@ ALTER TABLE edit_proposals
     CHECK (mergeability_status IN ('unknown','mergeable','needs_rebase','conflict'));
 ```
 
+> **Amendment (FRD 7):** The `edit_proposals.status` column must also accept `'changes_requested'` as a valid value. Add to the CHECK constraint in the baseline migration:
+> ```sql
+> ALTER TABLE edit_proposals DROP CONSTRAINT IF EXISTS edit_proposals_status_check;
+> ALTER TABLE edit_proposals ADD CONSTRAINT edit_proposals_status_check
+>   CHECK (status IN ('pending','changes_requested','needs_rebase','accepted','rejected','superseded','withdrawn'));
+> ```
+
 `section_slugs` must contain at least one element. The overall `mergeability_status` is `mergeable` only when every section in `section_slugs` passes its individual mergeability check (see Section 4.3).
 
 ### 3.2 Patchset Table
@@ -509,14 +516,14 @@ Only reviewer/admin can decide. Decision options:
 
 ### 6.3 Conflict-of-Interest Policy
 
-Hard checks before accept:
+Hard checks before any decision action (accept, reject, or request changes):
 
-1. Reviewer cannot accept own proposal.
-2. Reviewer cannot accept proposal for affiliated org.
-3. Reviewer cannot accept if proposal status not `pending`.
-4. Reviewer cannot accept if mergeability not `mergeable`.
+1. Reviewer cannot act on their own proposal.
+2. Reviewer cannot perform any decision action (accept, reject, request changes) on a proposal for an org they are affiliated with. The proposal detail page is read-only for affiliated reviewers — all action buttons are disabled with a tooltip "You are affiliated with this org."
+3. Reviewer cannot accept if proposal status is not `pending`.
+4. Reviewer cannot accept if mergeability is not `mergeable`.
 
-Minimum requirement from product direction is enforced: affiliated reviewer can never be accepting reviewer for own org page.
+Minimum requirement from product direction is enforced: affiliated reviewer can never take any decision action on a proposal for their affiliated org's page.
 
 ### 6.4 Optional Expanded Guard
 
@@ -568,7 +575,22 @@ Post-commit async jobs:
 3. Mark proposal `rejected`.
 4. Preserve patchsets and AI outputs for audit history.
 
-### 7.3 Failure Handling
+### 7.3 Request Changes Pipeline
+
+When a reviewer wants to keep the proposal open but requires revisions:
+
+1. Validate reviewer role (`requireReviewer()`).
+2. Confirm proposal status is `pending`. If not, return `INVALID_STATE`.
+3. Confirm reviewer is not affiliated with the target org (`user_affiliations`). If affiliated, return `COI`.
+4. Validate input: `message` (10–2000 chars, required) + optional `section_suggestions` array.
+5. Insert row into `proposal_review_comments` (per FRD 7 Section 3.2).
+6. Update `edit_proposals.status = 'changes_requested'`, set `reviewer_id = currentUser.id`, `reviewed_at = now()`.
+7. Do **not** mark competing proposals as superseded — the proposal is not yet accepted.
+8. Write `admin_activity_log` row (action = `request_changes`).
+
+The contributor sees the reviewer's `message` and optional per-section `suggestions` on their proposal detail page. Submitting a new patchset transitions the proposal back to `pending` and returns it to the reviewer queue.
+
+### 7.4 Failure Handling
 
 If accept fails after lock due to drift:
 
@@ -591,12 +613,13 @@ If accept fails after lock due to drift:
 
 ### 8.2 Reviewer Routes
 
-| Route                              | Method | Auth           | Purpose                    |
-| ---------------------------------- | ------ | -------------- | -------------------------- |
-| `/api/admin/proposals`             | GET    | Reviewer/Admin | Queue listing with filters |
-| `/api/proposals/[id]/accept`       | POST   | Reviewer/Admin | Accept proposal            |
-| `/api/proposals/[id]/reject`       | POST   | Reviewer/Admin | Reject proposal            |
-| `/api/proposals/[id]/mergeability` | POST   | Reviewer/Admin | Force refresh mergeability |
+| Route                                  | Method | Auth           | Purpose                                   |
+| -------------------------------------- | ------ | -------------- | ----------------------------------------- |
+| `/api/admin/proposals`                 | GET    | Reviewer/Admin | Queue listing with filters                |
+| `/api/proposals/[id]/accept`           | POST   | Reviewer/Admin | Accept proposal                           |
+| `/api/proposals/[id]/reject`           | POST   | Reviewer/Admin | Reject proposal                           |
+| `/api/proposals/[id]/request-changes`  | POST   | Reviewer/Admin | Request changes (non-terminal decision)   |
+| `/api/proposals/[id]/mergeability`     | POST   | Reviewer/Admin | Force refresh mergeability                |
 
 ### 8.3 Request Payload: Create Proposal
 
@@ -634,6 +657,7 @@ interface SectionProposalDetail {
   sectionSlugs: string[];
   status:
     | "pending"
+    | "changes_requested"
     | "needs_rebase"
     | "accepted"
     | "rejected"
@@ -725,9 +749,11 @@ FRD 4 is complete when ALL of the following are satisfied:
 | 17  | Competing proposals for any overlapping section superseded on accept | Proposals touching any same section are marked superseded             |
 | 18  | FRD 1 re-embedding triggers post-accept                 | New chunks generation triggered asynchronously                                      |
 | 19  | FRD 3 re-anchoring triggers for all changed sections    | Comment anchor maintenance routine invoked for each accepted section                |
-| 20  | All decision actions are audit-logged                   | Create/accept/reject/withdraw events exist in audit log                             |
-| 21  | Policy checks are server-enforced                       | Direct API call bypass attempts fail                                                |
-| 22  | End-to-end multi-section flow passes                    | Submit 2-section proposal → pre-screen → review → accept works without manual DB edits |
+| 20  | Reviewer can request changes with a required message         | `request-changes` endpoint transitions proposal to `changes_requested` and creates `proposal_review_comments` row |
+| 21  | Contributor sees reviewer message on proposal detail when `changes_requested` | Proposal detail shows reviewer's message and per-section suggestions  |
+| 22  | New patchset from `changes_requested` transitions back to `pending` | Status becomes `pending` and proposal reappears in reviewer queue      |
+| 23  | Policy checks are server-enforced                            | Direct API call bypass attempts fail                                                |
+| 24  | End-to-end multi-section flow passes                         | Submit 2-section proposal → pre-screen → review → accept works without manual DB edits |
 
 ---
 
@@ -738,6 +764,11 @@ pending --> accepted
 pending --> rejected
 pending --> needs_rebase
 pending --> withdrawn
+pending --> changes_requested  (reviewer action; non-terminal)
+
+changes_requested --> pending         (contributor submits new patchset)
+changes_requested --> rejected        (reviewer rejects after waiting)
+changes_requested --> withdrawn       (contributor withdraws)
 
 needs_rebase --> pending (via new patchset)
 needs_rebase --> withdrawn

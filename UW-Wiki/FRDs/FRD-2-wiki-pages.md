@@ -196,7 +196,7 @@ Feature: Wiki Pages, Directory, Editor, and Edit Proposals
 
   Scenario: Reviewer views pending proposals
     Given  the user has the "reviewer" role
-    When   the user navigates to /admin/proposals
+    When   the user navigates to /admin/proposals (stub; canonical URL is /admin/reviews per FRD 7)
     Then   a list of pending PRs is shown
     And    each PR shows org name, submitter, AI verdict badge, and submission date
 
@@ -558,7 +558,7 @@ export async function generateMetadata({
 | `/wiki/[slug]`         | Wiki page view                        |
 | `/wiki/[slug]/history` | Version history                       |
 | `/search`              | RAG search (FRD 1)                    |
-| `/admin/proposals`     | Reviewer dashboard                    |
+| `/admin/proposals`     | Reviewer dashboard stub (→ `/admin/reviews` per FRD 7) |
 | `/admin/claims`        | Claim management                      |
 
 ### 2.8 Empty Page States
@@ -1124,6 +1124,8 @@ The full proposed ProseMirror JSON is stored on `edit_proposals.proposed_content
 
 The reviewer dashboard at `/admin/proposals` is a protected route accessible only to users with the `reviewer` or `admin` role. It displays all pending edit proposals and provides accept/reject/request-changes actions.
 
+> **Supersession note (FRD 7):** The fully-implemented reviewer dashboard lives at `/admin/reviews` (FRD 7 Section 3). The `/admin/proposals` route defined here serves as a scaffolding stub only. When implementing FRD 7, redirect `/admin/proposals` → `/admin/reviews` and defer to FRD 7 for all reviewer UI and decision logic.
+
 ### 8.2 Proposal List
 
 The list shows all proposals with `status = 'pending'` or `status = 'changes_requested'`, ordered by `submitted_at` ascending (oldest first -- FIFO review).
@@ -1436,6 +1438,7 @@ CREATE TABLE claim_requests (
   requester_role TEXT NOT NULL,
   justification TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  decision_reason TEXT,
   reviewed_by UUID REFERENCES users(id),
   reviewed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -1474,7 +1477,7 @@ CREATE INDEX idx_user_affiliations_user_id ON user_affiliations (user_id);
 | `/api/pulse/vote`                     | POST   | None     | Submit a Pulse rating                        |
 | `/api/claims`                         | POST   | Required | Submit a claim request                       |
 | `/api/claims/[id]/approve`            | POST   | Admin    | Approve a claim                              |
-| `/api/claims/[id]/reject`             | POST   | Admin    | Reject a claim                               |
+| `/api/claims/[id]/reject`             | POST   | Admin    | Reject a claim (body: `{ decision_reason: string }`) |
 
 ---
 
@@ -1515,7 +1518,7 @@ FRD 2 is complete when ALL of the following are satisfied:
 | 14  | Submission dialog shows diff and preview tabs                | Click "Submit Proposal" and verify both tabs render correctly                                                          |
 | 15  | Auth modal appears for unauthenticated users on submit       | Attempt to submit without signing in and verify the auth modal                                                         |
 | 16  | AI pre-screen returns a verdict                              | Submit a proposal and verify a pass/fail badge appears on the confirmation page                                        |
-| 17  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/proposals`, and verify pending PRs appear                                         |
+| 17  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/reviews` (FRD 7; `/admin/proposals` stub redirects there), and verify pending PRs appear |
 | 18  | Accept creates a new page version                            | Accept a proposal and verify the page content updates and version number increments                                    |
 | 19  | Request Changes stores reviewer comment                      | Request changes and verify the comment is stored on the proposal                                                       |
 | 20  | Re-embedding triggers on accept                              | Accept a proposal and verify new chunks are created in the `chunks` table (FRD 1 integration)                          |

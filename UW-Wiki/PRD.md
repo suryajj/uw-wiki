@@ -310,12 +310,12 @@ Any user can propose an edit to a wiki page, similar to a GitHub pull request. T
 
 **Submission flow:**
 
-1. User clicks "Propose Edit" on a wiki page
-2. The Tiptap editor loads with the current page content pre-filled
-3. User makes changes anywhere on the page (full-page editing per PR -- not scoped to a single section)
+1. User clicks "Propose Edit" on a wiki page, choosing one or more sections to edit
+2. The Tiptap editor loads with only the selected section(s) pre-filled -- edits are section-scoped, not full-page
+3. Multi-section proposals open a tabbed editor (one tab per section); single-section proposals open a single inline editor
 4. User writes a short rationale explaining why their edit aligns with platform values
 5. If the user is not signed in, they are prompted to sign in or create an account (Google OAuth or email/password)
-6. On submission, the system diffs the proposed content against the current version and creates an edit proposal record
+6. On submission, the system generates a per-section diff for each selected section and creates an edit proposal record with an array of section slugs
 
 **AI pre-screening:**
 
@@ -326,9 +326,10 @@ Any user can propose an edit to a wiki page, similar to a GitHub pull request. T
 
 **Review flow:**
 
-- Reviewers (the editorial board) see all pending PRs in their dashboard
-- Each PR shows: the AI pre-screen verdict, the contributor's rationale, and a view of the proposed changes
-- Reviewers make the final accept/reject decision -- the AI assessment is advisory, not binding
+- Reviewers (the editorial board) see all pending PRs in their reviewer queue at `/admin/reviews`
+- Each PR shows: the AI pre-screen verdict, the contributor's rationale, and per-section diff cards for each selected section
+- Reviewers make the final decision -- **accept**, **reject** (with required reason), or **request changes** (non-terminal; keeps the proposal open with reviewer feedback for the contributor to address)
+- The AI assessment is advisory, not binding
 - Club members can submit PRs like any user, but a reviewer with an active affiliation to the org being edited cannot approve that org's PRs
 
 ### 6.5 Inline Section Comments (Medium-Style)
@@ -347,8 +348,8 @@ Users can highlight any text on a wiki page and leave a comment anchored to that
 
 When the underlying text changes (an edit proposal is accepted that modifies a section), the system handles existing comments in two stages:
 
-1. **Best-effort re-anchoring:** The system attempts to find the closest matching text in the new version and re-attach the comment to it
-2. **Previous-version marking:** If re-anchoring succeeds, the comment remains visible at its new anchor. If it fails (the anchored text was deleted or changed beyond recognition), the comment remains visible but is marked with a "This comment references a previous version of this page" indicator, linking to the version it was originally anchored to
+1. **Exact-match re-anchoring:** The system searches the new version for the exact `anchor_text` string. If found, the comment is re-attached to the same text in its new position.
+2. **Previous-version marking:** If re-anchoring fails (the anchored text was deleted or changed), the comment remains visible but is marked with a "This comment references a previous version of this page" indicator, linking to the version it was originally anchored to.
 
 ### 6.6 The Pulse (Crowdsourced Metadata)
 
@@ -426,7 +427,7 @@ Staleness thresholds are configurable per org category, because different types 
 - Banners are color-coded: yellow for "Needs Update," orange for "Stale," red for "Potentially Defunct"
 - Any accepted edit resets the timer and removes all banners
 - The Health Status field in the Pulse sidebar reflects the current lifecycle state
-- Admins can override thresholds per individual org if needed
+- Admins can configure per-category thresholds via the admin dashboard. Per-org threshold overrides are deferred to a post-MVP FRD.
 
 ---
 
@@ -619,13 +620,13 @@ graph TD
 | `organizations` | Org registry | `id`, `university_id`, `name`, `slug`, `category`, `claimed_by`, `claimed_at` |
 | `pages` | Wiki page metadata | `id`, `org_id`, `current_version_id`, `created_at`, `last_modified_at` |
 | `page_versions` | Version history (diff-based) | `id`, `page_id`, `version_number`, `content_json` (ProseMirror), `diff_json`, `summary`, `contributor_id`, `created_at` |
-| `edit_proposals` | Pending PRs | `id`, `page_id`, `proposed_content_json`, `rationale`, `ai_verdict`, `ai_reason`, `status` (pending/accepted/rejected), `contributor_email`, `reviewer_id`, `submitted_at`, `reviewed_at` |
+| `edit_proposals` | Pending PRs | `id`, `page_id`, `section_slugs` (array of targeted section slugs), `rationale`, `ai_verdict`, `ai_reason`, `status` (pending / changes_requested / needs_rebase / accepted / rejected / superseded / withdrawn), `contributor_id`, `reviewer_id`, `submitted_at`, `reviewed_at` |
 | `comments` | Inline comments | `id`, `page_id`, `page_version_id`, `anchor_text`, `anchor_offset`, `body`, `parent_comment_id` (threading), `is_anonymous`, `contributor_id`, `created_at` |
 | `pulse_ratings` | Individual votes | `id`, `org_id`, `metric` (selectivity/vibe/coop_boost), `value`, `session_id`, `created_at` |
 | `pulse_aggregates` | Computed aggregates | `org_id`, `metric`, `aggregate_value`, `vote_count`, `last_computed_at` |
 | `external_links` | Structured links | `id`, `org_id`, `type` (website/instagram/linkedin/github/custom), `url`, `label` |
 | `users` | Authenticated accounts | `id`, `email`, `display_name`, `avatar_url`, `role` (user/reviewer/admin), `created_at` |
-| `bookmarks` | User bookmarks | `id`, `user_id`, `org_id`, `created_at` |
+| `bookmarks` | User bookmarks | `id`, `user_id`, `page_id`, `created_at` |
 | `notifications` | User notifications | `id`, `user_id`, `type`, `payload`, `read`, `created_at` |
 | `lifecycle_config` | Per-category thresholds | `category`, `needs_update_months`, `stale_months`, `defunct_months` |
 
@@ -784,15 +785,16 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 
 - Wiki pages for any UW org, browsable directory with six fixed categories
 - AI-powered RAG search with inline citations and conversational follow-ups as primary entry point
-- PR-style edit proposal flow with AI pre-screening (pass/fail)
-- Rich-text WYSIWYG editor (Tiptap) for page editing
+- PR-style edit proposal flow with AI pre-screening (pass/fail); section-scoped multi-section proposals
+- Rich-text WYSIWYG editor (Tiptap) for section editing
 - Anonymous and attributed contribution toggle
 - Inline section comments (Medium-style, threaded, anchored to highlighted text)
 - The Pulse sidebar infobox with crowdsourced ratings and standalone voting widget
 - Page claiming for verified orgs (Official section, manual admin approval)
-- Cold start admin agent (general web search + UW-specific sources)
-- Reviewer dashboard for editorial board (PR queue, accept/reject)
-- Automated lifecycle management with configurable thresholds per category
+- Cold start admin agent (general web search + UW-specific sources via Tavily)
+- Reviewer dashboard for editorial board (PR queue with accept / reject / request-changes)
+- Bookmarks and contribution history (saved pages, personal PR history)
+- Automated lifecycle banners with configurable thresholds per category (client-rendered, no cron)
 - Google OAuth + email/password authentication (Supabase Auth)
 - Account required for comments and edit proposals (Google OAuth or email/password)
 - Server-side rendering for SEO (Next.js SSR)
@@ -800,8 +802,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 ### Post-MVP / Future
 
 - UW SSO / CAS integration for stronger institutional trust signal
-- User accounts with contribution history, bookmarks, and reputation system
-- Notification system (page updates, PR status changes, comment replies)
+- Notification delivery UI (page updates, PR status changes, comment replies — schema exists, no FRD yet)
 - Upvoting or endorsing specific sections or comments
 - Sentence-level upvote/downvote system: users can vote on individual sentences within a wiki page. Sentences with higher net upvotes are rendered progressively bolder, giving readers a visual signal of which claims are strongly backed by the community. Heavily downvoted sentences appear lighter/muted. This creates a heat map effect where the most trusted information stands out at a glance.
 - Expansion to other Canadian universities (same platform, scoped by `university_id`)
@@ -809,6 +810,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 - Alumni contributions as a distinct, labelled tier
 - Advanced admin analytics (contribution trends, popular pages, search query patterns)
 - Side-by-side version diff comparison view
+- Per-org lifecycle threshold overrides (admin-configurable; global thresholds are in MVP)
 - Collaborative real-time editing (Tiptap + Supabase Realtime)
 
 ---
@@ -822,7 +824,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | Which specific 5-10 orgs to seed at launch? | TBD. Should be well-known across faculties. Candidates: Midnight Sun, UW Robotics, Blueprint, WATonomous, Waterloo Rocketry, UW Formula, UWDSC, Hack the North. |
 | Moderation at scale? | As content grows, a tiered trust system (trusted contributors needing less review) may be needed. Defer until PR volume exceeds editorial board capacity. |
 | Legal and liability exposure? | Deferred. If defamatory content is posted, what is the process? Takedown requests? Should be defined before or shortly after launch. Not blocking MVP. |
-| Cold start agent web search API? | TBD. Options: Serper API, Tavily, SerpAPI. Cost and quality comparison needed during implementation. |
+| Cold start agent web search API? | **Resolved: Tavily** (`@tavily/ai-sdk`, `@tavily/core`). Chosen for quality, AI-SDK-native integration, and support for extract + crawl operations. See FRD 5 for full integration spec. |
 | Pulse metric weights for cold-start vs. crowdsourced? | TBD. Initial proposal: AI-seeded values count as 1 vote; crowdsourced votes count as 1 vote each. AI-seeded values are diluted naturally as human votes accumulate. |
 | Lifecycle threshold tuning? | Initial thresholds in Section 6.9 are estimates. May need adjustment based on real-world page update frequency after launch. |
 

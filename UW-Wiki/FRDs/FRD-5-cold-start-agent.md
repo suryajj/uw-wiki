@@ -42,7 +42,7 @@ The following are assumed to be in place from FRD 0 and FRD 2:
 | Pulse sidebar component and voting widget                                                                    | FRD 2      |
 | Empty page state handling (AI-generated banner) in wiki page view                                            | FRD 2      |
 | Cold-start Pulse seeding convention (`session_id = "cold-start-agent"`)                                     | FRD 2      |
-| Org category constants: Design Teams, Competition Teams, Student Government, Academic Clubs, Cultural Clubs, Campus Organizations | FRD 2 |
+| Org category constants: Design Teams, Engineering Clubs, Non-Engineering Clubs, Academic Programs, Student Societies, Campus Organizations | FRD 2 |
 
 ### Terms
 
@@ -289,10 +289,10 @@ An optional category dropdown sits to the right of the input:
 | ---------------------- | -------- |
 | (Auto-detect)          | Selected |
 | Design Teams           |          |
-| Competition Teams      |          |
-| Student Government     |          |
-| Academic Clubs         |          |
-| Cultural Clubs         |          |
+| Engineering Clubs      |          |
+| Non-Engineering Clubs  |          |
+| Academic Programs      |          |
+| Student Societies      |          |
 | Campus Organizations   |          |
 
 If the admin selects a category, it is passed as a hint to the identification phase. If left as auto-detect, the agent infers the category from search results.
@@ -401,10 +401,10 @@ import { z } from "zod";
 
 export const ORG_CATEGORIES = [
   "Design Teams",
-  "Competition Teams",
-  "Student Government",
-  "Academic Clubs",
-  "Cultural Clubs",
+  "Engineering Clubs",
+  "Non-Engineering Clubs",
+  "Academic Programs",
+  "Student Societies",
   "Campus Organizations",
 ] as const;
 
@@ -1092,7 +1092,7 @@ Editorial values:
 5. Specific Over Vague: "8-10 hours/week during build season" beats "a lot of time."
 
 UW-specific context:
-- Organizations are categorized as: Design Teams, Competition Teams, Student Government, Academic Clubs, Cultural Clubs, Campus Organizations
+- Organizations are categorized as: Design Teams, Engineering Clubs, Non-Engineering Clubs, Academic Programs, Student Societies, Campus Organizations
 - Key directories: WUSA clubs list (wusa.ca), UW clubs directory, campus organization pages
 - University of Waterloo is in Waterloo, Ontario, Canada`;
 ```
@@ -1371,7 +1371,8 @@ CREATE TABLE cold_start_jobs (
   error TEXT,
   created_by UUID NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  completed_at TIMESTAMPTZ
+  completed_at TIMESTAMPTZ,
+  supersedes_job_id UUID REFERENCES cold_start_jobs(id)
 );
 ```
 
@@ -1381,6 +1382,7 @@ CREATE TABLE cold_start_jobs (
 CREATE INDEX idx_cold_start_jobs_status ON cold_start_jobs (status);
 CREATE INDEX idx_cold_start_jobs_created_by ON cold_start_jobs (created_by);
 CREATE INDEX idx_cold_start_jobs_created_at ON cold_start_jobs (created_at DESC);
+CREATE INDEX idx_cold_start_jobs_supersedes ON cold_start_jobs (supersedes_job_id) WHERE supersedes_job_id IS NOT NULL;
 ```
 
 ### 12.3 Column Addition: `page_versions.is_cold_start`
@@ -1413,14 +1415,15 @@ CREATE POLICY "Admins can manage cold start jobs"
 
 ## 13. API Routes
 
-| Route                                  | Method | Auth  | Purpose                                  |
-| -------------------------------------- | ------ | ----- | ---------------------------------------- |
-| `/api/cold-start/identify`             | POST   | Admin | Phase 1: identify org from name or URL   |
-| `/api/cold-start/generate`             | POST   | Admin | Phase 2+3: research and synthesize draft |
-| `/api/cold-start/[jobId]/status`       | GET    | Admin | Poll job progress                        |
-| `/api/cold-start/[jobId]/confirm`      | POST   | Admin | Confirm identification card              |
-| `/api/cold-start/[jobId]/publish`      | POST   | Admin | Publish draft (create org + page)        |
-| `/api/cold-start/[jobId]/update-draft` | POST   | Admin | Save edited draft content                |
+| Route                                         | Method | Auth  | Purpose                                      |
+| --------------------------------------------- | ------ | ----- | -------------------------------------------- |
+| `/api/cold-start/identify`                    | POST   | Admin | Phase 1: identify org from name or URL       |
+| `/api/cold-start/generate`                    | POST   | Admin | Phase 2+3: research and synthesize draft     |
+| `/api/cold-start/[jobId]/status`              | GET    | Admin | Poll job progress                            |
+| `/api/cold-start/[jobId]/confirm`             | POST   | Admin | Confirm identification card                  |
+| `/api/cold-start/[jobId]/publish`             | POST   | Admin | Publish draft (create org + page)            |
+| `/api/cold-start/[jobId]/update-draft`        | POST   | Admin | Save edited draft content                    |
+| `/api/admin/cold-start/jobs/[id]/rerun`       | POST   | Admin | Re-run a failed job (creates new job with `supersedes_job_id`) |
 
 ### 13.1 POST `/api/cold-start/identify`
 
@@ -1670,7 +1673,7 @@ Editorial values:
 5. Specific Over Vague: "8-10 hours/week during build season" beats "a lot of time."
 
 UW-specific context:
-- Organizations are categorized as: Design Teams, Competition Teams, Student Government, Academic Clubs, Cultural Clubs, Campus Organizations
+- Organizations are categorized as: Design Teams, Engineering Clubs, Non-Engineering Clubs, Academic Programs, Student Societies, Campus Organizations
 - Key directories: WUSA clubs list (wusa.ca), UW clubs directory, campus organization pages
 - University of Waterloo is in Waterloo, Ontario, Canada
 
@@ -1718,7 +1721,7 @@ Editorial values:
 5. Specific Over Vague: "8-10 hours/week during build season" beats "a lot of time."
 
 UW-specific context:
-- Organizations are categorized as: Design Teams, Competition Teams, Student Government, Academic Clubs, Cultural Clubs, Campus Organizations
+- Organizations are categorized as: Design Teams, Engineering Clubs, Non-Engineering Clubs, Academic Programs, Student Societies, Campus Organizations
 - Key directories: WUSA clubs list (wusa.ca), UW clubs directory, campus organization pages
 - University of Waterloo is in Waterloo, Ontario, Canada
 

@@ -61,17 +61,17 @@ What FRD 7 explicitly does NOT include:
    - `edit_proposals (id, page_id, section_slugs TEXT[], proposed_content_json, rationale, ai_verdict, ai_reason, status, contributor_id, reviewer_id, submitted_at, reviewed_at, reviewer_comment, mergeability_status, ...)` with current `status IN ('pending','needs_rebase','accepted','rejected','superseded','withdrawn')`. See FRD 4 Section 3.
    - `edit_proposal_patchsets` per FRD 4 Section 3.
    - `claim_requests (id, org_id, requester_id, requester_name, requester_email, requester_role, justification, status, reviewed_by, reviewed_at, created_at)` with `status IN ('pending','approved','rejected')`. See FRD 2 Section 12.2.
-   - `cold_start_jobs (id, created_by, status, org_metadata, research_data JSONB, draft_content JSONB, current_step, steps_completed, error_message, created_at, updated_at)`. See FRD 5 Section 12.1.
+   - `cold_start_jobs (id, created_by, status, org_metadata, research_data JSONB, draft_content JSONB, current_step, steps_completed, error TEXT, created_at, completed_at)`. See FRD 5 Section 12.1.
    - `comment_reports (id, comment_id, reporter_id, reason, details, status, resolved_by, resolved_at, created_at)` with `status IN ('pending','resolved','dismissed')`. See FRD 3 Section 14.3.
    - `comments.is_hidden BOOLEAN DEFAULT false` column per FRD 3 Section 12.
    - `lifecycle_config (category, needs_update_months, stale_months, defunct_months, updated_at)` per FRD 0 Section 4.
 3. **Existing API routes** referenced but not redefined here:
    - `POST /api/proposals/[id]/accept`, `POST /api/proposals/[id]/reject` -- FRD 4 Section 8.
    - `POST /api/claims/[id]/approve`, `POST /api/claims/[id]/reject` -- FRD 2 Section 13.
-   - `POST /api/admin/reports/[id]/resolve` -- FRD 3 Section 13.
+   - `POST /api/admin/reports/[id]/resolve` -- FRD 3 Section 15 (superseded by FRD 7; see Section 8.4).
    - `POST /api/cold-start` and child routes -- FRD 5 Section 13.
 4. **Routing stubs** from prior FRDs:
-   - `/admin/reviews` stub referenced by FRD 4 (never fully built).
+   - FRD 2 defined `/admin/proposals` as the reviewer queue URL (FRD 2 Sections 5–8). FRD 7 implements the reviewer queue at `/admin/reviews` — this is the canonical path. The `/admin/proposals` stub from FRD 2 should redirect to `/admin/reviews`.
    - `/admin/claims` stub referenced by FRD 2.
    - `/admin/cold-start` entry built by FRD 5 (FRD 7 adds `/admin/cold-start/jobs`).
    - `/admin/reports` stub referenced by FRD 3.
@@ -626,7 +626,7 @@ CREATE POLICY proposal_review_comments_select
 
 ### 3.3 `POST /api/proposals/[id]/request-changes`
 
-Route handler at `src/app/api/admin/proposals/[id]/request-changes/route.ts`.
+Route handler at `src/app/api/proposals/[id]/request-changes/route.ts`.
 
 Request body:
 
@@ -810,8 +810,8 @@ Query:
 const { data: jobs } = await supabase
   .from("cold_start_jobs")
   .select(`
-    id, status, current_step, error_message,
-    org_metadata, created_at, updated_at,
+    id, status, current_step, error,
+    org_metadata, created_at, completed_at,
     users:created_by ( display_name )
   `)
   .order("created_at", { ascending: false })
@@ -852,7 +852,7 @@ Status pill colors:
    - `created_by = currentUser.id`
    - `status = 'identifying'`
    - `org_metadata = source.org_metadata` (copy of input)
-   - `research_data = null`, `draft_content = null`, `error_message = null`, `current_step = 'identifying'`
+   - `research_data = null`, `draft_content = null`, `error = null`, `current_step = 'identifying'`
    - Reference to source: `supersedes_job_id UUID` (new nullable column on `cold_start_jobs`; see Section 10).
 4. Mark source job as `status = 'superseded'` (if we add this status to FRD 5's enum; alternatively keep source as `failed` and rely on `supersedes_job_id` for the link).
 5. Redirect admin to `/admin/cold-start?jobId={newJobId}` to watch progress live.
@@ -867,8 +867,8 @@ Clicking "View details" opens a side panel (not a new route) showing:
 1. Full `org_metadata` (input data).
 2. Full `research_data` JSONB (Tavily results).
 3. Full `draft_content` if present.
-4. `error_message` if failed.
-5. Timeline of `current_step` transitions (computed from `updated_at` + polled history if available).
+4. `error` if failed.
+5. Timeline of `current_step` transitions (computed from `completed_at` / creation timestamp).
 6. Link to the published page if `status = 'published'`.
 
 ### 5.6 Retention
@@ -1109,7 +1109,7 @@ const { data: reports } = await supabase
 3. Comment remains visible.
 4. `admin_activity_log` row inserted.
 
-Note: FRD 3 Section 13 describes a `/api/admin/reports/[id]/resolve` endpoint. FRD 7 replaces this with the more explicit `/hide` and `/dismiss` pair because the endpoint action was ambiguous ("resolve" could mean either hide or dismiss). This requires a minor amendment to FRD 3; see Section 12.
+Note: FRD 3 Section 15 describes a `/api/admin/reports/[id]/resolve` endpoint. FRD 7 replaces this with the more explicit `/hide` and `/dismiss` pair because the endpoint action was ambiguous ("resolve" could mean either hide or dismiss). This requires a minor amendment to FRD 3; see Section 12.
 
 ### 8.5 Multiple Reports on One Comment
 
@@ -1359,10 +1359,10 @@ type AdminErrorCode =
   | "DB_ERROR";
 ```
 
-### 11.3 `POST /api/admin/proposals/[id]/request-changes` Example
+### 11.3 `POST /api/proposals/[id]/request-changes` Example
 
 ```ts
-// src/app/api/admin/proposals/[id]/request-changes/route.ts
+// src/app/api/proposals/[id]/request-changes/route.ts
 import { z } from "zod";
 import { requireReviewer } from "@/lib/auth/guards";
 import { logAdminActivity } from "@/lib/admin/activity-log";

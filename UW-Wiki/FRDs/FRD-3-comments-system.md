@@ -281,12 +281,12 @@ Feature: Comments System
     Then   a list of reported comments is shown
     And    each report shows the comment, reporter, reason, and date
 
-  Scenario: Reviewer deletes a reported comment
+  Scenario: Reviewer hides a reported comment
     Given  a reviewer is viewing a reported comment
-    When   the reviewer clicks "Delete Comment"
-    Then   the comment is permanently removed
+    When   the reviewer clicks "Hide Comment"
+    Then   the comment is hidden from public view (is_hidden = true)
     And    the report is marked as resolved
-    And    the comment chunk is deleted from RAG (FRD 1)
+    And    the comment remains in the database for audit purposes
 
   # --- RAG Integration ---
 
@@ -1556,8 +1556,8 @@ Reports are visible to reviewers at `/admin/reports`:
 
 | Action | Result |
 |---|---|
-| **Delete Comment** | Permanently removes the comment and its chunk. Report marked "resolved." |
-| **Dismiss Report** | Report marked "dismissed." Comment remains. |
+| **Hide Comment** | Sets `comments.is_hidden = true`. Comment is no longer shown to other users. The row is preserved in the database for audit purposes. Report marked "resolved." |
+| **Dismiss Report** | Report marked "dismissed." Comment remains visible. |
 
 ### 12.4 Implementation
 
@@ -1740,8 +1740,8 @@ CREATE INDEX idx_comments_user_id ON comments (user_id);
 | `/api/comments/[id]/report` | POST | None | Report a comment |
 | `/api/comments/[id]/replies` | POST | Required | Create a reply |
 | `/admin/reports` | GET | Reviewer | Get reported comments |
-| `/api/admin/reports/[id]/resolve` | POST | Reviewer | Resolve a report (delete comment) |
-| `/api/admin/reports/[id]/dismiss` | POST | Reviewer | Dismiss a report |
+| `/api/admin/comments/[id]/hide` | POST | Reviewer | Hide a reported comment (hide-only; no deletion) |
+| `/api/admin/reports/[id]/dismiss` | POST | Reviewer | Dismiss a report without hiding the comment |
 
 ---
 
@@ -1786,7 +1786,7 @@ FRD 3 is complete when ALL of the following are satisfied:
 | 20 | Edit comment works | Edit own comment and verify "edited" indicator appears |
 | 21 | Delete comment works | Delete own comment and verify it disappears with no placeholder |
 | 22 | Report submission works | Report a comment and verify it appears in admin queue |
-| 23 | Reviewer can delete reported comment | As reviewer, delete a reported comment and verify resolution |
+| 23 | Reviewer can hide reported comment | As reviewer, hide a reported comment via `/api/admin/comments/[id]/hide` and verify `is_hidden = true` and report is resolved |
 | 24 | RAG chunk created on comment submit | Submit a comment and verify chunk exists in `chunks` table |
 | 25 | RAG chunk deleted on comment delete | Delete a comment and verify chunk is removed |
 | 26 | Orphan flag updates on page edit | Edit page to remove anchor text and verify `references_previous_version = true` |

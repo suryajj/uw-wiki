@@ -533,7 +533,7 @@ Four pending action types are preserved in FRD 6. Each has a Zod schema (Appendi
 | `comment.submit`       | User clicks "Post" on the comment form            | `POST /api/comments` (FRD 3)                                                    |
 | `comment.vote`         | User clicks up/down arrow on a comment             | `POST /api/comments/[id]/vote` (FRD 3)                                          |
 | `proposal.submit`      | User clicks "Submit Proposal" in PR dialog         | `POST /api/proposals` (FRD 4)                                                   |
-| `bookmark.toggle`      | User clicks the bookmark icon on a page            | `POST /api/bookmarks/toggle` (FRD 7 or wherever bookmarks live)                 |
+| `bookmark.toggle`      | User clicks the bookmark icon on a page            | `POST /api/bookmarks/toggle` (FRD 8)                 |
 
 Pulse votes are NOT preserved because Pulse is session-based (no auth) per PRD §6.6.
 
