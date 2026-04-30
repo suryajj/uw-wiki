@@ -1790,6 +1790,65 @@ CREATE INDEX idx_comments_user_id ON comments (user_id);
 | **Comment fetch** | < 500ms for a page with 100 comments |
 | **Rate limit check overhead** | < 10ms per request (Upstash Redis, runs before submission logic) |
 
+### 16.1 Input Sanitization — Markdown Rendering (XSS Prevention)
+
+**Risk:** Comment bodies are anonymous, making this the zero-friction XSS attack surface. The comment body is stored as raw markdown text (safe in the DB), but rendered to HTML on the client using `dangerouslySetInnerHTML`. Without sanitization at render time, a crafted comment body can execute arbitrary JavaScript in every reader's browser.
+
+**Defense-in-depth: two layers.**
+
+**Layer 1 — `escapeHtml` before regex substitution (already in `renderMarkdown`):**
+
+The existing `renderMarkdown` function in `src/lib/comments/markdown.ts` calls `escapeHtml()` first, which neutralizes raw `<script>` injections by converting `<` → `&lt;`. This is the primary defence for the regex-built HTML pipeline. It must not be removed.
+
+**Layer 2 — DOMPurify pass on the final HTML string before `dangerouslySetInnerHTML`:**
+
+After `renderMarkdown` builds the HTML string, run it through DOMPurify with a strict allowlist before injecting into the DOM. This catches any future regression where a new markdown feature accidentally introduces an unsafe HTML-building path.
+
+```typescript
+// src/lib/comments/markdown.ts  (updated)
+
+import DOMPurify from "dompurify";
+
+const DOMPURIFY_CONFIG: DOMPurify.Config = {
+  ALLOWED_TAGS: ["strong", "em", "a", "br", "code"],
+  ALLOWED_ATTR: ["href", "target", "rel", "class"],
+  ALLOWED_URI_REGEXP: /^https?:\/\//i,  // no javascript: or data: hrefs
+  FORCE_BODY: true,
+};
+
+export function renderMarkdown(text: string): string {
+  let html = escapeHtml(text);
+
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+  html = html.replace(
+    /\[(.+?)\]\((.+?)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#FEC93B] underline hover:text-[#FFD700]">$1</a>'
+  );
+  html = html.replace(/\n/g, "<br>");
+
+  // DOMPurify runs in browser only; SSR rendering should never use dangerouslySetInnerHTML
+  if (typeof window !== "undefined") {
+    html = DOMPurify.sanitize(html, DOMPURIFY_CONFIG) as string;
+  }
+
+  return html;
+}
+```
+
+**Usage rule — every `dangerouslySetInnerHTML` for comments must call `renderMarkdown`:**
+
+```tsx
+// CommentCard.tsx
+<div dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.body) }} />
+```
+
+Never call `dangerouslySetInnerHTML` with a raw or partially-processed string.
+
+**Package:** `dompurify` + `@types/dompurify`. DOMPurify is browser-only; for any server-side rendering path use `isomorphic-dompurify` as a drop-in.
+
+**Exit criterion:** Submit a comment with body `**<img src=x onerror=alert(1)>**` and verify it renders as bold text with a broken image, not an alert. Also verify `javascript:alert(1)` in a link href is stripped.
+
 ---
 
 ## 17. Exit Criteria

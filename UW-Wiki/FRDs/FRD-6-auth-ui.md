@@ -1295,6 +1295,44 @@ Client UI enforces a 60s cooldown on "Resend" buttons as a UX hint; server-side 
 2. Templates do not include any user-typed content (display_name, etc.) to avoid HTML injection via email.
 3. All links are `https://` in production; staging uses `http://localhost:3000` only in local dev.
 
+### 9.8 Input Sanitization — Display Name (Stored XSS Prevention)
+
+**Risk:** `display_name` appears in comment attribution, reviewer bylines, the admin activity log, and the avatar dropdown on every page. A display name containing HTML (e.g. `<img src=x onerror=alert(1)>`) is a stored XSS vector that fires in every browser that renders it. Because React escapes text-node interpolation by default, this is only a risk if the display name is ever inserted via `dangerouslySetInnerHTML` or a third-party component that does not escape. Defensive validation at write time eliminates the attack surface entirely.
+
+**Mitigation: Zod schema constraint + Postgres CHECK constraint (defense in depth).**
+
+**Layer 1 — Zod validation in the sign-up server action and display-name update action:**
+
+```typescript
+// src/lib/auth/schemas.ts
+
+export const displayNameSchema = z
+  .string()
+  .min(2, "Display name must be at least 2 characters")
+  .max(50, "Display name must be 50 characters or fewer")
+  .regex(
+    /^[\w\s\-'.]+$/,
+    "Display name may only contain letters, numbers, spaces, hyphens, apostrophes, and periods"
+  )
+  .transform((s) => s.trim());
+```
+
+The regex `^[\w\s\-'.]+$` allows letters, digits, underscores, spaces, hyphens, apostrophes, and periods — sufficient for real names and handles — while blocking all HTML-special characters (`<`, `>`, `"`, `&`, etc.).
+
+**Layer 2 — Postgres CHECK constraint (already referenced in Section 4, added in FRD 0 schema):**
+
+```sql
+ALTER TABLE users
+  ADD CONSTRAINT users_display_name_format
+  CHECK (display_name ~ '^[\w\s\-''.]+$' AND length(display_name) BETWEEN 2 AND 50);
+```
+
+This catches any insert that bypasses the application layer (e.g. a migration script or direct DB access).
+
+**Usage:** apply `displayNameSchema` in both `signUpAction` and any future profile-update action. The constraint is enforced server-side; client-side validation mirrors it for UX only.
+
+**Exit criterion:** attempt to create an account with display name `<script>alert(1)</script>` and verify the server action returns a validation error and the value is not stored.
+
 ---
 
 ## 10. Non-Functional Requirements

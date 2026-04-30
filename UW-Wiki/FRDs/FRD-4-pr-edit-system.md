@@ -710,7 +710,67 @@ Rationale: IP cap is lower (3 vs 5) because IP is a weaker identity signal and m
 
 Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
 
-### 9.3 Audit Log
+### 9.3 Input Sanitization — ProseMirror JSON Node Validation
+
+**Risk:** `section_diffs` in `edit_proposal_patchsets` stores arbitrary JSONB submitted by contributors (including anonymous ones). If a malicious actor crafts a JSON payload with an unsupported node type, an injected `script` attribute, or a `data:` URI in an image node, that content renders in every reviewer's browser and on the live wiki page after merge. This is the widest XSS attack surface on the platform.
+
+**Mitigation: server-side node allowlist validation before any DB write.**
+
+The `POST /api/proposals` and `POST /api/proposals/[id]/patchsets` route handlers must validate all `proposed_section_json` values against the canonical Tiptap extension list before inserting into the DB. Any payload containing a node type not in the allowlist is rejected with `422 Unprocessable Entity`.
+
+**Allowed node types (mirrors the registered Tiptap extension set from FRD 2 Section 4.2):**
+
+```typescript
+// src/lib/prosemirror/validate.ts
+
+const ALLOWED_NODES = new Set([
+  "doc", "paragraph", "text",
+  "heading",         // attrs: { level: 1|2|3 }
+  "bulletList", "orderedList", "listItem",
+  "blockquote", "codeBlock", "horizontalRule",
+  "hardBreak", "image",
+  "table", "tableRow", "tableCell", "tableHeader",
+]);
+
+const ALLOWED_MARKS = new Set([
+  "bold", "italic", "underline", "strike",
+  "code", "link",   // link: attrs must pass URL allowlist below
+  "highlight",
+]);
+
+// Image src must be a Supabase Storage URL or relative path — no data: URIs, no external arbitrary hosts
+const ALLOWED_IMAGE_SRC = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/|^\//;
+
+// Link href must be http(s):// or a relative path — no javascript: or data: URIs
+const ALLOWED_LINK_HREF = /^https?:\/\/|^\//;
+
+export function validateProseMirrorNode(node: unknown): boolean {
+  // Recursively walk the JSON tree and enforce:
+  // 1. node.type is in ALLOWED_NODES
+  // 2. node.marks[].type is in ALLOWED_MARKS
+  // 3. image src passes ALLOWED_IMAGE_SRC
+  // 4. link href passes ALLOWED_LINK_HREF
+  // 5. No extra keys on node objects beyond: type, attrs, content, marks, text
+  // Returns false (reject) if any violation found
+  // Implementation: recursive walk, throw on first violation
+}
+```
+
+**Response on validation failure:**
+
+```json
+{
+  "ok": false,
+  "error": "Proposal content contains unsupported formatting. Please remove any custom embeds or scripts and try again.",
+  "code": "INVALID_CONTENT"
+}
+```
+
+**Implementation location:** `src/lib/prosemirror/validate.ts`. Called at the top of both `POST /api/proposals` and `POST /api/proposals/[id]/patchsets` before any Zod schema check or DB insert.
+
+**Exit criterion:** attempt to submit a patchset with a node type not in the allowlist (e.g. `{ type: "iframe", attrs: { src: "https://evil.com" } }`) and verify the API returns `422` and the content is not stored.
+
+### 9.4 Audit Log
 
 Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
