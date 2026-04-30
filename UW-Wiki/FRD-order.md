@@ -258,3 +258,21 @@ export const ORG_CATEGORIES = [
 ```
 
 This matches PRD Appendix A, FRD 2, and FRD 7. **FRD 5 had an outdated list** (Competition Teams, Student Government, etc.) which has been corrected in FRD 5 as part of the review pass.
+
+### Rate Limiting Reference
+
+All write endpoints use **Upstash** (`@upstash/ratelimit` + `@upstash/redis`) via the shared helper at `src/lib/rate-limit.ts`. The package and env vars (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`) are established in FRD 5.
+
+Key strategy: **authenticated users** are keyed on `user_id`; **unauthenticated users** fall back to client IP. Auth requirement varies by endpoint — see the table below. All limits return `429` with a `Retry-After` header on breach.
+
+| Endpoint | FRD | Auth required? | Auth key | Unauth key | Auth limit | Unauth limit | Window |
+|----------|-----|----------------|----------|------------|------------|--------------|--------|
+| `POST /api/search` (RAG) | FRD 1 §12 | No | `user_id` | IP | 30/min | 10/min | Sliding |
+| `POST /api/pulse/vote` | FRD 2 §3.4 | **Yes** | `user_id` | n/a | 30 votes / 10 min | n/a | Sliding |
+| `POST /api/comments` | FRD 3 §12.4 | No | `user_id` | IP | 1/5s burst + 50/24h | 1/10s burst + 20/24h | Sliding + Fixed |
+| `POST /api/comments/[id]/replies` | FRD 3 §12.4 | No | `user_id` | IP | same as comments | same | Sliding + Fixed |
+| `POST /api/proposals` | FRD 4 §9.2 | No | `user_id` | IP | 5/hour | 3/hour | Sliding |
+| `POST /api/proposals/[id]/patchsets` | FRD 4 §9.2 | **Yes** (owner) | `user_id:proposalId` | n/a | 3/10 min | n/a | Sliding |
+| `POST /api/admin/cold-start/jobs` | FRD 5 §12 | **Yes** (admin) | `user_id` | n/a | Per FRD 5 spec | n/a | Fixed |
+
+**Implementation note:** check the rate limit at the **top** of the route handler, before any DB reads or AI calls, so a limited request pays zero additional cost.

@@ -126,15 +126,23 @@ Feature: Wiki Pages, Directory, Editor, and Edit Proposals
     Then   the Pulse infobox shows Selectivity, Vibe Check, Co-op Boost, Tech Stack tags, and Health Status
     And    vote counts are displayed next to each metric for transparency
 
-  Scenario: User submits a Pulse vote
-    When   a user expands the "Rate This Org" widget
+  Scenario: Authenticated user submits a Pulse vote
+    Given  the user is signed in
+    When   the user expands the "Rate This Org" widget
     And    selects "Application-Based" for Selectivity
     And    sets Vibe Check to 3
     And    sets Co-op Boost to 4
     And    clicks "Submit Rating"
-    Then   the vote is recorded with a session fingerprint
+    Then   the vote is recorded and linked to their account (user_id)
     And    the displayed aggregate values update
-    And    the user cannot vote again for this org in this session
+    And    the user cannot vote again for this org on this metric
+
+  Scenario: Unauthenticated user attempts to vote on Pulse
+    Given  the user is not signed in
+    When   the user expands the "Rate This Org" widget
+    And    clicks "Submit Rating"
+    Then   an AuthModal appears prompting sign-in
+    And    the pending Pulse vote is preserved for auto-resume after authentication
 
   # --- Inline Editor ---
 
@@ -636,12 +644,40 @@ The user submits all ratings in one form. A "Submit Rating" button fires the API
 
 ### 3.4 Rate Limiting
 
-The system shall:
+The system uses two layers of protection:
 
-1. Generate a session fingerprint from a combination of: user agent string + screen resolution + timezone. Store it as a hashed value.
-2. Before inserting a vote, check `pulse_ratings` for an existing row with the same `session_id` + `org_id` + `metric`.
-3. If a duplicate exists, reject the vote with a message: "You've already rated this metric for this org."
-4. No account is required to vote.
+**Authentication:** `POST /api/pulse/vote` requires a signed-in user (`requireUser()`). Unauthenticated users who click "Submit Rating" see the AuthModal; the pending vote is preserved via FRD 6's pending-action system (`pulse.vote` action type) and auto-replayed after sign-in.
+
+**Primary dedup — DB-enforced unique constraint:**
+
+1. `pulse_ratings` has a `UNIQUE(user_id, org_id, metric)` constraint.
+2. Before inserting a vote, the DB rejects duplicate rows with a conflict error.
+3. The API maps this to a `409` response with message: "You've already rated this metric for this org."
+
+**Secondary — Upstash rate limit (anti-script backstop):**
+
+4. Run an Upstash sliding-window check keyed on `pulse:user:${userId}`: **30 votes / 10 minutes** per user across all orgs and metrics.
+5. If exceeded, return `429` with `Retry-After` header. UI shows "Too many ratings — please try again in a few minutes."
+6. Rationale: the DB unique constraint handles honest per-metric dedup; the Upstash cap catches a script that creates one vote per org across many orgs in rapid succession.
+
+Applied to: `POST /api/pulse/vote`. Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
+
+### 3.4.1 Schema Amendment
+
+The `pulse_ratings` table (created in FRD 0) must be migrated:
+
+```sql
+-- Remove old session-based column and constraint
+ALTER TABLE pulse_ratings DROP COLUMN IF EXISTS session_id;
+ALTER TABLE pulse_ratings DROP CONSTRAINT IF EXISTS pulse_ratings_session_org_metric_key;
+
+-- Add user-based column and constraint
+ALTER TABLE pulse_ratings
+  ADD COLUMN user_id UUID NOT NULL REFERENCES users(id);
+
+ALTER TABLE pulse_ratings
+  ADD CONSTRAINT pulse_ratings_user_org_metric_key UNIQUE (user_id, org_id, metric);
+```
 
 ### 3.5 Aggregation
 
@@ -707,7 +743,7 @@ export async function recomputeAggregate(orgId: string, metric: string) {
 
 ### 3.6 Cold-Start Seeded Values
 
-When the cold-start agent (future FRD) generates a page, it also inserts initial `pulse_ratings` rows with a special `session_id` of `"cold-start-agent"`. These count as a single vote each. As human votes accumulate, the cold-start values are naturally diluted via the median/mode aggregation.
+When the cold-start agent (FRD 5) generates a page, it also inserts initial `pulse_ratings` rows using the admin service account's `user_id` (a dedicated system user created in FRD 0). These count as a single vote each. As human votes accumulate, the cold-start values are naturally diluted via the median/mode aggregation. The unique constraint on `(user_id, org_id, metric)` means the system account can only seed each metric once per org.
 
 ---
 
@@ -1510,13 +1546,15 @@ FRD 2 is complete when ALL of the following are satisfied:
 | 6   | Page header shows org name, category badge, and last updated | Verify all metadata is visible in the header                                                                           |
 | 7   | Pulse sidebar displays all metrics                           | Verify Selectivity, Vibe Check, Co-op Boost, Tech Stack, and Health Status appear                                      |
 | 8   | Pulse voting widget submits a rating                         | Submit a rating and verify the aggregate updates                                                                       |
-| 9   | Pulse rate limiting prevents duplicate votes                 | Attempt to vote twice in the same session and verify the second is rejected                                            |
+| 9   | Pulse voting requires authentication                         | Attempt to vote while signed out and verify the AuthModal appears; sign in and verify the vote is recorded and linked to `user_id` |
+| 9b  | Pulse dedup prevents duplicate votes per authenticated user  | Submit a vote, then attempt the same metric again as the same user and verify the second is rejected with 409           |
 | 10  | "Propose Edit" transforms page into inline editor            | Click the button and verify the Tiptap toolbar appears and content becomes editable                                    |
 | 11  | All Tiptap extensions work                                   | Test headings, bold, lists, links, images, tables, code blocks, blockquotes, dividers                                  |
 | 12  | Image upload works via paste, drag-drop, and toolbar         | Upload an image via each method and verify it appears in the editor                                                    |
 | 13  | Autosave to localStorage works                               | Edit content, navigate away, return, and verify the draft recovery banner appears                                      |
 | 14  | Submission dialog shows diff and preview tabs                | Click "Submit Proposal" and verify both tabs render correctly                                                          |
-| 15  | Auth modal appears for unauthenticated users on submit       | Attempt to submit without signing in and verify the auth modal                                                         |
+| 15  | PR proposals can be submitted anonymously                    | Attempt to submit a proposal without signing in and verify it succeeds, with contributor shown as "Anonymous"          |
+| 15b | Auth modal appears for unauthenticated users attempting to vote Pulse | Attempt to submit a Pulse vote without signing in and verify the auth modal appears                           |
 | 16  | AI pre-screen returns a verdict                              | Submit a proposal and verify a pass/fail badge appears on the confirmation page                                        |
 | 17  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/reviews` (FRD 7; `/admin/proposals` stub redirects there), and verify pending PRs appear |
 | 18  | Accept creates a new page version                            | Accept a proposal and verify the page content updates and version number increments                                    |

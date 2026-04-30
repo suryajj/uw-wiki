@@ -983,7 +983,7 @@ CREATE INDEX idx_chunks_type ON chunks (chunk_type);
 | **Latency** | First token within 2 seconds of query submission |
 | **Streaming** | Full response streams token-by-token, not delivered as a block |
 | **SEO** | Search results pages are NOT indexed (dynamic, per-session content) |
-| **Rate limiting** | No rate limiting on RAG search for MVP (revisit if abuse occurs) |
+| **Rate limiting** | Upstash sliding-window: **30 queries / 1 min** per authenticated user (`user_id` key); **10 queries / 1 min** per unauthenticated requester (IP key). Enforced in `POST /api/search` before the retrieval step. Returns `429` with `Retry-After` header. UI shows "You're searching too fast — please wait a moment." Rationale: RAG queries incur both OpenRouter LLM cost and pgvector DB cost; unauthenticated cap is tighter because there is no accountability signal. See `src/lib/rate-limit.ts` shared helper (FRD 5 Section 12). |
 | **Cost monitoring** | Track OpenRouter API spend per feature (embedding vs. synthesis) via API usage dashboard |
 
 ---
@@ -1013,6 +1013,8 @@ FRD 1 is complete when ALL of the following are satisfied:
 | 17 | Fallback suggests pages when no content matches | Ask about a topic with no wiki content and verify page suggestions appear |
 | 18 | Re-embedding triggers on page edit | Accept an edit proposal and verify old chunks are deleted and new ones created |
 | 19 | Re-embedding triggers on comment creation/deletion | Create and delete a comment and verify chunks are added/removed accordingly |
+| 20 | Authenticated rate limit enforced | Send 31 consecutive queries as a signed-in user and verify the 31st returns 429 |
+| 21 | Unauthenticated rate limit enforced | Send 11 consecutive queries as an anonymous user and verify the 11th returns 429 |
 
 ---
 

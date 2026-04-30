@@ -314,8 +314,8 @@ Any user can propose an edit to a wiki page, similar to a GitHub pull request. T
 2. The Tiptap editor loads with only the selected section(s) pre-filled -- edits are section-scoped, not full-page
 3. Multi-section proposals open a tabbed editor (one tab per section); single-section proposals open a single inline editor
 4. User writes a short rationale explaining why their edit aligns with platform values
-5. If the user is not signed in, they are prompted to sign in or create an account (Google OAuth or email/password)
-6. On submission, the system generates a per-section diff for each selected section and creates an edit proposal record with an array of section slugs
+5. No account is required to submit — anonymous proposals are accepted and shown with contributor "Anonymous"; signed-in users can optionally attribute their proposal to their account
+6. On submission, the system generates a per-section diff for each selected section and creates an edit proposal record with an array of section slugs (`contributor_id` is NULL for anonymous submissions)
 
 **AI pre-screening:**
 
@@ -360,7 +360,7 @@ The Pulse is a standalone voting widget on each wiki page that allows users to s
 - The Pulse widget is displayed on the page as a collapsible card (not part of the main content area)
 - Users rate each applicable metric: Selectivity (categorical dropdown), Vibe Check (1-5 slider), Co-op Boost (1-5 stars)
 - Tech Stack / Tooling is contributed as freeform tags, deduplicated and aggregated
-- No account is required to vote, but rate-limiting prevents ballot-stuffing (one vote per session per org per metric)
+- **An account is required to vote** — Pulse ratings are tied to authenticated `user_id` to ensure data integrity and prevent session-based ballot-stuffing; one vote per user per org per metric enforced via unique constraint
 - Displayed values are aggregates: median for numeric ratings, mode for categorical, count of total votes shown for transparency
 
 **Cold-start seeding:** When the cold-start agent generates a first-draft page, it also populates initial Pulse values based on publicly available information (e.g., if a team's website says "applications open each term," Selectivity is set to "Application-Based"). These AI-seeded values are clearly tagged and weighted lower than human-submitted ratings once crowdsourced data starts flowing.
@@ -436,8 +436,8 @@ Staleness thresholds are configurable per org category, because different types 
 | Role | Who | Access |
 |---|---|---|
 | **Viewer** | Anyone | No account required to read any page or use RAG search |
-| **Commenter** | Any authenticated user | Account required to leave inline comments (anonymous by default) |
-| **Contributor** | Any authenticated user | Account required to submit edit proposals (PRs) |
+| **Commenter** | Anyone | No account required to leave inline comments; shown as "Anonymous" by default; signed-in users may optionally attribute |
+| **Contributor** | Anyone | No account required to submit edit proposals (PRs); shown as "Anonymous" by default; signed-in users may optionally attribute |
 | **Reviewer** | Editorial board member | Can accept/reject PRs, see AI pre-screen results, manage pending queue |
 | **Admin** | Platform operators | Can run cold start agent, approve page claims, manage editorial board, configure lifecycle thresholds |
 
@@ -449,7 +449,7 @@ A small independent editorial board of 3-5 people at launch, platform-affiliated
 
 ### Anonymity Model
 
-Anonymous by default. Contributors may optionally attach a name or attribution to their edit proposals and comments. Even when publicly anonymous, the system logs the contributor's identity internally (account ID) for abuse tracking and moderation purposes. Since both commenting and submitting PRs require an account, all contributions are traceable to a specific user.
+Anonymous by default. No account is required to comment or submit a PR — submissions are always shown as "Anonymous" unless the user is signed in and explicitly opts in to attribution. Truly anonymous submissions (no account) have no internal identity record; abuse prevention relies on IP-based rate limiting and manual editorial review of all PRs. Signed-in users who submit anonymously still have their `user_id` stored internally for moderation, even though they appear publicly as "Anonymous."
 
 ### AI Pre-Screening
 
@@ -493,9 +493,9 @@ The following values define what content is accepted and what gets rejected. The
 |---|---|---|
 | Browse pages and directory | None | No |
 | Use RAG search | None | No |
-| Leave inline comments | Account (Google OAuth or email/password) | Account ID |
-| Rate Pulse metrics | None | Session (rate-limited) |
-| Submit edit proposals (PRs) | Account (Google OAuth or email/password) | Account ID |
+| Leave inline comments | None (anonymous by default; attribution optional if signed in) | Account ID if signed in, otherwise null |
+| Rate Pulse metrics | Account (Google OAuth or email/password) | Account ID |
+| Submit edit proposals (PRs) | None (anonymous by default; attribution optional if signed in) | Account ID if signed in, otherwise null |
 | View contribution history | Account | Account ID |
 | Bookmark pages | Account | Account ID |
 | Review PRs (editorial board) | Full account + reviewer role | Account ID |
@@ -524,8 +524,8 @@ All authenticated users (Google OAuth or email/password) have access to:
 ### Abuse Prevention
 
 - **Manual moderation:** The editorial board reviews all PRs -- no content goes live without human approval
-- **Rate limiting:** Pulse voting is limited to one vote per session per org per metric. Comment submission is rate-limited per account.
-- **Internal tracking:** All comments and edit proposals are linked to an authenticated account. Even when publicly anonymous, the contributor's account ID is logged for abuse investigation.
+- **Rate limiting:** Pulse voting is limited to one vote per authenticated user per org per metric. Comment and PR submission are IP-rate-limited for anonymous users; `user_id`-rate-limited for signed-in users.
+- **Internal tracking:** Signed-in contributors have their account ID logged internally even when posting anonymously. Truly anonymous (no account) contributors are tracked by IP for rate limiting only.
 - **No CAPTCHA for MVP:** With manual moderation on all PRs and rate-limiting on comments/votes, CAPTCHA is unnecessary at launch scale. Revisit if spam volume increases.
 
 ---
@@ -796,7 +796,8 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 - Bookmarks and contribution history (saved pages, personal PR history)
 - Automated lifecycle banners with configurable thresholds per category (client-rendered, no cron)
 - Google OAuth + email/password authentication (Supabase Auth)
-- Account required for comments and edit proposals (Google OAuth or email/password)
+- Anonymous comments and edit proposals (no account required); signed-in users can attribute contributions to their account
+- Account required for Pulse voting, comment upvotes/downvotes, bookmarks, and contribution history
 - Server-side rendering for SEO (Next.js SSR)
 
 ### Post-MVP / Future

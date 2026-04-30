@@ -8,7 +8,7 @@
 | **PRD Sections**    | 9 (Identity and Authentication), 12 (UX and UI Design)                                                                                                                |
 | **Type**            | User-facing auth feature                                                                                                                                              |
 | **Depends On**      | FRD 0                                                                                                                                                                 |
-| **Unblocks**        | User-facing write paths in FRD 2 (PR submit), FRD 3 (comment submit + vote), FRD 4 (PR submit), FRD 5 (admin access)                                                  |
+| **Unblocks**        | User-facing auth-gated write paths: FRD 2 (Pulse vote), FRD 3 (comment vote, bookmark), FRD 5 (admin access), FRD 8 (bookmarks). Note: comment submit and PR proposal submit no longer require auth and are not unblocked by FRD 6. |
 | **Delivers**        | `/auth/sign-in` page, AuthModal component, email/password signup with magic-link verification, passwordless magic-link sign-in, password reset, Google OAuth, sign-out, header user state + dropdown, pending-action preservation with 24h localStorage TTL, `returnTo` routing, guard redirects, stub `/my/*` routes |
 | **Created**         | 2026-04-07                                                                                                                                                            |
 
@@ -18,7 +18,7 @@
 
 FRD 6 delivers the complete user-facing authentication experience that FRD 0 deliberately deferred. It turns the auth baseline (Supabase Auth providers, SSR cookies, middleware, guards, `public.users` sync) into an end-to-end UX: a dedicated `/auth/sign-in` page, a reusable `AuthModal` that FRDs 2 and 3 attach to PR submission, comment submission, and comment voting, an email/password signup flow with magic-link verification, passwordless magic-link sign-in, password reset, Google OAuth with automatic account linking, and a header user state with a minimal dropdown (`My Contributions`, `Bookmarks`, `Sign Out`).
 
-FRD 6 also solves the cross-cutting problem that OAuth causes in write flows: a user clicking "Continue with Google" from the comment submit modal, the PR submit dialog, or the bookmark button is redirected off-site to Google and their pending action (draft text, vote, proposal content) is lost from memory. FRD 6 defines a localStorage-backed pending-action system with a 24-hour TTL that persists the action, correlates it through the auth round-trip, and auto-resumes on the first authenticated page load -- even in a new tab.
+FRD 6 also solves the cross-cutting problem that OAuth causes in write flows: a user clicking "Continue with Google" from the Pulse vote widget, the comment vote button, or the bookmark button is redirected off-site to Google and their pending action is lost from memory. FRD 6 defines a localStorage-backed pending-action system with a 24-hour TTL that persists the action, correlates it through the auth round-trip, and auto-resumes on the first authenticated page load -- even in a new tab. Note: comment submission and PR proposal submission no longer require auth and therefore do not need pending-action preservation.
 
 This FRD is deliberately scoped tightly. Profile and settings pages, email/password changes while signed in, account deletion, session management UI, 2FA, and analytics telemetry are all out of scope and reserved for later FRDs. UW SSO/CAS is Post-MVP per PRD.
 
@@ -144,23 +144,16 @@ Feature: Auth UI and pending-action preservation
     And they set a new password
     And they are signed in with the new password
 
-  Scenario: Pending comment submit survives Google OAuth redirect
-    Given an unauthenticated user types a comment on a wiki page
-    When they click "Post" on the comment form
-    Then a pending-action is written to localStorage with a correlation ID
+  Scenario: Pending Pulse vote survives Google OAuth redirect
+    Given an unauthenticated user expands the "Rate This Org" widget
+    When they select ratings and click "Submit Rating"
+    Then a pending-action of type pulse.vote is written to localStorage with a correlation ID
     And the AuthModal opens
     When they click "Continue with Google"
     And complete OAuth consent
     Then on the first authenticated page load the pending action is detected
-    And the comment is submitted automatically
+    And the Pulse vote is submitted automatically against POST /api/pulse/vote
     And the pending action is cleared from localStorage
-
-  Scenario: Pending PR submit survives Google OAuth redirect
-    Given an unauthenticated user has drafted an edit to a section
-    When they click "Submit Proposal"
-    Then the proposal JSON, rationale, section slugs, and base version are persisted as a pending action
-    And after OAuth sign-in the proposal is submitted automatically
-    And the user lands on the proposal confirmation page
 
   Scenario: Pending action survives browser close and new-tab sign-in
     Given a pending action exists in localStorage
@@ -526,16 +519,17 @@ The pending-action system preserves the user's intent across any of these redire
 
 ### 2.2 Action Types
 
-Four pending action types are preserved in FRD 6. Each has a Zod schema (Appendix B).
+Three pending action types are preserved in FRD 6. Each has a Zod schema (Appendix B).
 
-| Type                   | Written When                                       | Replay Endpoint                                                                 |
-| ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `comment.submit`       | User clicks "Post" on the comment form            | `POST /api/comments` (FRD 3)                                                    |
-| `comment.vote`         | User clicks up/down arrow on a comment             | `POST /api/comments/[id]/vote` (FRD 3)                                          |
-| `proposal.submit`      | User clicks "Submit Proposal" in PR dialog         | `POST /api/proposals` (FRD 4)                                                   |
-| `bookmark.toggle`      | User clicks the bookmark icon on a page            | `POST /api/bookmarks/toggle` (FRD 8)                 |
+| Type                   | Written When                                           | Replay Endpoint                                       |
+| ---------------------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| `pulse.vote`           | User clicks "Submit Rating" on Pulse widget (unauthed) | `POST /api/pulse/vote` (FRD 2)                        |
+| `comment.vote`         | User clicks up/down arrow on a comment (unauthed)      | `POST /api/comments/[id]/vote` (FRD 3)                |
+| `bookmark.toggle`      | User clicks the bookmark icon on a page (unauthed)     | `POST /api/bookmarks/toggle` (FRD 8)                  |
 
-Pulse votes are NOT preserved because Pulse is session-based (no auth) per PRD §6.6.
+**Removed:** `comment.submit` and `proposal.submit` are no longer preserved — comments and PR proposals no longer require authentication and can be submitted directly without an account.
+
+**Added:** `pulse.vote` — Pulse now requires authentication (FRD 2 amendment), so unauthenticated users who attempt to vote see the AuthModal and their intended vote is preserved for auto-replay after sign-in.
 
 ### 2.3 Storage Schema
 
@@ -553,9 +547,9 @@ interface PendingActionEnvelope {
 }
 
 type PendingAction =
-  | { type: "comment.submit"; payload: CommentSubmitPayload }
+  | { type: "pulse.vote"; payload: PulseVotePayload }
   | { type: "comment.vote"; payload: CommentVotePayload }
-  | { type: "proposal.submit"; payload: ProposalSubmitPayload }
+
   | { type: "bookmark.toggle"; payload: BookmarkTogglePayload };
 ```
 
@@ -625,9 +619,9 @@ interface ReplayResult {
 
 Toast copy examples:
 
-- `comment.submit` success: "Your comment was posted."
+- `pulse.vote` success: "Your Pulse rating was submitted."
 - `comment.vote` success: "Vote recorded."
-- `proposal.submit` success: "Proposal submitted for review." (and navigate to confirmation page).
+- `bookmark.toggle` success: "Page bookmarked." / "Bookmark removed."
 - `bookmark.toggle` success: "Bookmarked." or "Removed from bookmarks."
 
 ### 2.6 Correlation With OAuth `state` Param
@@ -1192,24 +1186,20 @@ AuthModal (Dialog wrapper or full-page card)
 
 ### 8.1 FRD 2: Wiki Pages
 
-**§5.3 Step 3 (PR Submit Auth Gate):** The submission dialog calls `useAuthModal` with a `proposal.submit` pending action when the user clicks "Submit" while unauthenticated.
+**§5.3 Step 3 (Pulse Vote Auth Gate):** The Pulse widget calls `useAuthModal` with a `pulse.vote` pending action when an unauthenticated user clicks "Submit Rating." Comment and PR proposal submission do not use an auth gate — they are publicly submittable.
 
 ```typescript
-// inside FRD 2's PR submission dialog component
+// inside FRD 2's Pulse vote widget component
 const { openAuthModal } = useAuthModal();
 
-async function handleSubmit() {
+async function handlePulseSubmit(ratings: PulseRatings) {
   if (!user) {
     openAuthModal({
       pendingAction: {
-        type: "proposal.submit",
+        type: "pulse.vote",
         payload: {
-          pageId,
-          basePageVersionId,
-          sectionSlugs,
-          sectionDiffs,
-          rationale,
-          isAnonymous,
+          orgId,
+          ratings, // { selectivity, vibeCheck, coopBoost, techStack }
         },
       },
       initialState: "signIn",
@@ -1217,27 +1207,25 @@ async function handleSubmit() {
     return;
   }
 
-  // ...normal authenticated submission
+  // ...normal authenticated Pulse submission
 }
 ```
 
-Exit criterion 15 of FRD 2 ("Auth modal appears for unauthenticated users on submit") is satisfied by FRD 6 providing the AuthModal.
+Exit criterion 15b of FRD 2 ("Auth modal appears for unauthenticated users attempting to vote Pulse") is satisfied by FRD 6 providing the AuthModal. Note: FRD 2 exit criterion 15 has been updated — PR proposals no longer show an auth gate.
 
 ### 8.2 FRD 3: Comments
 
-Two integration points:
-
-**Comment submission:** hook the comment form's submit handler with a `comment.submit` pending action.
+One integration point:
 
 **Comment vote:** when an unauthenticated user clicks up/down arrow, open AuthModal with a `comment.vote` pending action.
 
-Both are thin wrappers over `useAuthModal`. See Appendix B for payload shapes.
+Note: comment *submission* no longer requires authentication and does not use the AuthModal.
 
 FRD 3's exit criterion 19 ("Unauthenticated vote shows auth modal") is satisfied.
 
 ### 8.3 FRD 4: PR-Edit System
 
-Flows through FRD 2's submission dialog (Section 8.1). No additional integration required.
+PR proposal submission no longer requires authentication. No AuthModal integration needed for proposal submit.
 
 ### 8.4 FRD 5: Cold Start Agent
 
@@ -1446,16 +1434,15 @@ export const pendingActionEnvelopeSchema = z.object({
   triggeredFrom: z.string().startsWith("/"),
   action: z.discriminatedUnion("type", [
     z.object({
-      type: z.literal("comment.submit"),
+      type: z.literal("pulse.vote"),
       payload: z.object({
-        pageId: z.string().uuid(),
-        sectionSlug: z.string().min(1),
-        anchorText: z.string().min(1).max(2000),
-        anchorOffsetStart: z.number().int().nonnegative(),
-        anchorOffsetEnd: z.number().int().nonnegative(),
-        body: z.string().min(1).max(1500),
-        isAnonymous: z.boolean(),
-        parentCommentId: z.string().uuid().optional(),
+        orgId: z.string().uuid(),
+        ratings: z.object({
+          selectivity: z.enum(["Open", "Application-Based", "Competitive", "Invite-Only"]).optional(),
+          vibeCheck: z.number().int().min(1).max(5).optional(),
+          coopBoost: z.number().int().min(1).max(5).optional(),
+          techStack: z.array(z.string().min(1).max(50)).optional(),
+        }),
       }),
     }),
     z.object({
@@ -1463,23 +1450,6 @@ export const pendingActionEnvelopeSchema = z.object({
       payload: z.object({
         commentId: z.string().uuid(),
         direction: z.enum(["up", "down"]),
-      }),
-    }),
-    z.object({
-      type: z.literal("proposal.submit"),
-      payload: z.object({
-        pageId: z.string().uuid(),
-        basePageVersionId: z.string().uuid(),
-        sectionSlugs: z.array(z.string().min(1)).min(1),
-        sectionDiffs: z.array(
-          z.object({
-            sectionSlug: z.string().min(1),
-            baseSectionHash: z.string().min(1),
-            proposedSectionJson: z.unknown(),
-          })
-        ),
-        rationale: z.string().min(20).max(500),
-        isAnonymous: z.boolean(),
       }),
     }),
     z.object({

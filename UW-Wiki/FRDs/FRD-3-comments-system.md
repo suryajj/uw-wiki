@@ -69,21 +69,23 @@ Feature: Comments System
     And    a comment composer appears at the top of the sidebar
     And    the selected text is stored as the anchor_text
 
-  Scenario: User submits a comment
+  Scenario: Anonymous user submits a comment
     Given  the comment composer is open
+    And    the user is not signed in
     When   the user types a comment (up to 1500 characters)
-    And    applies basic markdown formatting (bold, italic, links)
     And    clicks "Submit"
-    Then   the system requires authentication if not signed in
-    And    the comment is saved with anchor_text and section_slug
-    And    the comment appears immediately in the sidebar
+    Then   the comment is saved with anchor_text and section_slug (contributor_id is NULL)
+    And    the comment appears immediately in the sidebar showing "Anonymous"
     And    a comment chunk is created for RAG indexing (FRD 1)
+    And    no auth modal appears
 
-  Scenario: Unauthenticated user attempts to submit a comment
-    Given  the user is not signed in
-    When   the user clicks "Submit" on the comment composer
-    Then   an auth modal appears (Google OAuth or email/password)
-    And    after successful sign-in, the comment is submitted automatically
+  Scenario: Signed-in user submits an attributed comment
+    Given  the comment composer is open
+    And    the user is signed in
+    When   the user toggles attribution to show their display name
+    And    clicks "Submit"
+    Then   the comment is saved with contributor_id set to their user_id
+    And    the comment displays their display name
 
   # --- Comment Display: Margin Indicators ---
 
@@ -374,7 +376,7 @@ The comment composer contains:
 | **Textarea** | Multi-line input for the comment body. Placeholder: "Share your thoughts..." |
 | **Character counter** | Shows "X / 1500" with the count turning red when approaching the limit. |
 | **Formatting toolbar** | Three buttons: Bold (B), Italic (I), Link (🔗). |
-| **Attribution toggle** | Switch defaulting to "Anonymous." Toggling shows "Attributed to: [display name]." |
+| **Attribution toggle** | Only shown when the user is signed in. Defaults to "Anonymous." Toggling shows "Attributed to: [display name]." If the user is not signed in, no toggle is shown and the comment is always submitted as "Anonymous." |
 | **Submit button** | "Submit" (gold accent). Disabled if body is empty. |
 | **Cancel button** | "Cancel" text link. Closes the composer without submitting. |
 
@@ -535,11 +537,11 @@ Each comment is stored in the `comments` table:
 | `id` | UUID | Primary key |
 | `page_id` | UUID | Foreign key to `pages` |
 | `parent_comment_id` | UUID | NULL for top-level comments, references `comments.id` for replies |
-| `user_id` | UUID | Foreign key to `users` (the author) |
+| `contributor_id` | UUID | Nullable foreign key to `users` (NULL for truly anonymous submissions; set when a signed-in user submits) |
 | `anchor_text` | TEXT | The exact text span the user selected (up to 500 chars) |
 | `section_slug` | TEXT | The slug of the H2 section the comment is anchored to |
 | `body` | TEXT | The comment content (up to 1500 chars, may contain markdown) |
-| `is_anonymous` | BOOLEAN | Whether to display author name (default: true) |
+| `is_anonymous` | BOOLEAN | Whether to display author name (default: true). When `contributor_id` is NULL this is always true; when signed in the user can toggle it. |
 | `is_edited` | BOOLEAN | Whether the comment has been edited (default: false) |
 | `upvotes` | INTEGER | Cached upvote count |
 | `downvotes` | INTEGER | Cached downvote count |
@@ -1588,6 +1590,37 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
 ---
 
+### 12.4 Rate Limiting
+
+Comment and reply submission are rate-limited using Upstash. Because no account is required, the primary key is the client IP address. When a signed-in user submits, their `user_id` is used instead for more accurate tracking.
+
+**For unauthenticated (anonymous) requests — IP-based:**
+
+| Limit | Key | Window | Value |
+|-------|-----|--------|-------|
+| Burst | `comment:burst:ip:${hashedIp}` | Sliding | 1 comment / 10 seconds |
+| Daily cap | `comment:daily:ip:${hashedIp}` | Fixed | 20 comments / 24 hours |
+
+**For authenticated requests — user_id-based (tighter, more accurate):**
+
+| Limit | Key | Window | Value |
+|-------|-----|--------|-------|
+| Burst | `comment:burst:user:${userId}` | Sliding | 1 comment / 5 seconds |
+| Daily cap | `comment:daily:user:${userId}` | Fixed | 50 comments / 24 hours |
+
+The burst check runs first; if it passes, the daily check runs second. Both apply equally to `POST /api/comments` and `POST /api/comments/[id]/replies`.
+
+**Responses:**
+
+| Limit hit | HTTP status | UI message |
+|-----------|-------------|------------|
+| Burst | `429` + `Retry-After` | "You're posting too quickly — please wait a moment." |
+| Daily cap | `429` + `Retry-After` (seconds until midnight) | "You've reached the daily comment limit. Try again tomorrow." |
+
+**Rationale:** IP burst at 1/10s (vs 1/5s for auth) accounts for shared campus/dorm IPs where multiple real users may share an address. The lower daily IP cap (20) reflects lower confidence in IP as an identity signal. Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
+
+---
+
 ## 13. RAG Integration
 
 ### 13.1 Overview
@@ -1755,6 +1788,7 @@ CREATE INDEX idx_comments_user_id ON comments (user_id);
 | **Vote recording** | < 500ms |
 | **Re-anchoring (per page load)** | < 100ms for up to 100 comments |
 | **Comment fetch** | < 500ms for a page with 100 comments |
+| **Rate limit check overhead** | < 10ms per request (Upstash Redis, runs before submission logic) |
 
 ---
 
@@ -1766,9 +1800,9 @@ FRD 3 is complete when ALL of the following are satisfied:
 |---|---|---|
 | 1 | Text selection shows "Add Comment" button | Select text on a wiki page and verify the button appears |
 | 2 | Comment composer opens in sidebar | Click the button and verify the sidebar opens with composer |
-| 3 | Comment submission works | Submit a comment and verify it appears in the sidebar |
-| 4 | Anonymous submission is default | Submit without toggling attribution and verify "Anonymous" display |
-| 5 | Attributed submission works | Toggle attribution, submit, and verify display name appears |
+| 3 | Anonymous comment submission works without account | Submit a comment while signed out and verify it appears in the sidebar as "Anonymous" with no auth prompt |
+| 4 | Anonymous submission is always anonymous | Submit without toggling attribution and verify "Anonymous" display; no attribution toggle is shown to unsigned-in users |
+| 5 | Attributed submission works for signed-in users | Sign in, toggle attribution, submit, and verify display name appears |
 | 6 | Margin indicators show correct counts | Create comments in different sections and verify counts |
 | 7 | Margin indicator click opens sidebar | Click a margin indicator and verify sidebar opens to that section |
 | 8 | Sidebar sorts by document position | Create comments in different sections and verify order |
@@ -1792,6 +1826,10 @@ FRD 3 is complete when ALL of the following are satisfied:
 | 26 | Orphan flag updates on page edit | Edit page to remove anchor text and verify `references_previous_version = true` |
 | 27 | 1500 character limit enforced | Attempt to submit > 1500 chars and verify rejection |
 | 28 | Basic markdown renders | Submit a comment with `**bold**` and verify it renders as bold |
+| 29 | Anonymous burst rate limit enforced | Submit 2 comments within 10 seconds from the same IP (unauthenticated) and verify the second returns 429 |
+| 30 | Authenticated burst rate limit enforced | Submit 2 comments within 5 seconds as a signed-in user and verify the second returns 429 |
+| 31 | Anonymous daily cap enforced | Simulate 21 anonymous submissions in a 24h window and verify the 21st returns 429 |
+| 32 | Authenticated daily cap enforced | Simulate 51 submissions in a 24h window as a signed-in user and verify the 51st returns 429 |
 
 ---
 

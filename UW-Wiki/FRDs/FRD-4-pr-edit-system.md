@@ -198,8 +198,8 @@ When editing multiple sections, the editor presents:
    - Editable proposed section content.
    - Live diff indicator (badge showing added/removed word count).
 3. **Rationale field** (single, shared across all selected sections) below the tabbed editor area.
-4. **Attribution toggle** (anonymous default).
-5. **Submit Proposal** button -- submits all edited sections as one proposal.
+4. **Attribution toggle** — only shown when the user is signed in. Defaults to "Anonymous." If the user is not signed in, no toggle is shown and the proposal is always submitted as "Anonymous" (`contributor_id = NULL`).
+5. **Submit Proposal** button — submits all edited sections as one proposal. No authentication is required to submit; anonymous submissions are accepted.
 
 For single-section proposals, the tab bar is hidden and the layout is the same as before.
 
@@ -322,7 +322,7 @@ CREATE TABLE edit_proposal_patchsets (
   ai_reason TEXT,
   ai_scored_at TIMESTAMPTZ,
   is_current BOOLEAN NOT NULL DEFAULT true,
-  contributor_id UUID NOT NULL REFERENCES users(id),
+  contributor_id UUID REFERENCES users(id),  -- NULL for anonymous patchset 1; patchset_number > 1 requires auth (enforced in application logic)
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (proposal_id, patchset_number)
 );
@@ -682,14 +682,33 @@ interface SectionProposalDetail {
 
 ### 9.1 Auth Requirements
 
-1. Proposal submission requires authenticated user.
-2. Decision endpoints require reviewer/admin role.
-3. API must validate ownership for patchset and withdraw actions.
+1. **Proposal submission (`POST /api/proposals`) is public** — no authentication required. Anonymous proposals set `contributor_id = NULL` and appear as "Anonymous" to reviewers and readers.
+2. **Decision endpoints** (accept, reject, request-changes) require `reviewer` or `admin` role.
+3. **Patchset submission (`POST /api/proposals/[id]/patchsets`)** requires authentication — ownership must be verified (`contributor_id` must equal current user). Anonymous proposals (contributor_id = NULL) **cannot** receive patchsets; only the original reviewer can take action on them.
+4. **Withdraw (`POST /api/proposals/[id]/withdraw`)** requires authentication and ownership verification. Anonymous proposals cannot be withdrawn (no owner to verify).
+5. **COI check for anonymous proposals:** since `contributor_id` is NULL, the "reviewer cannot act on own proposal" check is skipped. A reviewer can act on any anonymous proposal.
 
 ### 9.2 Rate Limiting
 
-1. Proposal submissions: per-user limit (e.g., 10/hour/page).
-2. Patchset submissions: per-proposal limit to prevent spam loops.
+All limits use Upstash sliding windows and run before any DB writes. Because proposal submission is now public (no auth required), limits are keyed on IP for anonymous users and `user_id` for signed-in users.
+
+**Proposal creation (`POST /api/proposals`):**
+
+| Requester | Key | Limit |
+|-----------|-----|-------|
+| Anonymous | `proposals:create:ip:${hashedIp}` | **3 proposals / hour** per IP |
+| Authenticated | `proposals:create:user:${userId}` | **5 proposals / hour** per user |
+
+Rationale: IP cap is lower (3 vs 5) because IP is a weaker identity signal and more likely to be shared. 3/hour is still generous for real contributors. On limit hit: `429` + `Retry-After`. Response: `{ ok: false, error: "Too many proposals — please wait before submitting again.", code: "RATE_LIMITED" }`.
+
+**Patchset submission (`POST /api/proposals/[id]/patchsets`):**
+
+- Requires authentication (anonymous proposals cannot receive patchsets — no owner to verify ownership).
+- **3 patchsets / 10 minutes** per user per proposal (Upstash sliding window, key = `proposals:patchset:${userId}:${proposalId}`)
+- Rationale: prevents a contributor from spamming patchsets to force reviewer re-reads or flood the AI pre-screener.
+- On limit hit: `429` + `Retry-After`. Response: `{ ok: false, error: "You're submitting patchsets too quickly — please wait a moment.", code: "RATE_LIMITED" }`.
+
+Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
 
 ### 9.3 Audit Log
 
@@ -703,9 +722,11 @@ Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
 ### 9.4 PII and Attribution
 
-1. Public UI respects anonymous default.
-2. Internal logs always persist contributor identity.
-3. Reviewer decisions are always internally attributable.
+1. Public UI respects anonymous default. If `contributor_id` is NULL the proposal shows "Anonymous" contributor everywhere.
+2. If a signed-in user submits with attribution toggled off, `contributor_id` is stored internally but the public display still shows "Anonymous."
+3. Truly anonymous proposals (NULL `contributor_id`) have no internal identity record; abuse is managed via IP rate limiting and reviewer moderation.
+4. Reviewer decisions are always internally attributable (reviewer is always authenticated).
+5. **FRD-8 contribution history:** `/my/contributions` only shows proposals where `contributor_id = current_user.id`. Anonymous proposals submitted without an account never appear in contribution history.
 
 ---
 
@@ -754,6 +775,12 @@ FRD 4 is complete when ALL of the following are satisfied:
 | 22  | New patchset from `changes_requested` transitions back to `pending` | Status becomes `pending` and proposal reappears in reviewer queue      |
 | 23  | Policy checks are server-enforced                            | Direct API call bypass attempts fail                                                |
 | 24  | End-to-end multi-section flow passes                         | Submit 2-section proposal → pre-screen → review → accept works without manual DB edits |
+| 25  | Anonymous proposal submission works                          | Submit a proposal while signed out; verify it succeeds and shows "Anonymous" as contributor in reviewer queue |
+| 26  | Signed-in proposal shows attributed contributor              | Submit as signed-in user with attribution on; verify display name appears |
+| 27  | Anonymous proposals cannot receive patchsets                 | Attempt to POST a patchset to a proposal with NULL contributor_id; verify 403 |
+| 28  | Authenticated proposal creation rate limit enforced          | Submit 6 proposals in under 1 hour as the same signed-in user; verify the 6th returns 429 |
+| 29  | Anonymous proposal creation rate limit enforced              | Submit 4 proposals in under 1 hour from the same IP (unsigned); verify the 4th returns 429 |
+| 30  | Patchset rate limit enforced                                 | Submit 4 patchsets on the same proposal within 10 minutes; verify the 4th returns 429 |
 
 ---
 
@@ -786,6 +813,9 @@ superseded (terminal)
 ```sql
 -- Proposal status and mergeability enums can be represented as CHECK constraints (shown in section 3).
 
+-- Make contributor_id nullable to support anonymous proposals (NULL = no account)
+ALTER TABLE edit_proposals ALTER COLUMN contributor_id DROP NOT NULL;
+
 ALTER TABLE edit_proposals
   ADD COLUMN proposal_scope TEXT NOT NULL DEFAULT 'section'
     CHECK (proposal_scope IN ('section')),
@@ -816,7 +846,7 @@ CREATE TABLE edit_proposal_patchsets (
   ai_reason TEXT,
   ai_scored_at TIMESTAMPTZ,
   is_current BOOLEAN NOT NULL DEFAULT true,
-  contributor_id UUID NOT NULL REFERENCES users(id),
+  contributor_id UUID REFERENCES users(id),  -- NULL for anonymous patchset 1; subsequent patchsets require auth (patchset_number > 1 must have contributor_id NOT NULL enforced in application logic)
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (proposal_id, patchset_number)
 );
