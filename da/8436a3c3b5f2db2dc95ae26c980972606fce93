@@ -1,0 +1,35 @@
+UW-Wiki/PRD.md
+  645a17d1e2ee583c 317-318,363,439-440,452,496-498,527-528,799-800
+UW-Wiki/FRDs/FRD-1-rag-pipeline.md
+  645a17d1e2ee583c 986,1016-1017
+UW-Wiki/FRDs/FRD-4-pr-edit-system.md
+  645a17d1e2ee583c 201-202,325,685-689,693-711,725-729,778-783,816-818,849
+UW-Wiki/FRDs/FRD-3-comments-system.md
+  645a17d1e2ee583c 72,74,77-78,80,82-88,379,540,544,1593-1623,1791,1803-1805,1829-1832
+UW-Wiki/FRDs/FRD-6-auth-ui.md
+  645a17d1e2ee583c 11,21,147-150,155,522-528,530,532,550,552,622,624,1189,1192,1195,1199,1201-1202,1210,1214,1218,1222,1228,1437,1439-1445
+UW-Wiki/FRDs/FRD-2-wiki-pages.md
+  645a17d1e2ee583c 129-131,136,138-145,647-657,659-680,746,1549-1550,1556-1557
+UW-Wiki/FRD-order.md
+  645a17d1e2ee583c 261-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "da8436a3c3b5f2db2dc95ae26c980972606fce93",
+  "prompts": {
+    "645a17d1e2ee583c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9584cfb4-c64d-4b41-a404-d68886f51a27",
+        "model": "claude-4.6-sonnet-medium-thinking"
+      },
+      "human_author": "Abeer Das",
+      "messages": [],
+      "total_additions": 252,
+      "total_deletions": 155,
+      "accepted_lines": 219,
+      "overriden_lines": 0
+    }
+  }
+}
