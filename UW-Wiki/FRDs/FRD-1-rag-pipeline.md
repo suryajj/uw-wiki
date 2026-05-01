@@ -15,7 +15,7 @@
 
 ## Summary
 
-FRD 1 builds the Retrieval-Augmented Generation (RAG) pipeline that powers UW Wiki's AI search -- the primary entry point into the product. The pipeline consists of three layers: an ingestion layer that parses ProseMirror JSON wiki pages into section-based chunks and embeds them as 512-dimensional vectors via OpenAI `text-embedding-3-small` (through OpenRouter), a hybrid retrieval engine that combines semantic search (pgvector cosine similarity) with keyword search (PostgreSQL full-text search) and merges results using Reciprocal Rank Fusion (RRF), and a synthesis layer where Gemini 2.5 Flash (via OpenRouter) generates streamed, cited answers using a `search_wiki` tool exposed through the Vercel AI SDK. Three chunk types populate the retrieval corpus: content chunks (wiki page sections), metadata chunks (Pulse ratings per org), and comment chunks (inline user comments). The LLM uses a tool-calling approach for multi-turn conversations, formulating its own search queries from conversation context. An application-level re-embedding pipeline keeps the corpus in sync when page edits are accepted, comments are created or deleted, or Pulse aggregates change. All answers include numbered inline citations with deep links to specific wiki page sections.
+FRD 1 builds the Retrieval-Augmented Generation (RAG) pipeline that powers UW Wiki's AI search -- the primary entry point into the product. The pipeline consists of three layers: an ingestion layer that parses ProseMirror JSON wiki pages into section-based chunks and embeds them as 512-dimensional vectors via OpenAI `text-embedding-3-small` (through OpenRouter), a hybrid retrieval engine that combines semantic search (pgvector cosine similarity) with keyword search (PostgreSQL full-text search) and merges results using Reciprocal Rank Fusion (RRF), and a synthesis layer where Gemini 2.5 Flash (via OpenRouter) generates streamed, cited answers using a `search_wiki` tool exposed through the Vercel AI SDK. Two chunk types populate the retrieval corpus: content chunks (wiki page sections) and comment chunks (inline user comments). Structured/quantifiable data (Pulse ratings, org metadata, lifecycle status) is no longer embedded as text — the LLM fetches it on demand via the `get_org_data` tool, which queries the `pulse_aggregates` and `organizations` tables directly. The LLM uses a tool-calling approach for multi-turn conversations, formulating its own search queries from conversation context. An application-level re-embedding pipeline keeps the corpus in sync when page edits are accepted, comments are created or deleted, or Pulse aggregates change. All answers include numbered inline citations with deep links to specific wiki page sections.
 
 ---
 
@@ -40,14 +40,13 @@ The following are assumed to be in place from FRD 0:
 |---|---|
 | Chunk | A self-contained segment of text with associated metadata, stored as a single embedding row in the `chunks` table |
 | Content chunk | A chunk derived from a wiki page section (e.g., "Time Commitment" for Midnight Sun) |
-| Metadata chunk | A synthetic chunk per org containing Pulse ratings (selectivity, vibe check, co-op boost, tech stack) in natural language |
 | Comment chunk | A chunk derived from a single inline user comment on a wiki page |
 | Hybrid search | Retrieval combining semantic similarity (pgvector vectors) and keyword matching (PostgreSQL full-text search) into a single ranked result set |
 | RRF (Reciprocal Rank Fusion) | A rank-based score combination algorithm that merges results from multiple retrieval methods without requiring score normalization |
 | Ingestion | The process of parsing page content, chunking it, embedding the chunks, and storing them in the database |
-| Re-embedding | Deleting stale chunks and creating new ones when source content changes (page edit accepted, comment added, Pulse updated) |
+| Re-embedding | Deleting stale chunks and creating new ones when source content changes (page edit accepted, comment added) |
 | Context header | A prefix prepended to chunk text before embedding (e.g., `[Midnight Sun > Time Commitment]`) to bake org/section context into the vector |
-| Tool-calling | The pattern where the LLM decides when and how to call the `search_wiki` tool, rather than the application automatically reformulating queries |
+| Tool-calling | The pattern where the LLM decides when and how to call tools (`search_wiki` for prose/opinions, `get_org_data` for structured facts) rather than the application automatically reformulating queries |
 | ProseMirror JSON | The structured document format used by the Tiptap editor to store wiki page content |
 
 ---
@@ -73,11 +72,11 @@ Feature: RAG Pipeline
     And    embeds each chunk as a 512-dimensional vector
     And    stores each chunk with org metadata and section metadata
 
-  Scenario: Generate metadata chunk for an org's Pulse data
-    When   Pulse aggregates are updated for "WATonomous"
-    Then   the system deletes the existing metadata chunk for that org
-    And    generates a natural-language summary of Pulse ratings
-    And    embeds and stores the metadata chunk with chunk_type = "metadata"
+  Scenario: LLM fetches Pulse ratings via get_org_data tool
+    When   a user asks "What is WATonomous's Co-op Boost rating?"
+    Then   the LLM calls get_org_data with orgSlugs = ["watonomous"]
+    And    receives structured JSON with selectivity, vibeCheck, coopBoost, techStack
+    And    generates a cited answer from the structured data
 
   Scenario: Generate comment chunk when a comment is created
     When   a user posts a comment on the "Culture and Vibe" section of "Blueprint"
@@ -324,7 +323,7 @@ No embedding cache is implemented for MVP. Each call produces a fresh embedding.
 
 ### 2.1 Overview
 
-One chunking strategy handles all wiki page content: section-based chunking from ProseMirror JSON. Each heading-delimited section becomes a single chunk. Chunks that exceed the maximum token limit are split at sentence boundaries with overlap. Two additional chunk types (metadata and comment) are generated separately.
+One chunking strategy handles all wiki page content: section-based chunking from ProseMirror JSON. Each heading-delimited section becomes a single chunk. Chunks that exceed the maximum token limit are split at sentence boundaries with overlap. One additional chunk type (comment) is generated separately. Structured data (Pulse ratings, org metadata) is no longer embedded — it is fetched at query time via the `get_org_data` tool.
 
 ### 2.2 Section-Based Chunking from ProseMirror JSON
 
@@ -346,21 +345,7 @@ The system shall:
 6. If a section exceeds **1,000 tokens** (approximately 4,000 characters), split it at the nearest sentence boundary with **100-token overlap** between sub-chunks. Append a part indicator (e.g., `[Part 1/2]`) to each sub-chunk's context header.
 7. No minimum chunk size or merging. Every section becomes its own chunk regardless of length. Short sections are still useful through keyword search.
 
-### 2.3 Metadata Chunks
-
-**Applies to:** One per organization, containing Pulse ratings.
-
-The system shall:
-
-1. Generate a natural-language summary of the org's Pulse data:
-   ```
-   Midnight Sun: Selectivity is Application-Based. Vibe Check is 3.2/5 (balanced between
-   social and corporate). Co-op Boost is 4.1/5. Tech Stack: Altium, SolidWorks, C++, Python.
-   ```
-2. Prepend a context header: `[Midnight Sun > Pulse Metadata]`.
-3. Embed and store with `chunk_type = 'metadata'`.
-
-### 2.4 Comment Chunks
+### 2.3 Comment Chunks
 
 **Applies to:** One per inline user comment on a wiki page.
 
@@ -372,7 +357,7 @@ The system shall:
 4. Set `anchored_section` to the section the comment is anchored to.
 5. Set `references_previous_version = true` if the comment's anchor text was deleted during a page edit and re-anchoring failed. This depends on the anchor handling implementation in the Comments FRD.
 
-### 2.5 Chunking Configuration
+### 2.4 Chunking Configuration
 
 The system shall define chunking parameters as constants:
 
@@ -387,7 +372,7 @@ const CHUNKING_CONFIG = {
 } as const;
 ```
 
-### 2.6 Chunk Metadata
+### 2.5 Chunk Metadata
 
 Each chunk carries two categories of fields:
 
@@ -399,7 +384,7 @@ Each chunk carries two categories of fields:
 | `org_slug` | All | URL slug for deep links (e.g., "midnight-sun") |
 | `section_title` | Content, Comment | Section heading text |
 | `section_slug` | Content | URL anchor for deep links (e.g., "time-commitment") |
-| `chunk_type` | All | "content", "metadata", or "comment" |
+| `chunk_type` | All | "content" or "comment" |
 | `category` | All | Org category (e.g., "Design Teams") |
 | `created_at` | All | When the content was created (comment's created_at for comment chunks) |
 | `anchored_section` | Comment | Which section the comment is anchored to |
@@ -437,7 +422,8 @@ The corpus is not static -- it changes whenever wiki pages are edited, comments 
 | Comment updated | Delete old comment chunk, create and embed new one | `DELETE FROM chunks WHERE source_comment_id = $1` then `INSERT` |
 | Comment deleted | Delete the comment chunk | `DELETE FROM chunks WHERE source_comment_id = $1` |
 | Comment anchor fails re-anchoring | Update the flag on the existing chunk | `UPDATE chunks SET references_previous_version = true WHERE source_comment_id = $1` |
-| Pulse aggregates updated | Delete old metadata chunk, regenerate and re-embed | `DELETE FROM chunks WHERE org_id = $1 AND chunk_type = 'metadata'` |
+
+**Note:** Pulse aggregate updates no longer trigger re-embedding. Pulse data is served live from `pulse_aggregates` via the `get_org_data` tool at query time.
 
 ### 3.4 Async Execution
 
@@ -502,27 +488,8 @@ export async function reembedComment(commentId: string, orgMeta: OrgMeta, commen
   });
 }
 
-export async function reembedPulse(orgId: string, orgMeta: OrgMeta, pulse: PulseData) {
-  const supabase = createClient();
-
-  await supabase.from("chunks").delete().match({ org_id: orgId, chunk_type: "metadata" });
-
-  const summary = buildPulseSummary(orgMeta.orgName, pulse);
-  const header = `[${orgMeta.orgName} > Pulse Metadata]`;
-  const contentWithHeader = `${header}\n${summary}`;
-  const [vector] = await embedBatch([contentWithHeader]);
-
-  await supabase.from("chunks").insert({
-    university_id: orgMeta.universityId,
-    org_id: orgId,
-    chunk_type: "metadata",
-    org_name: orgMeta.orgName,
-    org_slug: orgMeta.orgSlug,
-    category: orgMeta.category,
-    content_text: contentWithHeader,
-    embedding: vector,
-  });
-}
+// reembedPulse removed: Pulse data is no longer embedded as a text chunk.
+// The LLM fetches Pulse ratings on demand via the get_org_data tool (see Section 5.2).
 ```
 
 ---
@@ -750,9 +717,138 @@ export const searchWikiTool = tool({
 });
 ```
 
+### 5.2b Tool: `get_org_data`
+
+**Purpose:** Deterministic lookup of structured/quantifiable data. The LLM calls this when it needs exact Pulse ratings, org metadata, claim status, or lifecycle health — data that lives in DB tables and should be fetched directly rather than retrieved via vector search.
+
+**Decision rule for the LLM:** call `get_org_data` when the query involves specific numbers, ratings, or factual attributes of a named org. Call `search_wiki` for opinions, experiences, prose comparisons, and anything open-ended. For queries that need both (e.g. "Compare Blueprint and Midnight Sun's culture and ratings"), call both tools.
+
+```typescript
+// src/lib/ai/tools.ts
+
+import { createClient } from "@/lib/supabase/server";
+
+export const getOrgDataTool = tool({
+  description:
+    "Fetch structured data about one or more UW organizations: Pulse ratings " +
+    "(Selectivity, Vibe Check, Co-op Boost, Tech Stack), org category, claim status, " +
+    "and page health status. Use this when the user asks for specific ratings, numbers, " +
+    "or factual org attributes. Do NOT use this for opinions, culture descriptions, " +
+    "or open-ended comparisons — use search_wiki for those.",
+  parameters: z.object({
+    orgSlugs: z
+      .array(z.string())
+      .min(1)
+      .max(5)
+      .describe(
+        "Slug(s) of the org(s) to look up, e.g. ['midnight-sun'] or ['midnight-sun', 'watonomous']. " +
+        "Derive the slug from the org name by lowercasing and replacing spaces with hyphens."
+      ),
+  }),
+  execute: async ({ orgSlugs }) => {
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from("organizations")
+      .select(`
+        org_slug,
+        org_name,
+        category,
+        claimed_status,
+        pages (
+          last_edited_at
+        ),
+        pulse_aggregates (
+          metric,
+          aggregate_value,
+          aggregate_label,
+          total_votes
+        )
+      `)
+      .in("org_slug", orgSlugs);
+
+    if (error || !data || data.length === 0) {
+      return {
+        found: false,
+        message: `No organizations found for slug(s): ${orgSlugs.join(", ")}. ` +
+          "Verify the slug is correct or use search_wiki to find the org by name.",
+      };
+    }
+
+    const results = data.map((org) => {
+      // Compute health status client-side from last_edited_at
+      const lastEditedAt = org.pages?.[0]?.last_edited_at ?? null;
+      const daysSinceEdit = lastEditedAt
+        ? Math.floor((Date.now() - new Date(lastEditedAt).getTime()) / 86_400_000)
+        : null;
+
+      let healthStatus: "healthy" | "stale" | "outdated" | "unknown" = "unknown";
+      if (daysSinceEdit !== null) {
+        if (daysSinceEdit <= 180) healthStatus = "healthy";
+        else if (daysSinceEdit <= 365) healthStatus = "stale";
+        else healthStatus = "outdated";
+      }
+
+      // Shape Pulse aggregates into a readable map
+      const pulse: Record<string, { value: string | number; label: string; totalVotes: number }> = {};
+      for (const agg of org.pulse_aggregates ?? []) {
+        pulse[agg.metric] = {
+          value: agg.aggregate_value,
+          label: agg.aggregate_label,
+          totalVotes: agg.total_votes,
+        };
+      }
+
+      return {
+        orgName: org.org_name,
+        orgSlug: org.org_slug,
+        category: org.category,
+        claimedStatus: org.claimed_status,
+        healthStatus,
+        lastEditedAt,
+        pulse: {
+          selectivity: pulse["selectivity"] ?? null,
+          vibeCheck: pulse["vibe_check"] ?? null,
+          coopBoost: pulse["coop_boost"] ?? null,
+          techStack: pulse["tech_stack"] ?? null,
+        },
+      };
+    });
+
+    return { found: true, orgs: results };
+  },
+});
+```
+
+**Example return shape (for `orgSlugs: ["watonomous"]`):**
+
+```json
+{
+  "found": true,
+  "orgs": [
+    {
+      "orgName": "WATonomous",
+      "orgSlug": "watonomous",
+      "category": "Design Teams",
+      "claimedStatus": "unclaimed",
+      "healthStatus": "healthy",
+      "lastEditedAt": "2026-03-15T10:00:00Z",
+      "pulse": {
+        "selectivity": { "value": "Application-Based", "label": "Application-Based", "totalVotes": 34 },
+        "vibeCheck":   { "value": 2.8, "label": "2.8 / 5", "totalVotes": 29 },
+        "coopBoost":   { "value": 4.5, "label": "4.5 / 5", "totalVotes": 31 },
+        "techStack":   { "value": "ROS2, C++, Python, PyTorch, Docker", "label": "ROS2, C++, Python, PyTorch, Docker", "totalVotes": 27 }
+      }
+    }
+  ]
+}
+```
+
+**When `found: false`:** the LLM should fall back to `search_wiki` with a keyword query for the org name to surface any matching content and suggest the correct slug.
+
 ### 5.3 Tool Call Limits
 
-The LLM is allowed up to **3 tool calls per turn**, configured via `maxSteps: 3` in the Vercel AI SDK `streamText` call. A limit of 1 would be too restrictive for comparison queries (e.g., "Compare Blueprint and Midnight Sun"); 3 provides flexibility while bounding cost.
+The LLM is allowed up to **4 tool calls per turn**, configured via `maxSteps: 4` in the Vercel AI SDK `streamText` call. The bump from 3 → 4 accommodates turns where the LLM needs to call both `search_wiki` (for prose/opinions) and `get_org_data` (for ratings) in the same response, plus a follow-up if the first search is insufficient. 4 provides flexibility while bounding cost.
 
 ---
 
@@ -760,7 +856,7 @@ The LLM is allowed up to **3 tool calls per turn**, configured via `maxSteps: 3`
 
 ### 6.1 Overview
 
-The RAG search endpoint is a Next.js App Router API route that receives conversation messages, passes them to the LLM with the `search_wiki` tool available, and streams the response back via SSE.
+The RAG search endpoint is a Next.js App Router API route that receives conversation messages, passes them to the LLM with both the `search_wiki` and `get_org_data` tools available, and streams the response back via SSE.
 
 ### 6.2 Endpoint
 
@@ -786,6 +882,7 @@ Auth: None required (PRD Section 9)
 import { streamText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { searchWikiTool } from "@/lib/ai/rag";
+import { getOrgDataTool } from "@/lib/ai/tools";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const openrouter = createOpenRouter({
@@ -799,8 +896,11 @@ export async function POST(req: Request) {
     model: openrouter("google/gemini-2.5-flash"),
     system: SYSTEM_PROMPT,
     messages,
-    tools: { search_wiki: searchWikiTool },
-    maxSteps: 3,
+    tools: {
+      search_wiki: searchWikiTool,    // prose, opinions, free-text content
+      get_org_data: getOrgDataTool,   // structured facts, Pulse ratings, org metadata
+    },
+    maxSteps: 4,
   });
 
   return result.toDataStreamResponse();
@@ -1090,19 +1190,29 @@ FRD 1 is complete when ALL of the following are satisfied:
 }
 ```
 
-### A.2 Metadata Chunk Example
+### A.2 `get_org_data` Return Shape Example
+
+Pulse and structured org data is no longer a chunk — it is returned by the `get_org_data` tool as structured JSON:
 
 ```json
 {
-  "id": "660e8400-e29b-41d4-a716-446655440001",
-  "chunk_type": "metadata",
-  "org_name": "WATonomous",
-  "org_slug": "watonomous",
-  "category": "Design Teams",
-  "section_title": null,
-  "section_slug": null,
-  "content_text": "[WATonomous > Pulse Metadata]\nWATonomous: Selectivity is Application-Based. Vibe Check is 2.8/5 (leaning corporate). Co-op Boost is 4.5/5. Tech Stack: ROS2, C++, Python, PyTorch, Docker.",
-  "created_at": "2026-04-05T14:30:00Z"
+  "found": true,
+  "orgs": [
+    {
+      "orgName": "WATonomous",
+      "orgSlug": "watonomous",
+      "category": "Design Teams",
+      "claimedStatus": "unclaimed",
+      "healthStatus": "healthy",
+      "lastEditedAt": "2026-03-15T10:00:00Z",
+      "pulse": {
+        "selectivity": { "value": "Application-Based", "label": "Application-Based", "totalVotes": 34 },
+        "vibeCheck":   { "value": 2.8, "label": "2.8 / 5", "totalVotes": 29 },
+        "coopBoost":   { "value": 4.5, "label": "4.5 / 5", "totalVotes": 31 },
+        "techStack":   { "value": "ROS2, C++, Python, PyTorch, Docker", "label": "ROS2, C++, Python, PyTorch, Docker", "totalVotes": 27 }
+      }
+    }
+  ]
 }
 ```
 
@@ -1191,7 +1301,7 @@ If "Past Projects" exceeds 1000 tokens, it splits into:
 |---|---|---|
 | 1 | WATonomous > Overview ("autonomous vehicle team using ROS2...") | 0.82 |
 | 2 | UW Robotics > Subteams ("software subteam works with ROS...") | 0.74 |
-| 3 | WATonomous > Pulse Metadata ("Tech Stack: ROS2, C++...") | 0.71 |
+| 3 | WATonomous > Tech Stack section ("ROS2, C++, Python...") | 0.71 |
 | 4 | Midnight Sun > Overview ("solar car design team...") | 0.45 |
 | 5 | Waterloo Rocketry > Overview ("rocket design team...") | 0.38 |
 
@@ -1202,15 +1312,17 @@ If "Past Projects" exceeds 1000 tokens, it splits into:
 | Rank | Chunk | FTS Rank |
 |---|---|---|
 | 1 | WATonomous > Overview (contains "design team" and "ROS2") | 0.45 |
-| 2 | WATonomous > Pulse Metadata (contains "ROS2") | 0.38 |
+| 2 | WATonomous > Tech Stack section (contains "ROS2") | 0.38 |
 | 3 | UW Robotics > Subteams (contains "ROS" but not "ROS2") | 0.22 |
+
+Note: if the user also asks for WATonomous's Pulse ratings, the LLM additionally calls `get_org_data({ orgSlugs: ["watonomous"] })` to fetch exact numbers — those no longer come from the chunk retrieval pipeline.
 
 **Step 3 -- RRF merge (k=60):**
 
 | Chunk | Semantic Rank | Keyword Rank | RRF Score | Final Rank |
 |---|---|---|---|---|
 | WATonomous > Overview | 1 | 1 | 1/61 + 1/61 = 0.0328 | **1** |
-| WATonomous > Pulse Metadata | 3 | 2 | 1/63 + 1/62 = 0.0320 | **2** |
+| WATonomous > Tech Stack | 3 | 2 | 1/63 + 1/62 = 0.0320 | **2** |
 | UW Robotics > Subteams | 2 | 3 | 1/62 + 1/63 = 0.0320 | **3** |
 | Midnight Sun > Overview | 4 | -- | 1/64 = 0.0156 | **4** |
 | Waterloo Rocketry > Overview | 5 | -- | 1/65 = 0.0154 | **5** |
@@ -1242,36 +1354,39 @@ WATonomous > Overview ranks #1, boosted by appearing in both result lists. The k
 
 **User:** "Compare Blueprint and WATonomous for a first-year CS student"
 
-**LLM calls:** `search_wiki({ query: "Blueprint first-year CS student culture time commitment" })`, `search_wiki({ query: "WATonomous first-year CS student culture time commitment" })`
+**LLM calls:**
+- `search_wiki({ query: "Blueprint first-year CS student culture time commitment" })`
+- `search_wiki({ query: "WATonomous first-year CS student culture time commitment" })`
+- `get_org_data({ orgSlugs: ["blueprint", "watonomous"] })`
 
 **Response:**
 > Here's a comparison across key dimensions:
 >
 > **Time Commitment:** Blueprint members report around 5-8 hours/week [1], while WATonomous typically expects 10-15 hours/week [2]. Both increase during crunch periods.
 >
-> **Culture:** Blueprint is described as genuinely collaborative with approachable leads [3]. WATonomous leans more corporate with a competitive environment [4]. Based on community ratings, Blueprint's Vibe Check is 2.1/5 (social-leaning) and WATonomous is 2.8/5 (slightly more corporate) [5][6].
+> **Culture:** Blueprint is described as genuinely collaborative with approachable leads [3]. WATonomous leans more corporate with a competitive environment [4]. Based on community Pulse ratings, Blueprint's Vibe Check is 2.1/5 (social-leaning) and WATonomous is 2.8/5 (slightly more corporate) [5].
 >
-> **Co-op Relevance:** Both rate highly for co-op boost. Blueprint (4.2/5) focuses on full-stack web development for nonprofits [5]. WATonomous (4.5/5) works with autonomous vehicle software -- ROS2, C++, PyTorch [6].
+> **Co-op Relevance:** Both rate highly for co-op boost. Blueprint (4.2/5) focuses on full-stack web development for nonprofits [5]. WATonomous (4.5/5) works with autonomous vehicle software — ROS2, C++, PyTorch [5].
 >
 > **Sources:**
 > 1. [Blueprint - Time Commitment](/wiki/blueprint#time-commitment)
 > 2. [WATonomous - Time Commitment](/wiki/watonomous#time-commitment)
 > 3. [Blueprint - Culture and Vibe (comment)](/wiki/blueprint#culture-and-vibe)
 > 4. [WATonomous - Culture and Vibe](/wiki/watonomous#culture-and-vibe)
-> 5. [Blueprint - Pulse Metadata](/wiki/blueprint)
-> 6. [WATonomous - Pulse Metadata](/wiki/watonomous)
+> 5. [Blueprint & WATonomous - Pulse Ratings](/wiki/blueprint), [/wiki/watonomous](/wiki/watonomous)
 
 **User:** "Which one is easier to get into?"
 
-**LLM calls:** `search_wiki({ query: "Blueprint WATonomous selectivity application process how to apply" })`
+**LLM calls:**
+- `search_wiki({ query: "Blueprint WATonomous selectivity application process how to apply" })`
+- `get_org_data({ orgSlugs: ["blueprint", "watonomous"] })` *(for Selectivity values)*
 
 **Response:**
-> Both are application-based [1][2]. Blueprint's application process includes a written application and an interview focused on motivation and teamwork [3]. A commenter in 2025 described it as "fairly accessible for first-years" [4]. WATonomous also requires an application and technical interview, with a commenter noting the technical bar is higher, especially for the perception and planning subteams [5].
+> Both are application-based [1]. Blueprint's application process includes a written application and an interview focused on motivation and teamwork [2]. A commenter in 2025 described it as "fairly accessible for first-years" [3]. WATonomous also requires an application and technical interview, with a commenter noting the technical bar is higher, especially for the perception and planning subteams [4].
 >
 > **Sources:**
-> 1. [Blueprint - Pulse Metadata](/wiki/blueprint)
-> 2. [WATonomous - Pulse Metadata](/wiki/watonomous)
-> 3. [Blueprint - How to Apply](/wiki/blueprint#how-to-apply)
+> 1. [Blueprint & WATonomous - Pulse Ratings](/wiki/blueprint)
+> 2. [Blueprint - How to Apply](/wiki/blueprint#how-to-apply)
 > 4. [Blueprint - How to Apply (comment)](/wiki/blueprint#how-to-apply)
 > 5. [WATonomous - How to Apply (comment)](/wiki/watonomous#how-to-apply)
 
@@ -1298,7 +1413,15 @@ You are UW Wiki's AI search assistant. You help University of Waterloo students 
 
 ## How You Work
 
-You have access to a search_wiki tool that searches the UW Wiki knowledge base. Use it to find relevant information before answering questions. You may call it up to 3 times per response if needed (e.g., for comparison queries).
+You have access to two tools. Always call one or both before answering — never answer from your training knowledge.
+
+**search_wiki** — searches the wiki knowledge base for free-text content: page sections (prose descriptions of org culture, time commitment, history, etc.) and user comments (opinions, experiences). Use this for: open-ended questions, culture/vibe questions, comparisons of subjective attributes, any question where the answer lives in written descriptions or community opinions.
+
+**get_org_data** — fetches structured facts about an org directly from the database: Pulse ratings (Selectivity, Vibe Check, Co-op Boost, Tech Stack), category, claim status, and page health. Use this for: specific rating questions ("What's the Co-op Boost for X?"), factual attribute questions ("Is Y claimed?"), or whenever you need exact numbers.
+
+For questions combining both (e.g. "Compare Blueprint and Midnight Sun's culture and ratings"), call both tools. You may call tools up to 4 times per response.
+
+If get_org_data returns found: false, fall back to search_wiki with the org name as a keyword query to find any matching content and surface the correct slug.
 
 ## Core Rules
 
@@ -1349,8 +1472,8 @@ Sources:
 1. [Org Name - Section Title](/wiki/org-slug#section-slug)
 2. [Org Name - Section Title (comment)](/wiki/org-slug#section-slug)
 
-For Pulse metadata citations, link to the org page without a section anchor:
-3. [Org Name - Pulse Metadata](/wiki/org-slug)
+For Pulse ratings sourced from get_org_data, cite the org's main page:
+3. [Org Name - Pulse Ratings](/wiki/org-slug)
 ```
 
 ---
@@ -1365,6 +1488,7 @@ For Pulse metadata citations, link to the org page without a section anchor:
 | No min chunk size or merging | Adds complexity for marginal benefit. Short sections (e.g., a brief "Overview") are still useful through keyword search. Embedding quality for very short text is lower but acceptable. |
 | Skip "External Links" section | URL-only content has no semantic value for retrieval. Keyword search on other chunks already catches org-specific queries. Saves embedding API calls. |
 | Tool-calling over query rewriting | Tool-calling is native to the Vercel AI SDK (`streamText` with tools). More flexible than query rewriting -- the LLM can make multiple targeted searches per turn. Fewer LLM calls on follow-ups (no separate rewriting step). |
+| `get_org_data` tool instead of metadata chunks | Pulse ratings and structured org data are already in `pulse_aggregates` and `organizations` tables in exact form. Encoding them as natural-language prose, embedding them as vectors, and retrieving them semantically is wasteful indirection — numbers don't embed meaningfully, and the retrieval is probabilistic. A direct SQL lookup is deterministic, always returns the latest data without re-embedding on every vote, and returns structured JSON the LLM can reason over precisely. |
 | Hybrid search with RRF over semantic-only | Pure semantic search achieves ~62% precision. Adding keyword search with RRF merging pushes it to ~84%. Critical for exact term matches (org names, tech stack terms like "ROS2"). ~2-4 hours additional implementation. |
 | `plainto_tsquery` over `to_tsquery` | `plainto_tsquery` handles natural language input without requiring boolean operators. Users and the LLM send natural language queries. Joins terms with AND, which is strict but fine since semantic search handles fuzzy matching. |
 | No reranker for MVP | Reranking (Cohere, cross-encoder) adds cost ($1/1000 queries) and latency (~200-300ms). Hybrid search with RRF provides sufficient precision for launch. Revisit post-launch if retrieval quality is insufficient. |
