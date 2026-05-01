@@ -155,7 +155,7 @@ Feature: RAG Pipeline
 2. [Chunking Strategies](#2-chunking-strategies)
 3. [Corpus Ingestion and Re-embedding](#3-corpus-ingestion-and-re-embedding)
 4. [Hybrid Retrieval Engine](#4-hybrid-retrieval-engine)
-5. [search_wiki Tool](#5-search_wiki-tool)
+5. [Tool System](#5-tool-system)
 6. [RAG Search API Route](#6-rag-search-api-route)
 7. [Synthesis and Streaming](#7-synthesis-and-streaming)
 8. [Conversational Follow-ups](#8-conversational-follow-ups)
@@ -649,7 +649,7 @@ function mergeWithRRF(
 
 ---
 
-## 5. search_wiki Tool
+## 5. Tool System
 
 ### 5.1 Overview
 
@@ -721,7 +721,9 @@ export const searchWikiTool = tool({
 
 **Purpose:** Deterministic lookup of structured/quantifiable data. The LLM calls this when it needs exact Pulse ratings, org metadata, claim status, or lifecycle health — data that lives in DB tables and should be fetched directly rather than retrieved via vector search.
 
-**Decision rule for the LLM:** call `get_org_data` when the query involves specific numbers, ratings, or factual attributes of a named org. Call `search_wiki` for opinions, experiences, prose comparisons, and anything open-ended. For queries that need both (e.g. "Compare Blueprint and Midnight Sun's culture and ratings"), call both tools.
+**Decision rule for the LLM:** call `get_org_data` when the query involves any named org — even for culture/vibe questions — because Pulse ratings provide essential context alongside prose. Call `search_wiki` for opinions, experiences, and open-ended questions. For most named-org queries, call both tools. For discovery/ranking queries ("which org has the best co-op boost?"), use `list_orgs` instead.
+
+**Slug resolution:** the tool accepts either a slug (`"midnight-sun"`) or an org name (`"Midnight Sun"`) for each entry. If a name is provided, the server resolves it to a slug via case-insensitive DB lookup — the LLM never needs to guess the correct slug format.
 
 ```typescript
 // src/lib/ai/tools.ts
@@ -732,21 +734,65 @@ export const getOrgDataTool = tool({
   description:
     "Fetch structured data about one or more UW organizations: Pulse ratings " +
     "(Selectivity, Vibe Check, Co-op Boost, Tech Stack), org category, claim status, " +
-    "and page health status. Use this when the user asks for specific ratings, numbers, " +
-    "or factual org attributes. Do NOT use this for opinions, culture descriptions, " +
-    "or open-ended comparisons — use search_wiki for those.",
+    "and page health status. " +
+    "ALWAYS call this for any named org mentioned in the query, even for culture or vibe questions — " +
+    "Pulse ratings provide essential context. " +
+    "For ranking/discovery queries ('which org has the best X?'), use list_orgs instead. " +
+    "Do NOT use this for opinions or open-ended comparisons — combine with search_wiki for those.",
   parameters: z.object({
-    orgSlugs: z
-      .array(z.string())
+    orgs: z
+      .array(
+        z.object({
+          slug: z
+            .string()
+            .optional()
+            .describe("Org slug if known, e.g. 'midnight-sun'"),
+          name: z
+            .string()
+            .optional()
+            .describe("Org display name if slug unknown, e.g. 'Midnight Sun'. Server will resolve to slug."),
+        }).refine((o) => o.slug || o.name, {
+          message: "Each org entry must have either a slug or a name",
+        })
+      )
       .min(1)
       .max(5)
-      .describe(
-        "Slug(s) of the org(s) to look up, e.g. ['midnight-sun'] or ['midnight-sun', 'watonomous']. " +
-        "Derive the slug from the org name by lowercasing and replacing spaces with hyphens."
-      ),
+      .describe("Orgs to fetch. Provide slug when known; provide name when slug is uncertain."),
   }),
-  execute: async ({ orgSlugs }) => {
+  execute: async ({ orgs }) => {
     const supabase = createClient();
+
+    // Resolve org names to slugs via case-insensitive lookup
+    const resolvedSlugs: string[] = [];
+    const unresolved: string[] = [];
+
+    for (const o of orgs) {
+      if (o.slug) {
+        resolvedSlugs.push(o.slug);
+      } else if (o.name) {
+        const { data } = await supabase
+          .from("organizations")
+          .select("org_slug")
+          .ilike("org_name", o.name)
+          .limit(1)
+          .single();
+        if (data?.org_slug) {
+          resolvedSlugs.push(data.org_slug);
+        } else {
+          unresolved.push(o.name);
+        }
+      }
+    }
+
+    if (resolvedSlugs.length === 0) {
+      return {
+        found: false,
+        unresolvedNames: unresolved,
+        message:
+          `Could not resolve org name(s) to slugs: ${unresolved.join(", ")}. ` +
+          "Call search_wiki with the org name as a keyword query to find matching pages and the correct slug.",
+      };
+    }
 
     const { data, error } = await supabase
       .from("organizations")
@@ -765,13 +811,12 @@ export const getOrgDataTool = tool({
           total_votes
         )
       `)
-      .in("org_slug", orgSlugs);
+      .in("org_slug", resolvedSlugs);
 
     if (error || !data || data.length === 0) {
       return {
         found: false,
-        message: `No organizations found for slug(s): ${orgSlugs.join(", ")}. ` +
-          "Verify the slug is correct or use search_wiki to find the org by name.",
+        message: `No organizations found for slug(s): ${resolvedSlugs.join(", ")}.`,
       };
     }
 
@@ -844,11 +889,156 @@ export const getOrgDataTool = tool({
 }
 ```
 
-**When `found: false`:** the LLM should fall back to `search_wiki` with a keyword query for the org name to surface any matching content and suggest the correct slug.
+**When `found: false`:** the LLM should fall back to `search_wiki` with a keyword query for the org name to surface any matching content and the correct slug.
+
+### 5.2c Tool: `list_orgs`
+
+**Purpose:** Discovery and ranking queries. When a user asks "which team has the best co-op boost?" or "what are the top design teams for software?", `get_org_data` cannot help — the LLM doesn't know all org slugs upfront and can't call it for every org. `list_orgs` delegates the ranking to the DB, returning an ordered list of orgs for a given metric or category.
+
+**Decision rule for the LLM:** use `list_orgs` when the query asks to rank, compare across many orgs, or discover orgs by attribute. Do not use it for questions about a specific named org — use `get_org_data` for those.
+
+```typescript
+// src/lib/ai/tools.ts
+
+export const listOrgsTool = tool({
+  description:
+    "List UW organizations ranked by a Pulse metric, or filtered by category. " +
+    "Use this for discovery and ranking questions like 'which team has the best co-op boost?', " +
+    "'what are the top design teams for software?', or 'which orgs have the highest vibe check?'. " +
+    "Do NOT use this for questions about a specific named org — use get_org_data for those.",
+  parameters: z.object({
+    metric: z
+      .enum(["vibe_check", "coop_boost", "selectivity"])
+      .optional()
+      .describe(
+        "Pulse metric to rank by. Omit to return orgs sorted by recency (last edited). " +
+        "Note: 'selectivity' is categorical, not numeric — ranking by it returns Application-Based first, then Open, etc."
+      ),
+    order: z
+      .enum(["desc", "asc"])
+      .default("desc")
+      .describe("desc = highest/best first (default). asc = lowest first."),
+    category: z
+      .string()
+      .optional()
+      .describe(
+        "Filter to a specific org category, e.g. 'Design Teams', 'Engineering Clubs'. " +
+        "Omit to search across all categories."
+      ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .default(5)
+      .describe("Number of results to return. Default 5, max 10."),
+  }),
+  execute: async ({ metric, order, category, limit }) => {
+    const supabase = createClient();
+
+    if (metric && metric !== "selectivity") {
+      // Numeric ranking: JOIN pulse_aggregates and ORDER BY aggregate_value
+      const { data, error } = await supabase
+        .from("pulse_aggregates")
+        .select(`
+          aggregate_value,
+          total_votes,
+          aggregate_label,
+          organizations!inner (
+            org_name,
+            org_slug,
+            category
+          )
+        `)
+        .eq("metric", metric)
+        .gte("total_votes", 3)          // minimum vote threshold for meaningful rankings
+        .order("aggregate_value", { ascending: order === "asc" })
+        .limit(limit);
+
+      // apply category filter if provided (Supabase PostgREST nested filter)
+      const filtered = category
+        ? data?.filter((r: any) => r.organizations.category === category)
+        : data;
+
+      if (error || !filtered || filtered.length === 0) {
+        return {
+          found: false,
+          message: `No orgs found with sufficient votes for metric '${metric}'${category ? ` in category '${category}'` : ""}.`,
+        };
+      }
+
+      return {
+        found: true,
+        metric,
+        order,
+        orgs: filtered.map((r: any) => ({
+          orgName: r.organizations.org_name,
+          orgSlug: r.organizations.org_slug,
+          category: r.organizations.category,
+          value: r.aggregate_value,
+          label: r.aggregate_label,
+          totalVotes: r.total_votes,
+        })),
+      };
+    } else {
+      // No metric or categorical metric: return orgs by recency
+      const query = supabase
+        .from("organizations")
+        .select(`
+          org_name,
+          org_slug,
+          category,
+          pages (last_edited_at)
+        `)
+        .order("org_name", { ascending: true })
+        .limit(limit);
+
+      if (category) query.eq("category", category);
+
+      const { data, error } = await query;
+
+      if (error || !data || data.length === 0) {
+        return {
+          found: false,
+          message: `No orgs found${category ? ` in category '${category}'` : ""}.`,
+        };
+      }
+
+      return {
+        found: true,
+        metric: null,
+        orgs: data.map((r: any) => ({
+          orgName: r.org_name,
+          orgSlug: r.org_slug,
+          category: r.category,
+          lastEditedAt: r.pages?.[0]?.last_edited_at ?? null,
+        })),
+      };
+    }
+  },
+});
+```
+
+**Minimum vote threshold:** orgs with fewer than 3 votes for a metric are excluded from rankings. A single vote from the cold-start agent should not place an org at the top of a ranking.
+
+**Example return shape (for `metric: "coop_boost", category: "Design Teams"`):**
+
+```json
+{
+  "found": true,
+  "metric": "coop_boost",
+  "order": "desc",
+  "orgs": [
+    { "orgName": "WATonomous",  "orgSlug": "watonomous",  "category": "Design Teams", "value": 4.5, "label": "4.5 / 5", "totalVotes": 31 },
+    { "orgName": "Midnight Sun", "orgSlug": "midnight-sun", "category": "Design Teams", "value": 4.1, "label": "4.1 / 5", "totalVotes": 27 },
+    { "orgName": "Blueprint",   "orgSlug": "blueprint",   "category": "Design Teams", "value": 4.2, "label": "4.2 / 5", "totalVotes": 22 }
+  ]
+}
+```
 
 ### 5.3 Tool Call Limits
 
-The LLM is allowed up to **4 tool calls per turn**, configured via `maxSteps: 4` in the Vercel AI SDK `streamText` call. The bump from 3 → 4 accommodates turns where the LLM needs to call both `search_wiki` (for prose/opinions) and `get_org_data` (for ratings) in the same response, plus a follow-up if the first search is insufficient. 4 provides flexibility while bounding cost.
+The LLM is allowed up to **5 tool calls per turn**, configured via `maxSteps: 5` in the Vercel AI SDK `streamText` call. This accommodates the most complex turn pattern: `list_orgs` (discover top orgs) → `get_org_data` (get exact ratings) → `search_wiki` (get prose/opinions) → follow-up `search_wiki` (second org) → final synthesis. 5 provides full flexibility for comparison queries while bounding cost; most single-org queries use 2 calls.
 
 ---
 
@@ -856,7 +1046,7 @@ The LLM is allowed up to **4 tool calls per turn**, configured via `maxSteps: 4`
 
 ### 6.1 Overview
 
-The RAG search endpoint is a Next.js App Router API route that receives conversation messages, passes them to the LLM with both the `search_wiki` and `get_org_data` tools available, and streams the response back via SSE.
+The RAG search endpoint is a Next.js App Router API route that receives conversation messages, passes them to the LLM with all three tools (`search_wiki`, `get_org_data`, `list_orgs`) available, and streams the response back via SSE.
 
 ### 6.2 Endpoint
 
@@ -882,7 +1072,7 @@ Auth: None required (PRD Section 9)
 import { streamText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { searchWikiTool } from "@/lib/ai/rag";
-import { getOrgDataTool } from "@/lib/ai/tools";
+import { getOrgDataTool, listOrgsTool } from "@/lib/ai/tools";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 
 const openrouter = createOpenRouter({
@@ -898,9 +1088,10 @@ export async function POST(req: Request) {
     messages,
     tools: {
       search_wiki: searchWikiTool,    // prose, opinions, free-text content
-      get_org_data: getOrgDataTool,   // structured facts, Pulse ratings, org metadata
+      get_org_data: getOrgDataTool,   // structured facts, Pulse ratings, org metadata for named orgs
+      list_orgs: listOrgsTool,        // discovery and ranking queries across all orgs
     },
-    maxSteps: 4,
+    maxSteps: 5,
   });
 
   return result.toDataStreamResponse();
@@ -1390,14 +1581,36 @@ WATonomous > Overview ranks #1, boosted by appearing in both result lists. The k
 > 4. [Blueprint - How to Apply (comment)](/wiki/blueprint#how-to-apply)
 > 5. [WATonomous - How to Apply (comment)](/wiki/watonomous#how-to-apply)
 
-### D.3 Off-Topic Query
+### D.3 Discovery / Ranking Query
+
+**User:** "Which design teams are best for co-op? I want one that actually helps my resume."
+
+**LLM calls:**
+- `list_orgs({ metric: "coop_boost", category: "Design Teams", order: "desc", limit: 5 })`
+- `search_wiki({ query: "design team co-op experience resume internship value" })`
+
+**Response:**
+> Based on community Pulse ratings, the design teams with the highest Co-op Boost scores are [1]:
+>
+> 1. **WATonomous** — 4.5/5 (31 votes). Autonomous vehicle software: ROS2, C++, PyTorch.
+> 2. **Blueprint** — 4.2/5 (22 votes). Full-stack web development for nonprofits.
+> 3. **Midnight Sun** — 4.1/5 (27 votes). Solar car design: hardware, embedded systems.
+>
+> Contributors describe WATonomous as having strong co-op value specifically for software and ML roles [2]. Blueprint is frequently mentioned by CS students as directly applicable to software engineering internships [3]. A commenter noted that the project-based work at Blueprint "looks exactly like what interviewers want to see on a GitHub" [3].
+>
+> **Sources:**
+> 1. [Design Teams - Co-op Boost Rankings (Pulse)](/wiki)
+> 2. [WATonomous - Co-op Value (comment)](/wiki/watonomous#coop-value)
+> 3. [Blueprint - Culture and Vibe (comment)](/wiki/blueprint#culture-and-vibe)
+
+### D.4 Off-Topic Query
 
 **User:** "What's the best restaurant near campus?"
 
 **Response:**
 > I can help with questions about UW clubs, design teams, and programs. For restaurant recommendations, you might want to check Reddit or Google Maps.
 
-### D.4 Course Query Redirect
+### D.5 Course Query Redirect
 
 **User:** "Is CS 135 a hard course?"
 
@@ -1413,15 +1626,15 @@ You are UW Wiki's AI search assistant. You help University of Waterloo students 
 
 ## How You Work
 
-You have access to two tools. Always call one or both before answering — never answer from your training knowledge.
+You have access to three tools. Always call at least one before answering — never answer from your training knowledge.
 
-**search_wiki** — searches the wiki knowledge base for free-text content: page sections (prose descriptions of org culture, time commitment, history, etc.) and user comments (opinions, experiences). Use this for: open-ended questions, culture/vibe questions, comparisons of subjective attributes, any question where the answer lives in written descriptions or community opinions.
+**search_wiki** — searches the wiki knowledge base for free-text content: page sections (prose descriptions of org culture, time commitment, history, etc.) and user comments (opinions, experiences). Use for: open-ended questions, culture/vibe questions, comparisons of subjective attributes, anything where the answer lives in written descriptions or community opinions.
 
-**get_org_data** — fetches structured facts about an org directly from the database: Pulse ratings (Selectivity, Vibe Check, Co-op Boost, Tech Stack), category, claim status, and page health. Use this for: specific rating questions ("What's the Co-op Boost for X?"), factual attribute questions ("Is Y claimed?"), or whenever you need exact numbers.
+**get_org_data** — fetches structured facts directly from the database: Pulse ratings (Selectivity, Vibe Check, Co-op Boost, Tech Stack), category, claim status, and page health. **ALWAYS call this for any org mentioned by name in the query**, even if the question seems to be only about culture — Pulse ratings provide essential context. You may provide either a slug ("midnight-sun") or a display name ("Midnight Sun") and the server will resolve it. If it returns found: false, call search_wiki with the org name as a keyword to find the correct identifier.
 
-For questions combining both (e.g. "Compare Blueprint and Midnight Sun's culture and ratings"), call both tools. You may call tools up to 4 times per response.
+**list_orgs** — lists orgs ranked by a Pulse metric or filtered by category. Use for ranking and discovery questions: "which team has the best co-op boost?", "what are the top design teams for software?", "which orgs are most selective?". Do NOT use for questions about a specific named org — use get_org_data for those.
 
-If get_org_data returns found: false, fall back to search_wiki with the org name as a keyword query to find any matching content and surface the correct slug.
+**Calling multiple tools:** for most named-org questions call both search_wiki (for prose/opinions) and get_org_data (for ratings) in the same turn. For discovery-then-detail flows ("which teams are best for software, and what's the culture like?"), call list_orgs first, then search_wiki for the top results. You may call tools up to 5 times per response.
 
 ## Core Rules
 
@@ -1495,9 +1708,11 @@ For Pulse ratings sourced from get_org_data, cite the org's main page:
 | Application-level re-embedding over DB triggers | Keeps all logic in one TypeScript codebase. Easier to debug and test locally. The small team (2-4 engineers) benefits from reduced infrastructure. Finite number of content change points makes it manageable. |
 | 0.35 similarity threshold | Filters clearly irrelevant results while being lenient enough for loosely-related content. Starting point to be tuned with real user queries post-launch. |
 | Top 8 chunks per search call | Balanced for both specific questions (need fewer chunks) and comparison queries (need chunks from multiple orgs). At ~100-500 tokens per chunk, 8 chunks is ~800-4000 tokens of context -- well within Gemini's window. |
-| Max 3 tool calls per turn | Allows comparison queries (search each org separately) while bounding cost. Configured via one parameter (`maxSteps: 3`). Most queries need only 1 call. |
+| Max 5 tool calls per turn | Accommodates the most complex pattern: list_orgs → get_org_data → search_wiki ×2 → synthesis. Most single-org queries use 2 calls. Bounding at 5 caps worst-case token cost at approximately 5× a single search call. |
+| `list_orgs` tool for ranking/discovery | The LLM has no knowledge of all org slugs, so it cannot call `get_org_data` for every org to rank them. A dedicated `list_orgs` tool delegates ranking to the DB (ORDER BY aggregate_value), which is the only correct solution. Minimum vote threshold (3) prevents cold-start seeded values from distorting rankings. |
+| Name resolution in `get_org_data` | Requiring LLM-derived slugs introduces failure modes (misspellings, dash/space confusion). Server-side `ilike` lookup on `org_name` makes the tool robust to any name format the LLM might produce. One extra DB read per unresolved name; negligible cost. |
+| Always call `get_org_data` for named orgs (system prompt rule) | Without an explicit rule, the LLM may omit Pulse ratings for culture-focused queries. Since ratings add context to nearly every org answer at low cost (one fast SQL query), the system prompt mandates it for all named-org turns rather than leaving it to model judgment. |
 | Comments in RAG corpus | User comments contain valuable perspectives (disagreements, nuances, additional data points). Including them surfaces community knowledge beyond the primary article. Comments are distinguished by `chunk_type` so the LLM can treat them appropriately. |
-| Separate metadata chunk per org | Cleanly separates Pulse data from page content. Allows Pulse queries ("How selective is WATonomous?") to be answered without retrieving full page content. Simple 1:1 mapping for re-embedding when aggregates change. |
 | `created_at` only, no `last_updated_at` | Chunks are deleted and recreated, never updated in place (except `references_previous_version` flag). `created_at` captures when the content was authored. `last_updated_at` would always equal `created_at` for content and metadata chunks. |
 | Ephemeral conversations for MVP | No server-side session storage needed. `useChat` manages state client-side. Reduces backend complexity. Persistent conversations can be added post-MVP if user research shows demand. |
 | 1 retry with 1s delay over exponential backoff | At UW Wiki's scale (handful of embedding calls per content change, one per search query), exponential backoff is overengineering. A single retry catches transient failures; persistent failures should surface as errors. |
