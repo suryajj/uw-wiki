@@ -15,7 +15,7 @@
 
 ## Summary
 
-FRD 2 builds the core content layer of UW Wiki -- everything a user sees and interacts with when browsing, reading, editing, and reviewing wiki pages. The feature set spans three layers. The **viewing layer** delivers a browsable landing-page directory (grid/list toggle, category sections, org cards with taglines), a three-column wiki page view (auto-generated TOC on the left, ProseMirror-rendered content in the center, Pulse infobox sidebar on the right), lifecycle staleness banners, and a page-claiming flow for orgs to establish an official section. The **editing layer** provides an inline Tiptap WYSIWYG editor (headings, lists, tables, images, code blocks, blockquotes, dividers) that transforms the page in place when a user clicks "Propose Edit," autosaves drafts to localStorage, and gates authentication to the submission step rather than the editing step. The **review layer** includes a PR submission flow with inline diff and rendered preview tabs, a rationale field, an AI pre-screener (GPT-4o-mini pass/fail verdict), a reviewer dashboard with accept/reject/request-changes actions, and a version history view. Accepting a PR creates a new page version, updates the page, resets lifecycle timers, and triggers the re-embedding pipeline from FRD 1.
+FRD 2 builds the core content layer of UW Wiki -- everything a user sees and interacts with when browsing, reading, editing, and reviewing wiki pages. The feature set spans three layers. The **viewing layer** delivers a browsable landing-page directory (grid/list toggle, category sections, org cards with taglines), a three-column wiki page view (auto-generated TOC on the left, ProseMirror-rendered content in the center, Pulse infobox sidebar on the right), lifecycle staleness banners, and a page-claiming flow for orgs to establish an official section. The **editing layer** provides an inline Tiptap WYSIWYG editor (headings, lists, tables, images, code blocks, blockquotes, dividers) that transforms the page in place when a user clicks "Propose Edit," autosaves drafts to localStorage, and requires no account at any step — submission is anonymous by default; signed-in users get an optional attribution toggle. The **review layer** includes a PR submission flow with inline diff and rendered preview tabs, a rationale field, an AI pre-screener (GPT-4o-mini pass/fail verdict), a reviewer dashboard with accept/reject/request-changes actions, and a version history view. Accepting a PR creates a new page version, updates the page, resets lifecycle timers, and triggers the re-embedding pipeline from FRD 1.
 
 **Supersession Note:** FRD 4 is the canonical source for PR-Edit workflow implementation details (section-scoped proposals, patchsets/rebase, mergeability, and reviewer decision policy). FRD 2 remains canonical for page UX, editor primitives, and surrounding page experience.
 
@@ -187,11 +187,12 @@ Feature: Wiki Pages, Directory, Editor, and Edit Proposals
     And    a rationale field is required (min 20 characters)
     And    an attribution toggle defaults to anonymous
 
-  Scenario: Unauthenticated user is prompted to sign in on submit
+  Scenario: Anonymous user submits a PR proposal without an account
     Given  the user is not signed in
     And    the user has filled in the rationale and clicks "Submit"
-    Then   an auth modal appears (Google OAuth or email/password)
-    And    after successful sign-in, the submission proceeds automatically
+    Then   the proposal is accepted with contributor_id = NULL
+    And    the proposal is displayed publicly as "Anonymous"
+    And    no auth modal appears
 
   Scenario: PR receives an AI pre-screen verdict
     When   an edit proposal is submitted
@@ -932,9 +933,9 @@ export function clearDraft(pageId: string) {
 }
 ```
 
-### 4.7 Auth Gating
+### 4.7 Anonymous Editing
 
-Unauthenticated users can click "Propose Edit" and edit freely. Authentication is only required at submission time (Section 5). This reduces friction -- users invest in their edits before being asked to sign in, increasing completion rates.
+No account is required to click "Propose Edit," edit content, or submit a proposal. Proposals submitted without an account have `contributor_id = NULL` and display publicly as "Anonymous." The attribution toggle (Section 5.2 Step 2) is shown only to signed-in users; unauthenticated users always submit anonymously.
 
 ---
 
@@ -960,17 +961,9 @@ Two tabs:
 Below the diff/preview area:
 
 - **Rationale field:** A textarea with label "Why does this edit align with UW Wiki's editorial values?" Required, minimum 20 characters, maximum 500 characters. Character count displayed.
-- **Attribution toggle:** A switch defaulting to "Anonymous." Toggling on shows the user's display name (from their account) with a preview: "This edit will be attributed to: [Name]."
+- **Attribution toggle:** Shown only to signed-in users. Defaults to "Anonymous." Toggling on shows the user's display name with a preview: "This edit will be attributed to: [Name]." Unauthenticated users see a static label "Submitting as: Anonymous" with no toggle.
 
-**Step 3 -- Auth Gate:**
-
-If the user is not signed in when they click "Submit":
-
-1. An auth modal overlays the submission dialog with Google OAuth and email/password options.
-2. After successful authentication, the submission proceeds automatically without requiring the user to click "Submit" again.
-3. The auth modal uses Supabase Auth UI components.
-
-**Step 4 -- Submit:**
+**Step 3 -- Submit:**
 
 Clicking "Submit" fires `POST /api/proposals` with the proposed content, rationale, page ID, and attribution preference.
 
@@ -981,7 +974,7 @@ After successful submission, the user is redirected to a confirmation page showi
 - **Status badge:** "Pending Review" (yellow)
 - **AI pre-screen verdict:** "Pass" (green badge) or "Fail" (red badge) with the one-line reason
 - **Summary:** "Your edit to [Org Name] has been submitted and is awaiting review by the editorial board."
-- **Links:** "Back to [Org Name]" and "View your proposals" (links to user contribution history)
+- **Links:** "Back to [Org Name]." For signed-in users, also shows "View your proposals" (links to FRD 8 contribution history). Omitted for anonymous submissions.
 
 ---
 
@@ -1191,7 +1184,7 @@ Three action buttons at the bottom of the detail panel:
 
 | Action              | Behavior                                                                                                                                                                                                                                                                                                            |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Accept**          | Creates a new `page_versions` record. Updates `pages.current_version_id` and `pages.last_modified_at`. Sets `edit_proposals.status = 'accepted'` and `edit_proposals.reviewer_id`. Clears lifecycle banners. Triggers `reembedPage` from FRD 1. Clears localStorage drafts for this page (via a broadcast channel). |
+| **Accept**          | Creates a new `page_versions` record. Updates `pages.current_version_id` and `pages.last_modified_at`. Sets `edit_proposals.status = 'accepted'` and `edit_proposals.reviewer_id`. Clears lifecycle banners. Triggers `reembedSections(proposal.page_id, proposal.section_slugs, ...)` from FRD 1 — only re-embeds the sections touched by this PR. Clears localStorage drafts for this page (via a broadcast channel). |
 | **Reject**          | Sets `edit_proposals.status = 'rejected'` and `edit_proposals.reviewer_id`. Optionally stores a rejection reason in `edit_proposals.reviewer_comment`.                                                                                                                                                              |
 | **Request Changes** | Sets `edit_proposals.status = 'changes_requested'` and stores the reviewer's comment in `edit_proposals.reviewer_comment`. The contributor can revise and resubmit (future: notification triggers).                                                                                                                 |
 
@@ -1279,9 +1272,12 @@ export async function POST(
 
   // Trigger re-embedding (FRD 1) -- async, non-blocking
   const orgMeta = await getOrgMeta(proposal.pages.org_id);
-  reembedPage(proposal.page_id, orgMeta, proposal.proposed_content_json).catch(
-    console.error,
-  );
+  reembedSections(
+    proposal.page_id,
+    proposal.section_slugs,
+    orgMeta,
+    proposal.proposed_content_json,
+  ).catch(console.error);
 
   return Response.json({ success: true, versionId: newVersion.id });
 }
@@ -1740,7 +1736,7 @@ export function OrgCard({ org, layout }: OrgCardProps) {
 | **localStorage autosave over server-side drafts**               | Zero-auth requirement for drafts. No server round-trips. Instantaneous saves. At launch, the editorial overhead of server-side draft management is unnecessary.                                                                                                                 |
 | **Full proposed content JSON stored, not just diff**            | Enables rendering the preview tab without reconstructing from diff. Diffs are computed on demand so they stay current if the page is edited between submission and review. Slightly more storage but negligible at launch scale.                                                |
 | **Word-level diff over ProseMirror structural diff**            | Structural ProseMirror diffing (prosemirror-changeset) is complex and produces diffs that are hard for non-technical users to read. Word-level diff via the `diff` npm package is simple, readable, and sufficient for editorial review.                                        |
-| **Auth gated at submit, not at edit**                           | Letting users invest effort before asking for auth dramatically increases completion rates. The sunk-cost effect works in the platform's favor. Users who have already written content are far more likely to create an account than those stopped at the door.                 |
+| **No auth required for PR submission**                          | Removing all auth friction for edit proposals maximises the contributor pool. Anonymous PRs still go through AI pre-screening and editorial review before any content goes live, so the trust model is maintained without requiring an account. Signed-in users can optionally attribute proposals to their account. |
 | **GPT-4o-mini for pre-screening over Gemini Flash**             | The pre-screener is a simple classification task (pass/fail against 5 criteria). GPT-4o-mini is the cheapest model that reliably produces structured JSON output. Gemini Flash would work but GPT-4o-mini's structured output support (JSON mode) is more reliable.             |
 | **Inline diff over side-by-side diff**                          | Inline diff takes less horizontal space (important in the three-column layout and the reviewer dashboard). Side-by-side requires duplicating the full page content. The diff library produces clean inline output.                                                              |
 | **Three actions (Accept/Reject/Request Changes) over binary**   | Request Changes enables a conversation between reviewer and contributor without rejecting the PR entirely. This encourages iteration and keeps contributors engaged rather than discouraging them with outright rejections.                                                     |
