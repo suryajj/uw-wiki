@@ -595,6 +595,9 @@ FRD 0 is complete when ALL of the following are satisfied:
 | 18 | AI provider wrapper compiles | OpenRouter factory loads with env config |
 | 19 | Streaming route stub responds | `/api/search` returns stream response format |
 | 20 | Health route returns OK | `/api/health` returns JSON status |
+| 21 | pgvector extension is installed | Run `SELECT extname FROM pg_extension WHERE extname = 'vector';` in Supabase SQL editor and verify one row returned — without this, all FRD 1 vector writes fail silently |
+| 22 | Seed sample org with Pulse data exists | Query `organizations` + `pulse_aggregates` and verify at least one org (e.g. WATonomous) with ≥1 Pulse row exists — required for FRD 1 RAG exit criteria to be runnable |
+| 23 | Upstash Redis client initializes | Import `src/lib/rate-limit.ts` (or call `checkRateLimit` with a test identifier) and verify no connection error thrown — required for FRD 1 rate limit criteria 20-21 |
 
 ---
 

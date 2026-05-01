@@ -1344,7 +1344,7 @@ FRD 1 is complete when ALL of the following are satisfied:
 | 4 | Context headers are prepended | Verify chunk text starts with `[OrgName > SectionTitle]` |
 | 5 | "External Links" section is skipped | Verify no chunk is created for a section titled "External Links" |
 | 6 | Large sections are split with overlap | Create a section >1000 tokens and verify it splits with 100-token overlap |
-| 7 | Metadata chunk is generated for Pulse data | Call `reembedPulse` and verify a chunk with `chunk_type = 'metadata'` exists |
+| 7 | No metadata chunks exist in the DB | Query `chunks` table and verify zero rows have `chunk_type = 'metadata'` — Pulse data is served live via `get_org_data`, not stored as chunks |
 | 8 | Comment chunk is generated | Call `reembedComment` and verify a chunk with `chunk_type = 'comment'` exists |
 | 9 | Semantic search returns relevant results | Search for "hardware design team" and verify relevant chunks rank highly |
 | 10 | Keyword search returns exact matches | Search for "ROS2" and verify chunks containing "ROS2" are returned |
@@ -1359,6 +1359,12 @@ FRD 1 is complete when ALL of the following are satisfied:
 | 19 | Re-embedding triggers on comment creation/deletion | Create and delete a comment and verify chunks are added/removed accordingly |
 | 20 | Authenticated rate limit enforced | Send 31 consecutive queries as a signed-in user and verify the 31st returns 429 |
 | 21 | Unauthenticated rate limit enforced | Send 11 consecutive queries as an anonymous user and verify the 11th returns 429 |
+| 22 | `get_org_data` returns structured Pulse data by slug | Call `getOrgDataTool({ orgs: [{ slug: "watonomous" }] })` with seed data present and verify `found: true`, correct Pulse fields returned |
+| 23 | `get_org_data` resolves org by display name | Call `getOrgDataTool({ orgs: [{ name: "WATonomous" }] })` and verify same result as passing slug directly |
+| 24 | `get_org_data` returns `found: false` for unknown name | Call with `{ name: "Fake Team That Does Not Exist" }` and verify `found: false` and message instructs fallback to `search_wiki` |
+| 25 | `list_orgs` returns orgs ranked by metric | Call `listOrgsTool({ metric: "coop_boost", order: "desc", limit: 3 })` with ≥3 seeded orgs with 3+ votes each and verify results sorted by descending `coop_boost` |
+| 26 | `list_orgs` respects minimum vote threshold | Seed an org with only 1 vote for a metric and verify it does NOT appear in `list_orgs` results for that metric |
+| 27 | Named-org query invokes `get_org_data` | Send `POST /api/search` with query `"What is WATonomous like?"` and verify the tool-call log includes a `get_org_data` call alongside or instead of `search_wiki` alone |
 
 ---
 
