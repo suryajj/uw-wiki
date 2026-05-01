@@ -744,7 +744,7 @@ export async function recomputeAggregate(orgId: string, metric: string) {
 
 ### 3.6 Cold-Start Seeded Values
 
-When the cold-start agent (FRD 5) generates a page, it also inserts initial `pulse_ratings` rows using the admin service account's `user_id` (a dedicated system user created in FRD 0). These count as a single vote each. As human votes accumulate, the cold-start values are naturally diluted via the median/mode aggregation. The unique constraint on `(user_id, org_id, metric)` means the system account can only seed each metric once per org.
+When the cold-start agent (FRD 5) generates a page, it seeds two factual Pulse metrics — **Selectivity** and **Tech Stack** — using the admin service account's `user_id` (`COLD_START_AGENT_USER_ID`), but only when clear evidence exists in the research sources. **Vibe Check and Co-op Boost are never seeded by the agent** — they require subjective human experience and are populated only by authenticated users voting via the Pulse widget. The unique constraint on `(user_id, org_id, metric)` ensures the system account can seed each metric only once per org.
 
 ---
 

@@ -227,7 +227,7 @@ Every wiki page has a sidebar infobox (similar to a Wikipedia infobox) displayin
 | **Tech Stack / Tooling** | Tags | Specific software and hardware used (e.g., Altium, ROS2, SolidWorks, React) |
 | **Health Status** | Automated Tag | Active, Inactive, or Potentially Defunct -- based on the date of the last verified edit, with thresholds configurable per org type |
 
-**Data source:** The cold-start agent populates initial Pulse values when generating a first-draft page. After launch, values are crowdsourced: users submit ratings through a standalone voting widget on the page (similar to a poll), and the displayed values reflect the aggregate.
+**Data source:** After launch, all Pulse values are crowdsourced — users submit ratings through a standalone voting widget, and displayed values reflect the aggregate. The cold-start agent seeds only **Selectivity** and **Tech Stack** when clear evidence exists in public sources. **Vibe Check and Co-op Boost are never agent-generated** — they require first-hand human experience and are populated only by authenticated users.
 
 ### Media
 
@@ -363,7 +363,7 @@ The Pulse is a standalone voting widget on each wiki page that allows users to s
 - **An account is required to vote** — Pulse ratings are tied to authenticated `user_id` to ensure data integrity and prevent session-based ballot-stuffing; one vote per user per org per metric enforced via unique constraint
 - Displayed values are aggregates: median for numeric ratings, mode for categorical, count of total votes shown for transparency
 
-**Cold-start seeding:** When the cold-start agent generates a first-draft page, it also populates initial Pulse values based on publicly available information (e.g., if a team's website says "applications open each term," Selectivity is set to "Application-Based"). These AI-seeded values are clearly tagged and weighted lower than human-submitted ratings once crowdsourced data starts flowing.
+**Cold-start seeding:** When the cold-start agent generates a first-draft page, it seeds **Selectivity** (e.g., "Application-Based" if the team's website explicitly states they run applications) and **Tech Stack** tags from publicly available sources. Vibe Check and Co-op Boost are left empty — they represent subjective member experience and must come from real users. New org pages launch with empty Vibe Check and Co-op Boost and prompt users to be the first to rate.
 
 ### 6.7 Page Claiming
 
@@ -396,7 +396,7 @@ An internal admin tool that takes an org name as input and runs an agent-powered
 1. Admin enters an org name and optionally a category
 2. The agent searches across both general and UW-specific sources
 3. The agent synthesizes findings into the suggested page template structure, populating as many sections as it can from available data
-4. The agent also generates initial Pulse metric estimates based on what it finds
+4. The agent seeds Selectivity and Tech Stack when clear evidence is found in sources (Vibe Check and Co-op Boost are not estimated — user-only)
 5. The generated content is clearly tagged as "AI-generated, pending human review" with a distinct visual banner
 6. The page is saved as a draft for admin review before publishing
 
@@ -826,7 +826,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | Moderation at scale? | As content grows, a tiered trust system (trusted contributors needing less review) may be needed. Defer until PR volume exceeds editorial board capacity. |
 | Legal and liability exposure? | Deferred. If defamatory content is posted, what is the process? Takedown requests? Should be defined before or shortly after launch. Not blocking MVP. |
 | Cold start agent web search API? | **Resolved: Tavily** (`@tavily/ai-sdk`, `@tavily/core`). Chosen for quality, AI-SDK-native integration, and support for extract + crawl operations. See FRD 5 for full integration spec. |
-| Pulse metric weights for cold-start vs. crowdsourced? | TBD. Initial proposal: AI-seeded values count as 1 vote; crowdsourced votes count as 1 vote each. AI-seeded values are diluted naturally as human votes accumulate. |
+| Pulse metric weights for cold-start vs. crowdsourced? | **Resolved.** Only Selectivity and Tech Stack are agent-seeded (factual, source-backed). Vibe Check and Co-op Boost are user-only. All seeded and crowdsourced votes count as 1 vote each with equal weight. |
 | Lifecycle threshold tuning? | Initial thresholds in Section 6.9 are estimates. May need adjustment based on real-world page update frequency after launch. |
 
 ---

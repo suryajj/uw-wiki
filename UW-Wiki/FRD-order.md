@@ -110,7 +110,7 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 **Scope:** See [FRD-5-cold-start-agent.md](./FRDs/FRD-5-cold-start-agent.md)
 
-**Exit criteria:** Admin can identify a UW org by name or URL via smart input; confirmation card is editable; research runs with step-by-step progress tracking; synthesis produces valid ProseMirror JSON and Pulse estimates; draft preview renders correctly; publish creates org + page + page_version + Pulse seed ratings; published page displays with AI-generated banner; non-admin access is blocked; rate limiting prevents runaway costs.
+**Exit criteria:** Admin can identify a UW org by name or URL via smart input; confirmation card is editable; research runs with step-by-step progress tracking; synthesis produces valid ProseMirror JSON; Selectivity and Tech Stack are seeded from research (Vibe Check/Co-op Boost left empty); draft preview renders correctly; publish creates org + page + page_version + Pulse seed ratings for Selectivity/Tech Stack only; published page displays with AI-generated banner; non-admin access is blocked; rate limiting prevents runaway costs.
 
 ---
 

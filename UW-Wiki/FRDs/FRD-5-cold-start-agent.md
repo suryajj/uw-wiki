@@ -17,7 +17,7 @@
 
 FRD 5 implements the Cold Start Agent described in PRD Section 6.8. The agent is an admin-only tool that auto-populates a first-draft wiki page for a University of Waterloo student organization by searching public internet sources and UW-specific directories. It solves the empty-page problem at launch by seeding 5-10 well-known design teams and clubs before public launch.
 
-The agent operates as a three-phase pipeline with a human-in-the-loop confirmation step. **Phase 1 (Identification)** takes an org name or URL from a single smart input field, searches the web via Tavily, and returns a confirmation card with the org's name, one-line description, website, and category. The admin reviews and optionally edits the card before confirming. **Phase 2 (Research)** runs a structured research plan with one task per wiki template section (Overview, Time Commitment, Culture and Vibe, Subteams and Roles, Past Projects, Exec History, How to Apply), querying Tavily Search and Extract for each section and reporting progress as a step-by-step tracker. **Phase 3 (Synthesis)** feeds the accumulated research data into a Claude Sonnet 4 call with a Zod-enforced ProseMirror JSON schema, producing a complete wiki page and Pulse metric estimates. The admin previews the draft and either publishes it (creating the org, page, and page version in Supabase) or opens it in the Tiptap editor for manual tweaks.
+The agent operates as a three-phase pipeline with a human-in-the-loop confirmation step. **Phase 1 (Identification)** takes an org name or URL from a single smart input field, searches the web via Tavily, and returns a confirmation card with the org's name, one-line description, website, and category. The admin reviews and optionally edits the card before confirming. **Phase 2 (Research)** runs a structured research plan with one task per wiki template section (Overview, Time Commitment, Culture and Vibe, Subteams and Roles, Past Projects, Exec History, How to Apply), querying Tavily Search and Extract for each section and reporting progress as a step-by-step tracker. **Phase 3 (Synthesis)** feeds the accumulated research data into a Claude Sonnet 4 call with a Zod-enforced ProseMirror JSON schema, producing a complete wiki page with Selectivity and Tech Stack seeded from research sources. Vibe Check and Co-op Boost are intentionally excluded from agent synthesis — those require subjective human experience and are only populated by authenticated users voting. The admin previews the draft and either publishes it (creating the org, page, and page version in Supabase) or opens it in the Tiptap editor for manual tweaks.
 
 The architecture is designed for a future extension where authenticated users can request new org pages, with the admin reviewing the generated draft before publishing.
 
@@ -41,7 +41,7 @@ The following are assumed to be in place from FRD 0 and FRD 2:
 | Tiptap editor extensions configured in `src/lib/editor/extensions.ts`                                       | FRD 2      |
 | Pulse sidebar component and voting widget                                                                    | FRD 2      |
 | Empty page state handling (AI-generated banner) in wiki page view                                            | FRD 2      |
-| Cold-start Pulse seeding convention (`session_id = "cold-start-agent"`)                                     | FRD 2      |
+| Cold-start Pulse seeding: Selectivity + Tech Stack only, using `user_id = COLD_START_AGENT_USER_ID`         | FRD 2      |
 | Org category constants: Design Teams, Engineering Clubs, Non-Engineering Clubs, Academic Programs, Student Societies, Campus Organizations | FRD 2 |
 
 ### Terms
@@ -52,7 +52,7 @@ The following are assumed to be in place from FRD 0 and FRD 2:
 | Identification      | Phase 1 of the agent pipeline: detect input type (name or URL), search/extract, return a structured confirmation card.                                           |
 | Confirmation Card   | A structured summary of an identified org (name, one-liner, website, category, confidence) shown to the admin for review before research begins.                 |
 | Research Plan       | Phase 2 of the agent pipeline: a sequence of targeted web searches, one per wiki template section, accumulating raw data.                                        |
-| Synthesis           | Phase 3 of the agent pipeline: an LLM call that transforms accumulated research data into ProseMirror JSON matching the wiki template and Pulse metric estimates.|
+| Synthesis           | Phase 3 of the agent pipeline: an LLM call that transforms accumulated research data into ProseMirror JSON matching the wiki template. Also extracts Selectivity and Tech Stack from research sources when evidence is clear. Vibe Check and Co-op Boost are not estimated. |
 | Smart Input         | A single text input that auto-detects whether the admin entered an org name or pasted a URL and routes to the appropriate identification strategy.                |
 | Tavily              | A web search API optimized for AI applications, providing search, extract, crawl, and map tools as pre-built Vercel AI SDK integrations.                         |
 | ProseMirror JSON    | The structured document format used by the Tiptap editor. A tree of nodes (headings, paragraphs, lists, images) stored as `content_json` in `page_versions`.     |
@@ -115,7 +115,8 @@ Feature: Cold Start Agent
     Then   the progress tracker shows "Generating page content..."
     And    Claude Sonnet 4 produces ProseMirror JSON matching the wiki template
     And    the progress tracker shows "Estimating Pulse metrics..."
-    And    the agent produces Pulse metric estimates
+    And    the agent extracts Selectivity and Tech Stack from research sources
+    And    Vibe Check and Co-op Boost are left null (user-only)
 
   Scenario: Admin previews and publishes the draft
     Given  the draft is ready
@@ -130,7 +131,7 @@ Feature: Cold Start Agent
     Then   an organizations row is created (if new)
     And    a pages row is created
     And    a page_versions row is created with the generated ProseMirror JSON
-    And    pulse_ratings rows are inserted with session_id "cold-start-agent"
+    And    pulse_ratings rows are inserted with user_id = COLD_START_AGENT_USER_ID (admin service account)
     And    the cold_start_jobs status is updated to "published"
     And    the wiki page displays with the AI-generated banner from FRD 2
 
@@ -675,7 +676,7 @@ If the budget is exhausted mid-plan, remaining sections are marked as skipped wi
 After research completes, the synthesis phase feeds all accumulated data into a single `generateObject` call with a comprehensive Zod schema. This produces:
 
 1. **ProseMirror JSON** matching the `SUGGESTED_TEMPLATE` structure from FRD 2.
-2. **Pulse metric estimates** for Selectivity, Vibe Check, Co-op Boost, and Tech Stack.
+2. **Factual Pulse seeds** for Selectivity and Tech Stack — extracted from research sources when evidence is clear and direct. Vibe Check and Co-op Boost are NOT generated; they require subjective human experience.
 3. **Source citations** per section.
 
 ### 5.2 Implementation
@@ -729,7 +730,7 @@ The synthesis produces a `ColdStartOutput` object (see Section 11 for full Zod s
 | Field            | Type            | Description                                                      |
 | ---------------- | --------------- | ---------------------------------------------------------------- |
 | `pageContent`    | ProseMirror JSON| Complete wiki page matching `SUGGESTED_TEMPLATE` structure       |
-| `pulseEstimates` | Object          | Selectivity, Vibe Check, Co-op Boost, Tech Stack guesses         |
+| `pulseEstimates` | Object          | Selectivity and Tech Stack only (factual, source-backed). Vibe Check and Co-op Boost are excluded — user-only. |
 | `sectionSources` | Array           | Per-section list of source URLs used                             |
 | `tagline`        | String          | One-line tagline for the org directory card                      |
 
@@ -848,51 +849,39 @@ export async function POST(request: Request) {
 
 ### 6.3 Pulse Seeding on Publish
 
-Per FRD 2 Section 3.6, cold-start Pulse ratings use `session_id = "cold-start-agent"`:
+Per FRD 2 Section 3.6, only Selectivity and Tech Stack are seeded. Ratings are inserted using the admin service account's `user_id` (`COLD_START_AGENT_USER_ID` — an env var set to the UUID of the system service account created in FRD 0 seed data):
 
 ```typescript
 // src/lib/ai/cold-start/pulse-seeding.ts
+
+// COLD_START_AGENT_USER_ID: UUID of the system service account created in FRD 0 seed data.
+// Set in environment as COLD_START_AGENT_USER_ID.
+const COLD_START_AGENT_USER_ID = process.env.COLD_START_AGENT_USER_ID!;
 
 async function insertColdStartPulseRatings(
   supabase: SupabaseClient,
   orgId: string,
   estimates: PulseEstimates,
 ) {
+  // Only Selectivity and Tech Stack are seeded — factual attributes sourced from research.
+  // Vibe Check and Co-op Boost require subjective human experience and are never agent-seeded.
   const ratings = [];
 
   if (estimates.selectivity) {
     ratings.push({
       org_id: orgId,
+      user_id: COLD_START_AGENT_USER_ID,
       metric: "selectivity",
       value: estimates.selectivity,
-      session_id: "cold-start-agent",
-    });
-  }
-
-  if (estimates.vibeCheck) {
-    ratings.push({
-      org_id: orgId,
-      metric: "vibe_check",
-      value: estimates.vibeCheck,
-      session_id: "cold-start-agent",
-    });
-  }
-
-  if (estimates.coopBoost) {
-    ratings.push({
-      org_id: orgId,
-      metric: "coop_boost",
-      value: estimates.coopBoost,
-      session_id: "cold-start-agent",
     });
   }
 
   if (estimates.techStack && estimates.techStack.length > 0) {
     ratings.push({
       org_id: orgId,
+      user_id: COLD_START_AGENT_USER_ID,
       metric: "tech_stack",
       value: JSON.stringify(estimates.techStack),
-      session_id: "cold-start-agent",
     });
   }
 
@@ -1040,7 +1029,7 @@ ColdStartPage
 ├── ProgressTracker (vertical step list with status icons)
 ├── DraftPreview
 │   ├── TiptapReadOnly (rendered ProseMirror content)
-│   ├── PulseSidebarPreview (estimated metrics)
+│   ├── PulseSidebarPreview (Selectivity + Tech Stack seeded; Vibe Check / Co-op Boost show "No ratings yet")
 │   └── SourcesList (per-section source URLs)
 ├── DraftEditor (Tiptap editor for manual edits)
 └── RecentJobsList (list of past cold start jobs with status)
@@ -1133,12 +1122,10 @@ Your task is to GENERATE a complete wiki page using the research data provided.
 
 Output requirements:
 1. pageContent: A complete ProseMirror JSON document following the template structure. Each section is an H2 heading followed by paragraph nodes. Write substantive content for sections with research data. For sections with no data, write a single paragraph: "No information available yet. Propose an edit to contribute."
-2. pulseEstimates: Your best estimates for Pulse metrics based on the research:
-   - selectivity: "Open Membership" | "Application-Based" | "Invite-Only"
-   - vibeCheck: number 1-5 (1=very social/casual, 5=very corporate/formal)
-   - coopBoost: number 1-5 (1=no career benefit, 5=strong career pipeline)
-   - techStack: array of technology/tool names (e.g., ["SolidWorks", "Python", "Altium"])
-   Set any metric to null if there is insufficient evidence to estimate.
+2. pulseEstimates: Factual Pulse fields sourced directly from research:
+   - selectivity: "Open Membership" | "Application-Based" | "Invite-Only" — set ONLY if the org's website or materials explicitly state their application process. Set null if unclear.
+   - techStack: array of technology/tool names (e.g., ["SolidWorks", "Python", "Altium"]) — include only tools explicitly mentioned in sources.
+   DO NOT estimate vibeCheck or coopBoost. Those are subjective experience ratings that must come from real users. Leave them absent from the schema entirely.
 3. sectionSources: For each section, list the URLs that informed the content.
 4. tagline: A concise one-line tagline for the org directory card (max 80 chars).
 
@@ -1285,28 +1272,18 @@ const proseMirrorDocSchema = z.object({
 ### 11.3 Pulse Estimates Schema
 
 ```typescript
+// Vibe Check and Co-op Boost are intentionally absent — those are subjective
+// ratings that must come from real authenticated users, not AI inference.
 export const pulseEstimatesSchema = z.object({
   selectivity: z
     .enum(["Open Membership", "Application-Based", "Invite-Only"])
     .nullable()
-    .describe("Org selectivity based on application process"),
-  vibeCheck: z
-    .number()
-    .min(1)
-    .max(5)
-    .nullable()
-    .describe("1=very social/casual, 5=very corporate/formal"),
-  coopBoost: z
-    .number()
-    .min(1)
-    .max(5)
-    .nullable()
-    .describe("1=no career benefit, 5=strong career pipeline"),
+    .describe("Set only if the org's materials explicitly state their application process. Null if unclear."),
   techStack: z
     .array(z.string())
     .max(10)
     .nullable()
-    .describe("Technologies and tools used by the org"),
+    .describe("Technologies explicitly mentioned in research sources. Do not infer."),
 });
 
 export type PulseEstimates = z.infer<typeof pulseEstimatesSchema>;
@@ -1331,7 +1308,7 @@ export const coldStartOutputSchema = z.object({
     "Complete wiki page as ProseMirror JSON following the template structure",
   ),
   pulseEstimates: pulseEstimatesSchema.describe(
-    "Estimated Pulse metrics based on research findings",
+    "Factual Pulse seeds (Selectivity, Tech Stack only) sourced directly from research. Vibe Check and Co-op Boost are excluded.",
   ),
   sectionSources: sectionSourcesSchema.describe(
     "Source URLs used for each section of the page",
@@ -1632,12 +1609,12 @@ FRD 5 is complete when ALL of the following are satisfied:
 | 4  | Research runs with progress tracking                               | Confirm an org; verify the progress tracker shows steps advancing from pending to completed        |
 | 5  | Skipped sections are handled gracefully                            | Verify that sections with no Tavily results show "No data found" status                           |
 | 6  | Synthesis produces valid ProseMirror JSON                          | Verify the draft content passes the Zod schema and renders correctly in Tiptap                    |
-| 7  | Pulse metrics are estimated                                        | Verify the draft includes non-null Pulse estimates for at least selectivity and tech stack         |
+| 7  | Pulse seeds are factual (Selectivity + Tech Stack only)            | Verify the draft includes non-null selectivity and/or tech stack sourced from research; confirm vibeCheck and coopBoost are absent from pulseEstimates |
 | 8  | Draft preview renders correctly                                    | Verify the read-only Tiptap instance shows the generated content with section headings            |
 | 9  | Pulse sidebar preview renders                                      | Verify estimated metrics appear in the sidebar preview                                            |
 | 10 | Source URLs are listed per section                                  | Verify at least the Overview section shows source URLs                                            |
 | 11 | Publish creates org + page + page_version                          | Click Publish; verify rows exist in `organizations`, `pages`, `page_versions`                     |
-| 12 | Pulse ratings are seeded with cold-start-agent session             | After publish, verify `pulse_ratings` rows with `session_id = "cold-start-agent"` exist           |
+| 12 | Pulse ratings use admin service account user_id                    | After publish, verify `pulse_ratings` rows exist with `user_id = COLD_START_AGENT_USER_ID` and only `selectivity` and `tech_stack` metrics are seeded |
 | 13 | Published page shows AI-generated banner                           | Navigate to `/wiki/[slug]`; verify the yellow banner from FRD 2 Section 2.8 is displayed          |
 | 14 | Edit before publish works                                          | Click "Edit in Editor"; modify content; publish the edited version; verify changes are saved       |
 | 15 | Admin-only access is enforced                                      | Attempt to access `/admin/cold-start` as a non-admin user; verify redirect                        |
@@ -1729,12 +1706,10 @@ Your task is to GENERATE a complete wiki page using the research data provided.
 
 Output requirements:
 1. pageContent: A complete ProseMirror JSON document following the template structure. Each section is an H2 heading followed by paragraph nodes. Write substantive content for sections with research data. For sections with no data, write a single paragraph: "No information available yet. Propose an edit to contribute."
-2. pulseEstimates: Your best estimates for Pulse metrics based on the research:
-   - selectivity: "Open Membership" | "Application-Based" | "Invite-Only"
-   - vibeCheck: number 1-5 (1=very social/casual, 5=very corporate/formal)
-   - coopBoost: number 1-5 (1=no career benefit, 5=strong career pipeline)
-   - techStack: array of technology/tool names (e.g., ["SolidWorks", "Python", "Altium"])
-   Set any metric to null if there is insufficient evidence to estimate.
+2. pulseEstimates: Factual Pulse fields sourced directly from research:
+   - selectivity: "Open Membership" | "Application-Based" | "Invite-Only" — set ONLY if the org's website or materials explicitly state their application process. Null if unclear.
+   - techStack: array of technology/tool names — include only tools explicitly mentioned in sources.
+   DO NOT estimate vibeCheck or coopBoost. Those are subjective experience ratings for real users only.
 3. sectionSources: For each section, list the URLs that informed the content.
 4. tagline: A concise one-line tagline for the org directory card (max 80 chars).
 
@@ -1872,7 +1847,7 @@ Admin reviews the draft, clicks "Publish." The system creates:
 - `organizations` row: Midnight Sun Solar Car Team, slug `midnight-sun`, category `Design Teams`
 - `pages` row linked to the org
 - `page_versions` row with the generated content, `is_cold_start = true`
-- `pulse_ratings` rows with `session_id = "cold-start-agent"`
+- `pulse_ratings` rows for Selectivity and Tech Stack only, with `user_id = COLD_START_AGENT_USER_ID`
 
 The page is now viewable at `/wiki/midnight-sun` with the yellow AI-generated banner.
 
