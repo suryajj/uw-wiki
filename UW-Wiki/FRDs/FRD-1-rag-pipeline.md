@@ -44,7 +44,7 @@ The following are assumed to be in place from FRD 0:
 | Hybrid search | Retrieval combining semantic similarity (pgvector vectors) and keyword matching (PostgreSQL full-text search) into a single ranked result set |
 | RRF (Reciprocal Rank Fusion) | A rank-based score combination algorithm that merges results from multiple retrieval methods without requiring score normalization |
 | Ingestion | The process of parsing page content, chunking it, embedding the chunks, and storing them in the database |
-| Re-embedding | Deleting stale chunks and creating new ones when source content changes (page edit accepted, comment added) |
+| Re-embedding | Deleting stale chunks and creating new ones when source content changes. For PR acceptance, only the sections listed in `edit_proposals.section_slugs` are re-embedded (`reembedSections`). For initial ingestion and cold start, the full page is re-embedded (`reembedPage`). |
 | Context header | A prefix prepended to chunk text before embedding (e.g., `[Midnight Sun > Time Commitment]`) to bake org/section context into the vector |
 | Tool-calling | The pattern where the LLM decides when and how to call tools (`search_wiki` for prose/opinions, `get_org_data` for structured facts) rather than the application automatically reformulating queries |
 | ProseMirror JSON | The structured document format used by the Tiptap editor to store wiki page content |
@@ -352,10 +352,12 @@ The system shall:
 The system shall:
 
 1. Use the comment body as the chunk content.
-2. Prepend a context header: `[Midnight Sun > Time Commitment > Comment]`.
+2. Prepend a context header based on whether the comment is anchored to a specific section:
+   - **Section-anchored comment:** `[Midnight Sun > Time Commitment > Comment]`
+   - **Page-level comment (no section anchor):** `[Midnight Sun > Comment]`
 3. Set `created_at` to the **comment's own `created_at`** timestamp (not the embedding timestamp), so the LLM can say "a commenter in 2024 noted..."
-4. Set `anchored_section` to the section the comment is anchored to.
-5. Set `references_previous_version = true` if the comment's anchor text was deleted during a page edit and re-anchoring failed. This depends on the anchor handling implementation in the Comments FRD.
+4. Set `anchored_section` to the section slug if the comment is anchored to a section; `null` for page-level comments.
+5. Set `references_previous_version = true` if re-anchoring failed after a page edit (the anchored section or text was deleted/changed beyond recognition). This boolean also covers the case where the entire section the comment was anchored to was removed. See Comments FRD for anchor resolution logic.
 
 ### 2.4 Chunking Configuration
 
@@ -417,7 +419,7 @@ The corpus is not static -- it changes whenever wiki pages are edited, comments 
 
 | Trigger | Action | SQL |
 |---|---|---|
-| Page version accepted | Delete all content chunks for the page, re-chunk and re-embed the new content | `DELETE FROM chunks WHERE page_id = $1 AND chunk_type = 'content'` |
+| Page version accepted (section-scoped PR) | Delete content chunks only for the changed sections, re-chunk and re-embed those sections | `DELETE FROM chunks WHERE page_id = $1 AND chunk_type = 'content' AND section_slug = ANY($2::text[])` where `$2` is `edit_proposals.section_slugs` |
 | Comment created | Create a new comment chunk, embed it | `INSERT INTO chunks ...` |
 | Comment updated | Delete old comment chunk, create and embed new one | `DELETE FROM chunks WHERE source_comment_id = $1` then `INSERT` |
 | Comment deleted | Delete the comment chunk | `DELETE FROM chunks WHERE source_comment_id = $1` |
@@ -436,6 +438,59 @@ All re-embedding runs **asynchronously** -- it does not block the user action. T
 
 import { createClient } from "@/lib/supabase/admin";
 
+/**
+ * Upsert chunks for specific sections of a page (used when a section-scoped PR is accepted).
+ * Only deletes and re-embeds the sections listed in sectionSlugs.
+ * Used for: PR acceptance (edit_proposals.section_slugs tells us which sections changed).
+ */
+export async function reembedSections(
+  pageId: string,
+  sectionSlugs: string[],
+  orgMeta: OrgMeta,
+  newContent: ProseMirrorDoc
+) {
+  const supabase = createClient();
+
+  // Delete stale chunks only for the touched sections
+  await supabase
+    .from("chunks")
+    .delete()
+    .eq("page_id", pageId)
+    .eq("chunk_type", "content")
+    .in("section_slug", sectionSlugs);
+
+  // Re-chunk the full doc but filter to only the changed sections
+  const allChunks = chunkProseMirrorDoc(newContent, orgMeta);
+  const changedChunks = allChunks.filter((c) => sectionSlugs.includes(c.sectionSlug));
+
+  if (changedChunks.length === 0) return;
+
+  const texts = changedChunks.map((c) => c.contentWithHeader);
+  const vectors = await embedBatch(texts);
+
+  const rows = changedChunks.map((chunk, i) => ({
+    university_id: orgMeta.universityId,
+    org_id: orgMeta.orgId,
+    page_id: pageId,
+    page_version_id: orgMeta.pageVersionId,
+    chunk_type: "content" as const,
+    org_name: orgMeta.orgName,
+    org_slug: orgMeta.orgSlug,
+    category: orgMeta.category,
+    section_title: chunk.sectionTitle,
+    section_slug: chunk.sectionSlug,
+    chunk_index: chunk.chunkIndex,
+    content_text: chunk.contentWithHeader,
+    embedding: vectors[i],
+  }));
+
+  await supabase.from("chunks").insert(rows);
+}
+
+/**
+ * Re-embed all content chunks for a page (used for full-page ingestion: cold start, initial creation).
+ * Do NOT call this for PR acceptance — use reembedSections instead to avoid unnecessary work.
+ */
 export async function reembedPage(pageId: string, orgMeta: OrgMeta, content: ProseMirrorDoc) {
   const supabase = createClient();
 
@@ -469,7 +524,9 @@ export async function reembedComment(commentId: string, orgMeta: OrgMeta, commen
 
   await supabase.from("chunks").delete().match({ source_comment_id: commentId });
 
-  const header = `[${orgMeta.orgName} > ${comment.anchoredSection} > Comment]`;
+  const header = comment.anchoredSection
+    ? `[${orgMeta.orgName} > ${comment.anchoredSection} > Comment]`
+    : `[${orgMeta.orgName} > Comment]`;
   const contentWithHeader = `${header}\n${comment.body}`;
   const [vector] = await embedBatch([contentWithHeader]);
 
@@ -1142,7 +1199,6 @@ The system shall:
 
 - Conversation state is managed **client-side** via the `useChat` hook from `ai/react`.
 - **No server-side session persistence for MVP.** Conversations are ephemeral -- refreshing the page starts a new conversation.
-- Each conversation gets a client-side ID for analytics tracking.
 
 ---
 
@@ -1288,7 +1344,7 @@ This is a Tier 2 risk — the LLM has no access to secrets or mutation capabilit
 ```typescript
 // src/app/api/search/route.ts
 
-const MAX_QUERY_LENGTH = 500;
+const MAX_QUERY_LENGTH = 3000;
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -1355,7 +1411,7 @@ FRD 1 is complete when ALL of the following are satisfied:
 | 15 | Follow-up questions maintain context | Ask a follow-up referencing prior context and verify the LLM uses it |
 | 16 | Off-topic questions are redirected | Ask "What's the weather?" and verify the response does not call `search_wiki` |
 | 17 | Fallback suggests pages when no content matches | Ask about a topic with no wiki content and verify page suggestions appear |
-| 18 | Re-embedding triggers on page edit | Accept an edit proposal and verify old chunks are deleted and new ones created |
+| 18 | Re-embedding is section-scoped on PR acceptance | Accept a 2-section PR and verify only those 2 sections' chunks are deleted and recreated; chunks for untouched sections remain unchanged |
 | 19 | Re-embedding triggers on comment creation/deletion | Create and delete a comment and verify chunks are added/removed accordingly |
 | 20 | Authenticated rate limit enforced | Send 31 consecutive queries as a signed-in user and verify the 31st returns 429 |
 | 21 | Unauthenticated rate limit enforced | Send 11 consecutive queries as an anonymous user and verify the 11th returns 429 |

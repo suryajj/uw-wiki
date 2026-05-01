@@ -343,7 +343,6 @@ interface AuthModalProps {
 }
 ```
 
-**Analytics hooks:** none in FRD 6; every `dispatch(...)` in the reducer is a natural instrumentation point for a future telemetry FRD.
 
 ### 1.4 `/auth/sign-in` Page Layout
 
