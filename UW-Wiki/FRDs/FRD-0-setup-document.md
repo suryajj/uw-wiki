@@ -98,7 +98,8 @@ Feature: UW Wiki foundational setup
 5. [4. Supabase Setup and Schema Baseline](#4-supabase-setup-and-schema-baseline)
 6. [5. App Foundation Implementation](#5-app-foundation-implementation)
 7. [6. AI Foundation (Vercel AI SDK + OpenRouter)](#6-ai-foundation-vercel-ai-sdk--openrouter)
-8. [7. Auth and Authorization Baseline](#7-auth-and-authorization-baseline)
+8. [6a. Rate Limiting Foundation (Upstash Redis)](#6a-rate-limiting-foundation-upstash-redis)
+9. [7. Auth and Authorization Baseline](#7-auth-and-authorization-baseline)
 9. [8. Quality Gates and Developer Workflow](#8-quality-gates-and-developer-workflow)
 10. [9. Exit Criteria](#9-exit-criteria)
 11. [Appendix A: Dependency Baseline](#appendix-a-dependency-baseline)
@@ -255,6 +256,8 @@ UW-Wiki/
 | `OPENROUTER_BASE_URL` | Server only | Yes | OpenRouter base URL |
 | `OPENROUTER_HTTP_REFERER` | Server only | Yes | OpenRouter request header |
 | `OPENROUTER_X_TITLE` | Server only | Yes | OpenRouter request header |
+| `UPSTASH_REDIS_REST_URL` | Server only | Yes | Upstash Redis REST endpoint (rate limiting) |
+| `UPSTASH_REDIS_REST_TOKEN` | Server only | Yes | Upstash Redis auth token (rate limiting) |
 
 ### 2.2 Optional Variables
 
@@ -494,6 +497,106 @@ AI SDK v5 uses `@ai-sdk/react` for hooks (not `ai/react`). Any legacy snippets i
 
 ---
 
+## 6a. Rate Limiting Foundation (Upstash Redis)
+
+Rate limiting is used across FRD 1 (RAG search), FRD 2 (Pulse voting), FRD 3 (comments), and FRD 4 (proposals). The Upstash client and shared helper are scaffolded here in FRD 0 so every downstream FRD can import the same interface.
+
+### 6a.1 Packages
+
+```bash
+npm install @upstash/redis @upstash/ratelimit
+```
+
+### 6a.2 Required Environment Variables
+
+Add to `2.1 Required Variables` table and `.env.example`:
+
+| Variable | Scope | Required | Purpose |
+|---|---|---|---|
+| `UPSTASH_REDIS_REST_URL` | Server only | Yes | Upstash Redis REST endpoint |
+| `UPSTASH_REDIS_REST_TOKEN` | Server only | Yes | Upstash Redis auth token |
+
+Both values are obtained from the [Upstash console](https://console.upstash.com) after creating a Redis database. The free tier (10K requests/day) is sufficient for MVP load.
+
+### 6a.3 Rate Limit Helper
+
+Create `src/lib/rate-limit.ts` as the single import point for all rate limiting across the app. Downstream FRDs call this helper with their own identifiers and window configurations — they do not import `@upstash/redis` or `@upstash/ratelimit` directly.
+
+```typescript
+// src/lib/rate-limit.ts
+
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
+
+const redis = Redis.fromEnv();
+
+/**
+ * Create a sliding-window rate limiter.
+ * @param requests - max requests allowed
+ * @param window   - window duration string accepted by Upstash (e.g. "1 m", "10 s", "1 d")
+ */
+export function createRateLimiter(requests: number, window: string) {
+  return new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(requests, window),
+  });
+}
+
+/**
+ * Check a rate limit and return whether the request is allowed.
+ * @param limiter    - an instance returned by createRateLimiter
+ * @param identifier - a unique key: user_id for authenticated, IP for anonymous
+ */
+export async function checkRateLimit(
+  limiter: Ratelimit,
+  identifier: string
+): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
+  const result = await limiter.limit(identifier);
+  return {
+    success: result.success,
+    limit: result.limit,
+    remaining: result.remaining,
+    reset: result.reset,
+  };
+}
+
+/** Convenience: extract client IP from a Next.js Request */
+export function getClientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+```
+
+### 6a.4 Usage Pattern
+
+Each FRD-specific rate limit is created as a module-level constant and called at the top of the relevant API route:
+
+```typescript
+// Example: RAG search rate limit (FRD 1)
+import { createRateLimiter, checkRateLimit, getClientIp } from "@/lib/rate-limit";
+
+const authRateLimiter  = createRateLimiter(30, "1 m");   // 30 req/min for signed-in users
+const anonRateLimiter  = createRateLimiter(10, "1 m");   // 10 req/min for anonymous
+
+export async function POST(req: Request) {
+  const user = await getUser(req);
+  const limiter = user ? authRateLimiter : anonRateLimiter;
+  const key     = user ? user.id : getClientIp(req);
+
+  const { success } = await checkRateLimit(limiter, key);
+  if (!success) return Response.json({ error: "Rate limit exceeded" }, { status: 429 });
+
+  // ...rest of route
+}
+```
+
+Actual limit values for each endpoint are specified in their respective FRDs. The helper here only provides the shared plumbing.
+
+---
+
 ## 7. Auth and Authorization Baseline
 
 ### 7.1 Supabase Auth Configuration
@@ -647,6 +750,10 @@ OPENROUTER_API_KEY=
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_HTTP_REFERER=http://localhost:3000
 OPENROUTER_X_TITLE=UW Wiki
+
+# Upstash Redis (rate limiting)
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 
 # Optional analytics
 POSTHOG_KEY=

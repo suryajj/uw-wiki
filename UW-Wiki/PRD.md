@@ -263,7 +263,7 @@ Users ask natural-language questions. The system retrieves relevant sections fro
 - Wiki page content is chunked by section and embedded using OpenAI `text-embedding-3-small` via OpenRouter
 - Retrieval uses hybrid search: semantic search (cosine similarity on pgvector embeddings) combined with keyword search (PostgreSQL full-text search via `tsvector`) for precise term matching
 - Results are re-ranked by relevance before being passed to the synthesis LLM
-- The Pulse metadata and structured external links are included in the retrieval corpus so that quantitative questions ("How selective is WATonomous?") can be answered
+- Quantitative org data (Pulse ratings, structured metadata) is fetched on demand via a direct DB lookup tool at query time, not embedded in the retrieval corpus — this ensures ratings are always current without re-embedding on every vote
 
 **Model:** Gemini 2.5 Flash via OpenRouter (cost-effective for a startup, fast inference, strong synthesis quality, large context window for multi-page retrieval).
 
@@ -622,7 +622,7 @@ graph TD
 | `page_versions` | Version history (diff-based) | `id`, `page_id`, `version_number`, `content_json` (ProseMirror), `diff_json`, `summary`, `contributor_id`, `created_at` |
 | `edit_proposals` | Pending PRs | `id`, `page_id`, `section_slugs` (array of targeted section slugs), `rationale`, `ai_verdict`, `ai_reason`, `status` (pending / changes_requested / needs_rebase / accepted / rejected / superseded / withdrawn), `contributor_id`, `reviewer_id`, `submitted_at`, `reviewed_at` |
 | `comments` | Inline comments | `id`, `page_id`, `page_version_id`, `anchor_text`, `anchor_offset`, `body`, `parent_comment_id` (threading), `is_anonymous`, `contributor_id`, `created_at` |
-| `pulse_ratings` | Individual votes | `id`, `org_id`, `metric` (selectivity/vibe/coop_boost), `value`, `session_id`, `created_at` |
+| `pulse_ratings` | Individual votes | `id`, `org_id`, `user_id` (NOT NULL, auth required), `metric` (selectivity/vibe/coop_boost), `value`, `created_at` — unique constraint on (user_id, org_id, metric) |
 | `pulse_aggregates` | Computed aggregates | `org_id`, `metric`, `aggregate_value`, `vote_count`, `last_computed_at` |
 | `external_links` | Structured links | `id`, `org_id`, `type` (website/instagram/linkedin/github/custom), `url`, `label` |
 | `users` | Authenticated accounts | `id`, `email`, `display_name`, `avatar_url`, `role` (user/reviewer/admin), `created_at` |
@@ -910,7 +910,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | RAG Search Synthesis | Gemini 2.5 Flash | Google (via OpenRouter) | Cost-effective, fast inference, large context window (1M tokens) for multi-page retrieval, strong synthesis quality | ~$0.15 / $0.60 |
 | AI Pre-Screener | GPT-4o-mini | OpenAI (via OpenRouter) | Cheapest viable model for a simple pass/fail classification task. Does not require strong reasoning -- just editorial value alignment | ~$0.15 / $0.60 |
 | Cold Start Agent | Claude Sonnet 4 | Anthropic (via OpenRouter) | Strong at web research synthesis, structured output generation, and maintaining appropriate tone across long documents | ~$3.00 / $15.00 |
-| Embeddings | text-embedding-3-small | OpenAI (via OpenRouter) | Cost-effective embeddings with strong retrieval quality. 1536 dimensions. Industry standard for RAG applications | ~$0.02 / N/A |
+| Embeddings | text-embedding-3-small | OpenAI (via OpenRouter) | Cost-effective embeddings with strong retrieval quality. 512 dimensions (truncated from 1536 for cost/storage efficiency at launch scale). Industry standard for RAG applications | ~$0.02 / N/A |
 
 **Cost-conscious strategy:** Premium models (Claude Sonnet 4) are used only for infrequent admin tasks (cold start). The high-volume user-facing feature (RAG search) uses the most cost-effective model (Gemini 2.5 Flash). The pre-screener uses the cheapest viable model (GPT-4o-mini) since it is a simple classification task.
 

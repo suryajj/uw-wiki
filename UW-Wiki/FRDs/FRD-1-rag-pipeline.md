@@ -74,7 +74,7 @@ Feature: RAG Pipeline
 
   Scenario: LLM fetches Pulse ratings via get_org_data tool
     When   a user asks "What is WATonomous's Co-op Boost rating?"
-    Then   the LLM calls get_org_data with orgSlugs = ["watonomous"]
+    Then   the LLM calls get_org_data with orgs = [{ slug: "watonomous" }]
     And    receives structured JSON with selectivity, vibeCheck, coopBoost, techStack
     And    generates a cited answer from the structured data
 
@@ -567,7 +567,7 @@ interface ChunkResult {
   orgSlug: string;
   sectionTitle: string | null;
   sectionSlug: string | null;
-  chunkType: "content" | "metadata" | "comment";
+  chunkType: "content" | "comment";
   category: string;
   anchoredSection: string | null;
   referencesPreviousVersion: boolean;
@@ -865,7 +865,7 @@ export const getOrgDataTool = tool({
 });
 ```
 
-**Example return shape (for `orgSlugs: ["watonomous"]`):**
+**Example return shape (for `orgs: [{ slug: "watonomous" }]`):**
 
 ```json
 {
@@ -1512,7 +1512,7 @@ If "Past Projects" exceeds 1000 tokens, it splits into:
 | 2 | WATonomous > Tech Stack section (contains "ROS2") | 0.38 |
 | 3 | UW Robotics > Subteams (contains "ROS" but not "ROS2") | 0.22 |
 
-Note: if the user also asks for WATonomous's Pulse ratings, the LLM additionally calls `get_org_data({ orgSlugs: ["watonomous"] })` to fetch exact numbers — those no longer come from the chunk retrieval pipeline.
+Note: if the user also asks for WATonomous's Pulse ratings, the LLM additionally calls `get_org_data({ orgs: [{ slug: "watonomous" }] })` to fetch exact numbers — those no longer come from the chunk retrieval pipeline.
 
 **Step 3 -- RRF merge (k=60):**
 
@@ -1554,7 +1554,7 @@ WATonomous > Overview ranks #1, boosted by appearing in both result lists. The k
 **LLM calls:**
 - `search_wiki({ query: "Blueprint first-year CS student culture time commitment" })`
 - `search_wiki({ query: "WATonomous first-year CS student culture time commitment" })`
-- `get_org_data({ orgSlugs: ["blueprint", "watonomous"] })`
+- `get_org_data({ orgs: [{ slug: "blueprint" }, { slug: "watonomous" }] })`
 
 **Response:**
 > Here's a comparison across key dimensions:
@@ -1576,7 +1576,7 @@ WATonomous > Overview ranks #1, boosted by appearing in both result lists. The k
 
 **LLM calls:**
 - `search_wiki({ query: "Blueprint WATonomous selectivity application process how to apply" })`
-- `get_org_data({ orgSlugs: ["blueprint", "watonomous"] })` *(for Selectivity values)*
+- `get_org_data({ orgs: [{ slug: "blueprint" }, { slug: "watonomous" }] })` *(for Selectivity values)*
 
 **Response:**
 > Both are application-based [1]. Blueprint's application process includes a written application and an interview focused on motivation and teamwork [2]. A commenter in 2025 described it as "fairly accessible for first-years" [3]. WATonomous also requires an application and technical interview, with a commenter noting the technical bar is higher, especially for the perception and planning subteams [4].
