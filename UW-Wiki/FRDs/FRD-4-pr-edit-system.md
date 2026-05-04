@@ -8,7 +8,7 @@
 | **PRD Sections**    | 6.3 (Wiki Pages and Version Control), 6.4 (PR-Style Edit Proposals), 7 (Editorial Model and Trust), 8 (Platform Editorial Values), 9 (Identity and Authentication) |
 | **Type**            | Core workflow feature                                                                                                                                              |
 | **Depends On**      | FRD 0, FRD 1, FRD 2, FRD 3                                                                                                                                         |
-| **Delivers**        | Multi-section-scoped edit proposals, AI pre-screening, reviewer decision workflow, per-section conflict-safe merge, patchset revisions, conflict-of-interest enforcement |
+| **Delivers**        | Multi-section-scoped edit proposals, reviewer decision workflow, per-section conflict-safe merge, patchset revisions, conflict-of-interest enforcement |
 | **Created**         | 2026-04-06                                                                                                                                                         |
 | **Updated**         | 2026-04-07 -- v1.1: Upgraded from single-section to multi-section selection (contributors can include one or more sections in one proposal)                        |
 
@@ -18,7 +18,7 @@
 
 FRD 4 defines the PR-Edit system as a **section-scoped proposal workflow** where contributors select one or more sections to edit in a single proposal. This gives contributors the flexibility to make related changes across multiple sections (e.g., updating both "Time Commitment" and "Culture and Vibe" together) while preserving clean, per-section diffs for reviewers. Every section in a proposal is reviewed independently, but accepted atomically as a single version change.
 
-The system includes deterministic per-section mergeability checks (a proposal is only mergeable if every selected section is unchanged since the base version), patchset-based resubmission for stale proposals, and hard conflict-of-interest rules so reviewers cannot approve proposals for organizations they are affiliated with. AI pre-screening evaluates the full set of proposed section changes as a single editorial assessment.
+The system includes deterministic per-section mergeability checks (a proposal is only mergeable if every selected section is unchanged since the base version), patchset-based resubmission for stale proposals, and hard conflict-of-interest rules so reviewers cannot approve proposals for organizations they are affiliated with.
 
 ---
 
@@ -33,8 +33,7 @@ This FRD resolves overlap with existing docs as follows:
 Superseded areas in FRD 2 (implementation replaced by FRD 4):
 
 1. PR submission flow details (FRD 2 Section 5)
-2. AI pre-screening implementation details (FRD 2 Section 6)
-3. Diff generation for proposal review (FRD 2 Section 7)
+2. Diff generation for proposal review (FRD 2 Section 7)
 4. Reviewer decision semantics and accept flow specifics (FRD 2 Section 8.4-8.6)
 5. Proposal-related API routes in FRD 2 Section 13
 
@@ -88,17 +87,10 @@ Feature: Section-scoped PR edit proposals (multi-section)
     And the proposal is submitted with both section_slugs in a single PR
     And the reviewer sees a per-section diff card for each selected section
 
-  Scenario: AI pre-screen runs on submission
-    When a proposal is submitted (one or more sections)
-    Then GPT-4o-mini evaluates all proposed section changes against editorial values
-    And stores a single pass/fail + one-line reason for the proposal
-    And both contributor and reviewers can see the assessment
-
   Scenario: Reviewer makes final decision
     Given a proposal is pending review
-    When a reviewer checks the per-section diffs, rationale, and AI assessment
+    When a reviewer checks the per-section diffs and rationale
     Then the reviewer can accept or reject the whole proposal
-    And AI output is advisory only
 
   Scenario: Conflict-of-interest rule
     Given reviewer is affiliated with the target organization
@@ -129,13 +121,12 @@ Feature: Section-scoped PR edit proposals (multi-section)
 2. [2. Proposal Lifecycle](#2-proposal-lifecycle)
 3. [3. Data Model and Migrations](#3-data-model-and-migrations)
 4. [4. Diff and Mergeability Engine](#4-diff-and-mergeability-engine)
-5. [5. AI Pre-Screener](#5-ai-pre-screener)
-6. [6. Reviewer Experience and Policy Enforcement](#6-reviewer-experience-and-policy-enforcement)
-7. [7. Accept and Reject Pipelines](#7-accept-and-reject-pipelines)
-8. [8. API Contracts](#8-api-contracts)
-9. [9. Security, Abuse, and Auditability](#9-security-abuse-and-auditability)
-10. [10. Non-Functional Requirements](#10-non-functional-requirements)
-11. [11. Exit Criteria](#11-exit-criteria)
+5. [5. Reviewer Experience and Policy Enforcement](#5-reviewer-experience-and-policy-enforcement)
+6. [6. Accept and Reject Pipelines](#6-accept-and-reject-pipelines)
+7. [7. API Contracts](#7-api-contracts)
+8. [8. Security, Abuse, and Auditability](#8-security-abuse-and-auditability)
+9. [9. Non-Functional Requirements](#9-non-functional-requirements)
+10. [10. Exit Criteria](#10-exit-criteria)
 12. [Appendix A: Status State Machine](#appendix-a-status-state-machine)
 13. [Appendix B: Schema SQL](#appendix-b-schema-sql)
 14. [Appendix C: Design Decisions Log](#appendix-c-design-decisions-log)
@@ -253,8 +244,7 @@ A proposal can have multiple patchsets, inspired by change revision workflows:
 ### 2.3 Lifecycle Rules
 
 1. Proposal starts as `pending`.
-2. AI pre-screen attaches verdict to current patchset.
-3. Accept/reject transitions proposal to terminal status.
+2. Accept/reject transitions proposal to terminal status.
 4. If page/section drift is detected pre-accept, proposal becomes `needs_rebase`.
 5. Contributor may withdraw while `pending` or `needs_rebase`.
 
@@ -318,9 +308,6 @@ CREATE TABLE edit_proposal_patchsets (
   -- ]
   section_diffs JSONB NOT NULL,
   rationale TEXT NOT NULL,
-  ai_verdict TEXT CHECK (ai_verdict IN ('pass','fail')),
-  ai_reason TEXT,
-  ai_scored_at TIMESTAMPTZ,
   is_current BOOLEAN NOT NULL DEFAULT true,
   contributor_id UUID REFERENCES users(id),  -- NULL for anonymous patchset 1; patchset_number > 1 requires auth (enforced in application logic)
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -340,7 +327,7 @@ CREATE UNIQUE INDEX idx_edit_proposal_patchsets_current
 4. `section_diffs[*].section_slug` values must match `section_slugs` exactly.
 5. Patchset numbers must be monotonic.
 6. `accepted` and `rejected` are terminal.
-7. Accept operation requires current patchset AI verdict present (pass or fail). No silent skip.
+7. Accept operation requires current patchset to be `is_current = true`.
 
 ### 3.4 Performance Indexes
 
@@ -435,62 +422,9 @@ Diff view for reviewers must show:
 
 ---
 
-## 5. AI Pre-Screener
+## 5. Reviewer Experience and Policy Enforcement
 
-### 5.1 Purpose
-
-AI pre-screening provides advisory moderation support, not automated acceptance.
-
-It evaluates whether proposal text aligns with Platform Editorial Values:
-
-1. No Harm
-2. Honest, Not Unhinged
-3. Credible
-4. Specific Over Vague
-5. SLC Test
-
-### 5.2 Model and Provider
-
-1. Model: `openai/gpt-4o-mini` via OpenRouter.
-2. Interface: Vercel AI SDK (`generateObject`) with schema validation.
-
-### 5.3 Inputs
-
-1. Organization name + category.
-2. All selected section slugs and their heading text.
-3. Before/after content for every selected section (full set of section diffs).
-4. Contributor rationale (shared across all sections).
-5. Editorial values rubric.
-
-The AI pre-screener receives the full multi-section proposal in a single call and returns one verdict for the proposal as a whole. It does not produce per-section verdicts.
-
-### 5.4 Output Contract
-
-```typescript
-interface SectionPreScreenResult {
-  verdict: "pass" | "fail";
-  reason: string; // <= 100 chars
-  flags: string[]; // optional short tags, e.g. ["marketing_tone", "vague_claim"]
-}
-```
-
-### 5.5 Visibility
-
-1. Contributor sees verdict and reason on proposal detail page.
-2. Reviewer sees same assessment in queue and proposal detail.
-3. Assessment remains immutable per patchset after scoring.
-
-### 5.6 Latency and Retry
-
-1. Async execution after patchset insert.
-2. One retry on transient provider/network failure.
-3. On final failure, set AI status to `error` and allow human review.
-
----
-
-## 6. Reviewer Experience and Policy Enforcement
-
-### 6.1 Reviewer Queue
+### 5.1 Reviewer Queue
 
 Queue columns:
 
@@ -498,23 +432,22 @@ Queue columns:
 2. Page
 3. Sections (comma-separated list of section headings, e.g. "Time Commitment, Culture and Vibe")
 4. Contributor (or Anonymous)
-5. AI verdict badge
-6. Overall mergeability badge
-7. Submitted timestamp
+5. Overall mergeability badge
+6. Submitted timestamp
 
 Default sorting:
 
 1. `pending` first
 2. oldest first (FIFO)
 
-### 6.2 Final Decision Rules
+### 5.2 Final Decision Rules
 
 Only reviewer/admin can decide. Decision options:
 
 1. `accept`
 2. `reject`
 
-### 6.3 Conflict-of-Interest Policy
+### 5.3 Conflict-of-Interest Policy
 
 Hard checks before any decision action (accept, reject, or request changes):
 
@@ -525,7 +458,7 @@ Hard checks before any decision action (accept, reject, or request changes):
 
 Minimum requirement from product direction is enforced: affiliated reviewer can never take any decision action on a proposal for their affiliated org's page.
 
-### 6.4 Optional Expanded Guard
+### 5.4 Optional Expanded Guard
 
 Recommended policy toggle (enabled by default):
 
@@ -533,7 +466,7 @@ Recommended policy toggle (enabled by default):
 
 Reason: avoids both positive and negative bias in outcomes.
 
-### 6.5 Reviewer Audit Fields
+### 5.5 Reviewer Audit Fields
 
 On decision, record:
 
@@ -544,9 +477,9 @@ On decision, record:
 
 ---
 
-## 7. Accept and Reject Pipelines
+## 6. Accept and Reject Pipelines
 
-### 7.1 Accept Pipeline (Transactional)
+### 6.1 Accept Pipeline (Transactional)
 
 Server algorithm:
 
@@ -568,14 +501,14 @@ Post-commit async jobs:
 2. `reanchorCommentsForPageSections` (FRD 3) -- invoked for all sections that changed.
 3. Notification events (if enabled later).
 
-### 7.2 Reject Pipeline
+### 6.2 Reject Pipeline
 
 1. Validate reviewer role and policy.
 2. Require reviewer comment (minimum 10 chars).
 3. Mark proposal `rejected`.
-4. Preserve patchsets and AI outputs for audit history.
+4. Preserve patchsets for audit history.
 
-### 7.3 Request Changes Pipeline
+### 6.3 Request Changes Pipeline
 
 When a reviewer wants to keep the proposal open but requires revisions:
 
@@ -590,7 +523,7 @@ When a reviewer wants to keep the proposal open but requires revisions:
 
 The contributor sees the reviewer's `message` and optional per-section `suggestions` on their proposal detail page. Submitting a new patchset transitions the proposal back to `pending` and returns it to the reviewer queue.
 
-### 7.4 Failure Handling
+### 6.4 Failure Handling
 
 If accept fails after lock due to drift:
 
@@ -600,9 +533,9 @@ If accept fails after lock due to drift:
 
 ---
 
-## 8. API Contracts
+## 7. API Contracts
 
-### 8.1 Contributor Routes
+### 7.1 Contributor Routes
 
 | Route                           | Method | Auth                            | Purpose                                   |
 | ------------------------------- | ------ | ------------------------------- | ----------------------------------------- |
@@ -611,7 +544,7 @@ If accept fails after lock due to drift:
 | `/api/proposals/[id]/patchsets` | POST   | Required (owner)                | Submit rebased patchset                   |
 | `/api/proposals/[id]/withdraw`  | POST   | Required (owner)                | Withdraw pending or needs_rebase proposal |
 
-### 8.2 Reviewer Routes
+### 7.2 Reviewer Routes
 
 | Route                                  | Method | Auth           | Purpose                                   |
 | -------------------------------------- | ------ | -------------- | ----------------------------------------- |
@@ -621,7 +554,7 @@ If accept fails after lock due to drift:
 | `/api/proposals/[id]/request-changes`  | POST   | Reviewer/Admin | Request changes (non-terminal decision)   |
 | `/api/proposals/[id]/mergeability`     | POST   | Reviewer/Admin | Force refresh mergeability                |
 
-### 8.3 Request Payload: Create Proposal
+### 7.3 Request Payload: Create Proposal
 
 ```typescript
 interface SectionDiffInput {
@@ -640,7 +573,7 @@ interface CreateSectionProposalRequest {
 }
 ```
 
-### 8.4 Response Payload: Proposal Detail
+### 7.4 Response Payload: Proposal Detail
 
 ```typescript
 interface PerSectionDiff {
@@ -678,9 +611,9 @@ interface SectionProposalDetail {
 
 ---
 
-## 9. Security, Abuse, and Auditability
+## 8. Security, Abuse, and Auditability
 
-### 9.1 Auth Requirements
+### 8.1 Auth Requirements
 
 1. **Proposal submission (`POST /api/proposals`) is public** — no authentication required. Anonymous proposals set `contributor_id = NULL` and appear as "Anonymous" to reviewers and readers.
 2. **Decision endpoints** (accept, reject, request-changes) require `reviewer` or `admin` role.
@@ -688,7 +621,7 @@ interface SectionProposalDetail {
 4. **Withdraw (`POST /api/proposals/[id]/withdraw`)** requires authentication and ownership verification. Anonymous proposals cannot be withdrawn (no owner to verify).
 5. **COI check for anonymous proposals:** since `contributor_id` is NULL, the "reviewer cannot act on own proposal" check is skipped. A reviewer can act on any anonymous proposal.
 
-### 9.2 Rate Limiting
+### 8.2 Rate Limiting
 
 All limits use Upstash sliding windows and run before any DB writes. Because proposal submission is now public (no auth required), limits are keyed on IP for anonymous users and `user_id` for signed-in users.
 
@@ -705,12 +638,12 @@ Rationale: IP cap is lower (3 vs 5) because IP is a weaker identity signal and m
 
 - Requires authentication (anonymous proposals cannot receive patchsets — no owner to verify ownership).
 - **3 patchsets / 10 minutes** per user per proposal (Upstash sliding window, key = `proposals:patchset:${userId}:${proposalId}`)
-- Rationale: prevents a contributor from spamming patchsets to force reviewer re-reads or flood the AI pre-screener.
+- Rationale: prevents a contributor from spamming patchsets to force repeated reviewer re-reads.
 - On limit hit: `429` + `Retry-After`. Response: `{ ok: false, error: "You're submitting patchsets too quickly — please wait a moment.", code: "RATE_LIMITED" }`.
 
 Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
 
-### 9.3 Input Sanitization — ProseMirror JSON Node Validation
+### 8.3 Input Sanitization — ProseMirror JSON Node Validation
 
 **Risk:** `section_diffs` in `edit_proposal_patchsets` stores arbitrary JSONB submitted by contributors (including anonymous ones). If a malicious actor crafts a JSON payload with an unsupported node type, an injected `script` attribute, or a `data:` URI in an image node, that content renders in every reviewer's browser and on the live wiki page after merge. This is the widest XSS attack surface on the platform.
 
@@ -770,7 +703,7 @@ export function validateProseMirrorNode(node: unknown): boolean {
 
 **Exit criterion:** attempt to submit a patchset with a node type not in the allowlist (e.g. `{ type: "iframe", attrs: { src: "https://evil.com" } }`) and verify the API returns `422` and the content is not stored.
 
-### 9.4 Audit Log
+### 8.4 Audit Log
 
 Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
@@ -780,7 +713,7 @@ Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 4. timestamp
 5. minimal metadata snapshot
 
-### 9.4 PII and Attribution
+### 8.5 PII and Attribution
 
 1. Public UI respects anonymous default. If `contributor_id` is NULL the proposal shows "Anonymous" contributor everywhere.
 2. If a signed-in user submits with attribution toggled off, `contributor_id` is stored internally but the public display still shows "Anonymous."
@@ -790,14 +723,13 @@ Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
 ---
 
-## 10. Non-Functional Requirements
+## 9. Non-Functional Requirements
 
 | Requirement                 | Target                            |
 | --------------------------- | --------------------------------- |
 | Section editor open latency | < 500 ms                          |
 | Section diff generation     | < 300 ms for up to 4,000 words    |
-| Proposal create API p95     | < 800 ms (excluding AI)           |
-| AI pre-screen p95           | < 4 seconds                       |
+| Proposal create API p95     | < 800 ms                          |
 | Reviewer queue load p95     | < 1 second                        |
 | Accept transaction p95      | < 1 second (excluding async jobs) |
 | Mergeability check p95      | < 250 ms                          |
@@ -805,7 +737,7 @@ Every proposal mutation (create patchset, accept, reject, withdraw) logs:
 
 ---
 
-## 11. Exit Criteria
+## 10. Exit Criteria
 
 FRD 4 is complete when ALL of the following are satisfied:
 
@@ -816,31 +748,29 @@ FRD 4 is complete when ALL of the following are satisfied:
 | 3   | Contributor can select 2+ sections and edit all         | Select two sections, edit both in tabbed editor, submit as single proposal          |
 | 4   | Submission requires rationale                           | Empty/short rationale fails validation                                              |
 | 5   | Submission stores section_slugs array and per-section diffs | Inspect saved proposal and patchset records; verify section_diffs JSONB structure |
-| 6   | AI pre-screen runs and is persisted                     | Proposal detail shows pass/fail + reason for the full multi-section proposal        |
-| 7   | Contributor can view AI assessment                      | Proposal detail page shows same result as reviewer queue                            |
-| 8   | Reviewer queue shows section list for multi-section proposals | Queue displays all section headings in the Sections column                    |
-| 9   | Reviewer sees per-section diff cards                    | Proposal detail shows one diff card per section, in page order                     |
-| 10  | Each diff card shows per-section mergeability badge     | Drifted section shows amber badge even if other sections are mergeable              |
-| 11  | Reviewer can accept mergeable proposal                  | Accept creates new page version replacing all selected sections atomically          |
-| 12  | Reviewer can reject with reason                         | Reject persists reviewer comment and terminal status                                |
-| 13  | Affiliated reviewer cannot accept own-org proposal      | Accept endpoint returns policy error                                                |
-| 14  | Reviewer cannot accept own proposal                     | Endpoint enforces non-uploader approval                                             |
-| 15  | One stale section causes entire proposal needs_rebase   | Drift in any selected section transitions whole proposal to needs_rebase            |
-| 16  | Contributor can rebase and resubmit all sections        | New patchset increments number and becomes current                                  |
-| 17  | Competing proposals for any overlapping section superseded on accept | Proposals touching any same section are marked superseded             |
-| 18  | FRD 1 re-embedding triggers post-accept                 | New chunks generation triggered asynchronously                                      |
-| 19  | FRD 3 re-anchoring triggers for all changed sections    | Comment anchor maintenance routine invoked for each accepted section                |
-| 20  | Reviewer can request changes with a required message         | `request-changes` endpoint transitions proposal to `changes_requested` and creates `proposal_review_comments` row |
-| 21  | Contributor sees reviewer message on proposal detail when `changes_requested` | Proposal detail shows reviewer's message and per-section suggestions  |
-| 22  | New patchset from `changes_requested` transitions back to `pending` | Status becomes `pending` and proposal reappears in reviewer queue      |
-| 23  | Policy checks are server-enforced                            | Direct API call bypass attempts fail                                                |
-| 24  | End-to-end multi-section flow passes                         | Submit 2-section proposal → pre-screen → review → accept works without manual DB edits |
-| 25  | Anonymous proposal submission works                          | Submit a proposal while signed out; verify it succeeds and shows "Anonymous" as contributor in reviewer queue |
-| 26  | Signed-in proposal shows attributed contributor              | Submit as signed-in user with attribution on; verify display name appears |
-| 27  | Anonymous proposals cannot receive patchsets                 | Attempt to POST a patchset to a proposal with NULL contributor_id; verify 403 |
-| 28  | Authenticated proposal creation rate limit enforced          | Submit 6 proposals in under 1 hour as the same signed-in user; verify the 6th returns 429 |
-| 29  | Anonymous proposal creation rate limit enforced              | Submit 4 proposals in under 1 hour from the same IP (unsigned); verify the 4th returns 429 |
-| 30  | Patchset rate limit enforced                                 | Submit 4 patchsets on the same proposal within 10 minutes; verify the 4th returns 429 |
+| 6   | Reviewer queue shows section list for multi-section proposals | Queue displays all section headings in the Sections column                    |
+| 7   | Reviewer sees per-section diff cards                    | Proposal detail shows one diff card per section, in page order                     |
+| 8   | Each diff card shows per-section mergeability badge     | Drifted section shows amber badge even if other sections are mergeable              |
+| 9   | Reviewer can accept mergeable proposal                  | Accept creates new page version replacing all selected sections atomically          |
+| 10  | Reviewer can reject with reason                         | Reject persists reviewer comment and terminal status                                |
+| 11  | Affiliated reviewer cannot accept own-org proposal      | Accept endpoint returns policy error                                                |
+| 12  | Reviewer cannot accept own proposal                     | Endpoint enforces non-uploader approval                                             |
+| 13  | One stale section causes entire proposal needs_rebase   | Drift in any selected section transitions whole proposal to needs_rebase            |
+| 14  | Contributor can rebase and resubmit all sections        | New patchset increments number and becomes current                                  |
+| 15  | Competing proposals for any overlapping section superseded on accept | Proposals touching any same section are marked superseded             |
+| 16  | FRD 1 re-embedding triggers post-accept                 | New chunks generation triggered asynchronously                                      |
+| 17  | FRD 3 re-anchoring triggers for all changed sections    | Comment anchor maintenance routine invoked for each accepted section                |
+| 18  | Reviewer can request changes with a required message         | `request-changes` endpoint transitions proposal to `changes_requested` and creates `proposal_review_comments` row |
+| 19  | Contributor sees reviewer message on proposal detail when `changes_requested` | Proposal detail shows reviewer's message and per-section suggestions  |
+| 20  | New patchset from `changes_requested` transitions back to `pending` | Status becomes `pending` and proposal reappears in reviewer queue      |
+| 21  | Policy checks are server-enforced                            | Direct API call bypass attempts fail                                                |
+| 22  | End-to-end multi-section flow passes                         | Submit 2-section proposal → review → accept works without manual DB edits |
+| 23  | Anonymous proposal submission works                          | Submit a proposal while signed out; verify it succeeds and shows "Anonymous" as contributor in reviewer queue |
+| 24  | Signed-in proposal shows attributed contributor              | Submit as signed-in user with attribution on; verify display name appears |
+| 25  | Anonymous proposals cannot receive patchsets                 | Attempt to POST a patchset to a proposal with NULL contributor_id; verify 403 |
+| 26  | Authenticated proposal creation rate limit enforced          | Submit 6 proposals in under 1 hour as the same signed-in user; verify the 6th returns 429 |
+| 27  | Anonymous proposal creation rate limit enforced              | Submit 4 proposals in under 1 hour from the same IP (unsigned); verify the 4th returns 429 |
+| 28  | Patchset rate limit enforced                                 | Submit 4 patchsets on the same proposal within 10 minutes; verify the 4th returns 429 |
 
 ---
 
@@ -902,9 +832,6 @@ CREATE TABLE edit_proposal_patchsets (
   base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
   section_diffs JSONB NOT NULL,
   rationale TEXT NOT NULL,
-  ai_verdict TEXT CHECK (ai_verdict IN ('pass','fail')),
-  ai_reason TEXT,
-  ai_scored_at TIMESTAMPTZ,
   is_current BOOLEAN NOT NULL DEFAULT true,
   contributor_id UUID REFERENCES users(id),  -- NULL for anonymous patchset 1; subsequent patchsets require auth (patchset_number > 1 must have contributor_id NOT NULL enforced in application logic)
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -934,7 +861,6 @@ CREATE INDEX idx_edit_proposals_base_version
 | Multi-section selection within one proposal                        | Gives contributors full-page flexibility while keeping per-section diffs clean and reviewable; avoids the "blob diff" problem of full-page PRs                   |
 | Section-scoped proposals over full-page proposals                  | Reduces review cognitive load, lowers conflict probability, and aligns with wiki section-linked content model                                                    |
 | Tabbed editor for multi-section editing                            | Keeps each section's original/proposed content side-by-side without overwhelming the contributor with a wall of diff; one rationale field covers all sections     |
-| Single AI verdict for the whole proposal                           | AI pre-screen evaluates editorial fitness of the combined set of changes; per-section verdicts would fragment the assessment and make the queue harder to triage  |
 | Per-section mergeability inside JSONB `section_diffs`              | Keeps the schema flat (one patchset row) while supporting any number of sections; avoids a fan-out join table for a fundamentally bounded dataset                 |
 | Overall mergeability = AND of all per-section checks               | Ensures the accept operation is safe: a proposal with even one stale section cannot be silently merged, preventing partial content corruption                     |
 | Competing proposals superseded if any section overlaps             | Prevents contradictory concurrent merges; any proposal touching a section that was just accepted must be rebased against the new truth                           |
@@ -942,7 +868,6 @@ CREATE INDEX idx_edit_proposals_base_version
 | Non-uploader + non-affiliated accept rule                          | Implements conflict-of-interest and reviewer independence expectations from PRD/editorial model                                                                   |
 | Mergeability based on base section hash                            | Deterministic stale/conflict detection without brittle positional assumptions                                                                                    |
 | Structured diff with ProseMirror changeset                         | Better fidelity for rich-text editor output than plain string diff alone                                                                                         |
-| AI pre-screen as advisory only                                     | Keeps human editorial authority while improving queue prioritization                                                                                             |
 | Async post-accept jobs                                             | Follows deferred update pattern to keep accept action fast while still updating search/comment artifacts                                                         |
 
 Research-informed implementation notes used in this FRD:
