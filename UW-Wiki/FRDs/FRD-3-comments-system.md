@@ -74,10 +74,11 @@ Feature: Comments System
     And    the user is not signed in
     When   the user types a comment (up to 1500 characters)
     And    clicks "Submit"
+    Then   a soft attribution nudge modal appears recommending sign-in but not requiring it
+    When   the user clicks "Continue as Anonymous"
     Then   the comment is saved with anchor_text and section_slug (contributor_id is NULL)
     And    the comment appears immediately in the sidebar showing "Anonymous"
     And    a comment chunk is created for RAG indexing (FRD 1)
-    And    no auth modal appears
 
   Scenario: Signed-in user submits an attributed comment
     Given  the comment composer is open
@@ -396,8 +397,11 @@ The textarea accepts raw markdown. Rendering is handled at display time.
 
 When the user clicks "Submit":
 
-1. If the user is not authenticated, show the auth modal (same as FRD 2).
-2. After authentication (or if already authenticated), call `POST /api/comments`.
+1. If the user is **not signed in**, show a soft attribution nudge modal — a lightweight prompt explaining that signing in allows attribution (so readers know who said it) and lets them edit their comment later. The modal has two actions:
+   - **"Sign in / Create account"** — opens the auth flow; on completion, the comment is submitted automatically with attribution if the user opts in.
+   - **"Continue as Anonymous"** — dismisses the modal and proceeds to submit without an account.
+   The nudge is informational and never blocks submission. No auth modal appears for signed-in users.
+2. Call `POST /api/comments`. The `contributor_id` is the signed-in user's `user_id` if authenticated, or `NULL` for anonymous submissions.
 3. On success:
    - Close the composer.
    - Insert the new comment at the top of the comments list in the sidebar.
