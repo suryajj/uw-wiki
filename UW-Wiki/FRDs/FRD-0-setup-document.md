@@ -727,6 +727,7 @@ Use this compatibility matrix when generating `package.json`.
 | `@tiptap/pm` | `3.x` |
 | `framer-motion` | `12.x` |
 | `lucide-react` | latest compatible |
+| `date-fns` | `4.x` |
 
 ---
 

@@ -1503,28 +1503,35 @@ All timestamps are displayed as relative times:
 
 ### 11.3 Implementation
 
+**Library:** [`date-fns`](https://date-fns.org) v4.x. Functions used:
+- `formatDistanceToNowStrict` — for the relative labels ("X minutes ago", "X hours ago", etc.)
+- `format` — for the absolute fallback date ("Mar 15, 2026")
+- `differenceInMinutes` / `differenceInWeeks` — for the threshold checks
+
+Install: `npm install date-fns` (already in dependency baseline per FRD 0 if listed; add if not).
+
 ```typescript
 // src/lib/utils/time.ts
 
+import {
+  formatDistanceToNowStrict,
+  differenceInMinutes,
+  differenceInWeeks,
+  format,
+  parseJSON,
+} from "date-fns";
+
 export function formatRelativeTime(date: string | Date): string {
-  const now = new Date();
-  const then = new Date(date);
-  const diffMs = now.getTime() - then.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-  const diffWeeks = Math.floor(diffDays / 7);
-  
-  if (diffMinutes < 1) return "Just now";
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""} ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
-  if (diffWeeks <= 4) return `${diffWeeks} week${diffWeeks !== 1 ? "s" : ""} ago`;
-  
-  return then.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+  const then = typeof date === "string" ? parseJSON(date) : date;
+  const minutesAgo = differenceInMinutes(new Date(), then);
+
+  if (minutesAgo < 1) return "Just now";
+  if (differenceInWeeks(new Date(), then) <= 4) {
+    // formatDistanceToNowStrict produces "X minutes", "X hours", "X days", "X weeks"
+    return `${formatDistanceToNowStrict(then)} ago`;
+  }
+
+  return format(then, "MMM d, yyyy"); // "Mar 15, 2026"
   });
 }
 ```
