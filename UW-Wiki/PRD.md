@@ -49,7 +49,7 @@ Unlike official club websites (marketing material), Reddit (scattered and unsear
 - **Structured honesty:** Student-toned content reviewed by an independent editorial board, not controlled by the clubs themselves
 - **AI-native search:** Natural-language questions answered with synthesized, cited responses drawn from across all wiki pages
 - **Version-controlled transparency:** Every edit is tracked, every contributor is logged internally, and the full history of a page is preserved
-- **Anonymous contribution:** Account required but opt-in attribution removes the fear of retaliation, encouraging candid information that official channels will never publish
+- **Anonymous contribution:** Anonymous-by-default, optional attribution. Sign-in is encouraged but not required for comments and PRs — removing the fear of retaliation and encouraging candid information that official channels will never publish
 - **Community-driven accuracy:** PR-style edit proposals, inline comments for disputed content, and crowdsourced metadata keep information current and honest
 
 ### Core Principles
@@ -131,7 +131,7 @@ UW Wiki is the UWFlow for everything that is not a course.
 - Does not want editorial control over the student-contributed sections but wants an official section where the club can post verified information
 - Concerned about outdated or inaccurate information persisting on the page
 
-**Key needs:** Page claiming process to establish official org presence, ability to contribute verified information to a clearly labelled official section, visibility into what edits are being proposed about her org.
+**Key needs:** Ability to declare affiliation and contribute verified information to a clearly labelled Official section, visibility into what edits are being proposed about her org.
 
 **Success metric:** Club's page has accurate factual information in the official section, and the student-contributed sections are honest without being defamatory.
 
@@ -162,10 +162,10 @@ UW Wiki is the UWFlow for everything that is not a course.
 | # | As a... | I want to... | So that... |
 |---|---|---|---|
 | US-09 | Current or former club member | Submit a PR proposing an edit to a wiki page using a rich-text editor | I can add or correct information I have first-hand knowledge of |
-| US-10 | Contributor | Submit a PR and immediately see an AI pre-screen result indicating whether my submission aligns with platform values | I understand upfront whether my contribution is likely to be accepted |
+| US-10 | Contributor | Submit a PR and immediately see that it is pending review by the editorial board | I know my contribution has been received and is queued for review |
 | US-11 | Club executive | Claim my club's page through an admin-approved process to add a clearly labelled "Official" section with verified information | Factual details (founding date, active projects) are accurate without giving us editorial control |
 | US-12 | Student reading about a club | Highlight a specific sentence and leave an anonymous comment disagreeing or adding nuance | Secondary perspectives are visible without replacing the primary article |
-| US-13 | Reviewer | See all pending PRs with the AI pre-screen result, contributor rationale, and the content being modified | I can make accept/reject decisions efficiently and consistently |
+| US-13 | Reviewer | See all pending PRs with the contributor rationale and per-section diff for each modified section | I can make accept/reject decisions efficiently and consistently |
 | US-14 | User rating a club | Use the Pulse widget on a page to submit my own selectivity, vibe, and co-op boost ratings | My experience contributes to the aggregated metadata visible to future students |
 
 ### Cold Start and Admin
@@ -173,7 +173,7 @@ UW Wiki is the UWFlow for everything that is not a course.
 | # | As a... | I want to... | So that... |
 |---|---|---|---|
 | US-15 | Platform admin | Trigger a cold start agent that auto-fills a wiki page for a given org by scraping public internet sources and UW-specific directories | No page starts completely empty at launch |
-| US-16 | Platform admin | Manage a list of all orgs that have pages, their claimed status, and their pending PR queue from a central dashboard | The platform is operationally manageable as it grows |
+| US-16 | Platform admin | Manage a list of all orgs that have pages, their lifecycle status, and their pending PR queue from a central dashboard | The platform is operationally manageable as it grows |
 | US-17 | Platform admin | Configure lifecycle thresholds per org type so that design teams (which go dormant in summer) are not incorrectly flagged as defunct | Automated banners are accurate and context-appropriate |
 
 ---
@@ -211,7 +211,7 @@ Pages are organic -- structure emerges through contributions. However, cold-star
 | **Exec History** | Past and present leadership, years served, notable decisions |
 | **How to Apply** | Timeline, what they look for, interview format notes from past applicants |
 | **External Links** | Structured fields: Official Website, Instagram, LinkedIn, GitHub, Linktree, Competition Pages (predefined fields with ability to add custom links) |
-| **Official Section** | Verified content submitted by the org itself, clearly labelled as such. Only available on claimed pages. |
+| **Official Section** | Verified content submitted by an affiliated user or directly seeded by an admin. Clearly labelled as "Official." Stored inline with `attrs.official: true`. Any page can have one. |
 
 ### The Pulse (Sidebar Metadata)
 
@@ -317,19 +317,11 @@ Any user can propose an edit to a wiki page, similar to a GitHub pull request. T
 5. No account is required to submit — anonymous proposals are accepted and shown with contributor "Anonymous"; signed-in users can optionally attribute their proposal to their account
 6. On submission, the system generates a per-section diff for each selected section and creates an edit proposal record with an array of section slugs (`contributor_id` is NULL for anonymous submissions)
 
-**AI pre-screening:**
-
-- Immediately on submission, an AI pre-screener evaluates the proposed edit against the Platform Editorial Values (Section 8)
-- The pre-screener produces a **pass/fail verdict with a one-line reason** (e.g., "Pass: Specific time commitment data with credible tone" or "Fail: Marketing language, not student-toned")
-- The assessment is visible to both the contributor and reviewers
-- **Model:** GPT-4o-mini via OpenRouter (cheap, fast classification task -- does not require strong reasoning, just editorial value alignment)
-
 **Review flow:**
 
 - Reviewers (the editorial board) see all pending PRs in their reviewer queue at `/admin/reviews`
-- Each PR shows: the AI pre-screen verdict, the contributor's rationale, and per-section diff cards for each selected section
+- Each PR shows: the contributor's rationale and per-section diff cards for each selected section
 - Reviewers make the final decision -- **accept**, **reject** (with required reason), or **request changes** (non-terminal; keeps the proposal open with reviewer feedback for the contributor to address)
-- The AI assessment is advisory, not binding
 - Club members can submit PRs like any user, but a reviewer with an active affiliation to the org being edited cannot approve that org's PRs
 
 ### 6.5 Inline Section Comments (Medium-Style)
@@ -338,7 +330,7 @@ Users can highlight any text on a wiki page and leave a comment anchored to that
 
 **Core behavior:**
 
-- Commenting requires a user account (Google OAuth or email/password)
+- No account is required to comment — anonymous comments are accepted; signed-in users are prompted to optionally attribute their comment. A soft nudge encourages sign-in (informational only, never blocks submission)
 - Comments can be anonymous or attributed, at the commenter's choice
 - **Threaded replies:** Users can reply to existing comments, creating discussion threads anchored to specific passages
 - Comments serve as secondary perspectives: they surface disagreements, add nuance, or provide additional data points
@@ -365,22 +357,21 @@ The Pulse is a standalone voting widget on each wiki page that allows users to s
 
 **Cold-start seeding:** When the cold-start agent generates a first-draft page, it seeds **Selectivity** (e.g., "Application-Based" if the team's website explicitly states they run applications) and **Tech Stack** tags from publicly available sources. Vibe Check and Co-op Boost are left empty — they represent subjective member experience and must come from real users. New org pages launch with empty Vibe Check and Co-op Boost and prompt users to be the first to rate.
 
-### 6.7 Page Claiming
+### 6.7 Affiliation and Official Sections
 
-Clubs and orgs can claim their wiki page to establish an official presence. Claiming grants the ability to contribute to a clearly labelled "Official" section on the page but does not grant any editorial control over student-contributed content.
+Users can self-declare an affiliation with an org on their profile (`/my/profile`). Affiliation is not verified — it is a self-declared signal that is captured on any PR the affiliated user submits and is visible to reviewers. Admins can revoke affiliations if abused.
 
-**Claiming process:**
+An "Official" section can appear on any wiki page. It is stored inline in the page's ProseMirror content with `attrs.official: true` on the heading node and is visually distinct from student-contributed content.
 
-1. A representative of the org contacts the UW Wiki team (via a "Claim This Page" button that triggers an admin request form)
-2. An admin manually verifies the claim (e.g., confirming the requestor's identity through official org communication channels, social media, or known contacts)
-3. Upon approval, the page is marked as "Claimed" and an "Official" section becomes available
+**Two paths for seeding an Official section:**
 
-**Official section:**
+1. **Affiliated user PR:** A user with an affiliation to the org submits a PR targeting the Official section. The PR is flagged `is_from_affiliated_contributor: true`. It goes through normal editorial review — affiliation does not bypass review.
+2. **Admin direct seed:** An admin uses the Official Section Seeder tool in the admin dashboard to directly insert Official content, creating a `page_version` with `is_admin_seeded: true` and triggering RAG re-embedding.
 
-- Visually distinct from student-contributed content (bordered, labelled "Official -- submitted by [org name]")
-- The org can submit content to this section through the same PR pipeline, with their org affiliation verified and noted on the PR
-- Official section edits go through the same editorial review as all other PRs -- claiming does not bypass review
-- Claiming does not grant any ability to edit, reject, or remove changes to the rest of the page
+**Official section behavior:**
+- Visually distinct from student-contributed content (bordered, labelled "Official — contributed by [org name]")
+- Affiliation does not grant any ability to edit, reject, or remove changes to the rest of the page
+- Affiliation is captured in the audit log for COI disclosure purposes
 
 ### 6.8 Cold Start Agent
 
@@ -418,7 +409,7 @@ Staleness thresholds are configurable per org category, because different types 
 | Engineering Clubs | 6 months | 12 months | 18 months |
 | Non-Engineering Clubs | 6 months | 12 months | 18 months |
 | Academic Programs | 12 months | 24 months | 36 months |
-| Student Societies | 6 months | 12 months | 18 months |
+| Student Societies | 12 months | 12 months | 18 months |
 | Campus Organizations | 12 months | 24 months | 36 months |
 
 **Behavior:**
@@ -438,8 +429,8 @@ Staleness thresholds are configurable per org category, because different types 
 | **Viewer** | Anyone | No account required to read any page or use RAG search |
 | **Commenter** | Anyone | No account required to leave inline comments; shown as "Anonymous" by default; signed-in users may optionally attribute |
 | **Contributor** | Anyone | No account required to submit edit proposals (PRs); shown as "Anonymous" by default; signed-in users may optionally attribute |
-| **Reviewer** | Editorial board member | Can accept/reject PRs, see AI pre-screen results, manage pending queue |
-| **Admin** | Platform operators | Can run cold start agent, approve page claims, manage editorial board, configure lifecycle thresholds |
+| **Reviewer** | Editorial board member | Can accept/reject PRs, manage pending queue |
+| **Admin** | Platform operators | Can run cold start agent, seed Official sections, revoke affiliations, manage editorial board, configure lifecycle thresholds |
 
 ### Editorial Board
 
@@ -450,10 +441,6 @@ A small independent editorial board of 3-5 people at launch, platform-affiliated
 ### Anonymity Model
 
 Anonymous by default. No account is required to comment or submit a PR — submissions are always shown as "Anonymous" unless the user is signed in and explicitly opts in to attribution. Truly anonymous submissions (no account) have no internal identity record; abuse prevention relies on IP-based rate limiting and manual editorial review of all PRs. Signed-in users who submit anonymously still have their `user_id` stored internally for moderation, even though they appear publicly as "Anonymous."
-
-### AI Pre-Screening
-
-Every PR is automatically assessed against the Platform Editorial Values (Section 8) before human review. The assessment is a simple pass/fail with a one-line reason. This helps reviewers prioritize their queue (failed PRs may need closer scrutiny) and provides immediate feedback to contributors.
 
 ### Disputed Content
 
@@ -471,7 +458,7 @@ Clubs can submit PRs like any user to correct factual inaccuracies. They can als
 
 ## 8. Platform Editorial Values
 
-The following values define what content is accepted and what gets rejected. These are the criteria the AI pre-screener is evaluated against, and the standard reviewers apply.
+The following values define what content is accepted and what gets rejected. These are the criteria the editorial board applies when reviewing proposals.
 
 **The SLC Test:** Content should be the kind of thing you would say if a student stopped you in SLC and asked about the club. Nothing more extreme than that, nothing less honest either.
 
@@ -548,7 +535,6 @@ All authenticated users (Google OAuth or email/password) have access to:
 | **Real-Time** | Supabase Realtime | Notifications, live page update indicators |
 | **LLM Gateway** | OpenRouter API | Unified access to multiple LLM providers |
 | **RAG Synthesis** | Gemini 2.5 Flash | Natural-language answer generation from wiki content |
-| **AI Pre-Screener** | GPT-4o-mini | Cheap pass/fail editorial value classification |
 | **Cold Start Agent** | Claude Sonnet 4 | Web research synthesis for first-draft page generation |
 | **Embeddings** | OpenAI text-embedding-3-small | Vector embeddings for RAG retrieval |
 | **Streaming** | Vercel AI SDK | Token-by-token streaming for RAG search responses |
@@ -559,7 +545,7 @@ All authenticated users (Google OAuth or email/password) have access to:
 - **Supabase over standalone Postgres/FastAPI:** Managed Postgres + pgvector + Auth + Storage + Edge Functions in one platform. Perfect for serverless deployment with Vercel. Row-level security (RLS) handles user-scoped data access. Built-in auth supports Google OAuth and email/password out of the box. Supabase Realtime provides WebSocket-based notifications without custom infrastructure. For a small team launching a real product, Supabase eliminates an enormous amount of boilerplate.
 - **Next.js App Router over React SPA:** SSR/SSG is critical because wiki pages must rank on Google (SEO is a priority). App Router provides React Server Components for efficient server-side data fetching, and API routes for server-side operations (LLM calls, Supabase admin operations) without a separate backend.
 - **Tiptap over Markdown editor:** The product targets students who expect a Notion-like editing experience, not a GitHub-like Markdown experience. Tiptap (ProseMirror-based) provides WYSIWYG editing, supports image embedding, is extensible, and stores content as ProseMirror JSON -- a structured format that enables clean diffs, reliable rendering, and future collaborative editing.
-- **OpenRouter as unified gateway:** Allows accessing Gemini (RAG synthesis), GPT (pre-screener), and Claude (cold start) through a single API with consistent authentication and billing. Eliminates separate API keys and SDKs per provider.
+- **OpenRouter as unified gateway:** Allows accessing Gemini (RAG synthesis) and Claude (cold start) through a single API with consistent authentication and billing. Eliminates separate API keys and SDKs per provider.
 - **pgvector over dedicated vector DB:** Since the backend already uses Supabase PostgreSQL, pgvector keeps everything in one database with ACID compliance and the ability to join vector search results with relational data. For the scale of this product (hundreds of pages, not millions of documents), pgvector performance is more than sufficient.
 
 ### Architecture Diagram
@@ -584,7 +570,6 @@ graph TD
 
     subgraph AI["AI Services (via OpenRouter)"]
         RAG["Gemini 2.5 Flash\nRAG Synthesis"]
-        PreScreen["GPT-4o-mini\nPR Pre-Screener"]
         ColdStart["Claude Sonnet 4\nCold Start Agent"]
         Embeddings["text-embedding-3-small\nVector Embeddings"]
     end
@@ -600,7 +585,6 @@ graph TD
     WikiPage -->|read page| DB
     WikiPage -->|load images| Storage
     Editor -->|submit PR| EdgeFn
-    EdgeFn -->|pre-screen| PreScreen
     EdgeFn -->|store proposal| DB
     AdminDash -->|manage PRs| DB
     AdminDash -->|run cold start| ColdStart
@@ -617,17 +601,19 @@ graph TD
 | Table | Purpose | Key Fields |
 |---|---|---|
 | `universities` | Multi-university support | `id`, `name`, `slug`, `domain` |
-| `organizations` | Org registry | `id`, `university_id`, `name`, `slug`, `category`, `claimed_by`, `claimed_at` |
+| `organizations` | Org registry | `id`, `university_id`, `name`, `slug`, `category` |
 | `pages` | Wiki page metadata | `id`, `org_id`, `current_version_id`, `created_at`, `last_modified_at` |
-| `page_versions` | Version history (diff-based) | `id`, `page_id`, `version_number`, `content_json` (ProseMirror), `diff_json`, `summary`, `contributor_id`, `created_at` |
-| `edit_proposals` | Pending PRs | `id`, `page_id`, `section_slugs` (array of targeted section slugs), `rationale`, `ai_verdict`, `ai_reason`, `status` (pending / changes_requested / needs_rebase / accepted / rejected / superseded / withdrawn), `contributor_id`, `reviewer_id`, `submitted_at`, `reviewed_at` |
-| `comments` | Inline comments | `id`, `page_id`, `page_version_id`, `anchor_text`, `anchor_offset`, `body`, `parent_comment_id` (threading), `is_anonymous`, `contributor_id`, `created_at` |
+| `page_versions` | Version history (diff-based) | `id`, `page_id`, `version_number`, `content_json` (ProseMirror), `diff_json`, `summary`, `contributor_id`, `is_anonymous`, `is_admin_seeded`, `is_cold_start`, `created_at` |
+| `edit_proposals` | Pending PRs | `id`, `page_id`, `section_slugs` (array of targeted section slugs), `rationale`, `status` (pending / changes_requested / needs_rebase / accepted / rejected / withdrawn), `is_from_affiliated_contributor`, `contributor_id`, `reviewer_id`, `submitted_at`, `reviewed_at` |
+| `comments` | Inline comments | `id`, `page_id`, `anchor_text`, `section_slug`, `body`, `parent_comment_id` (threading), `is_anonymous`, `is_hidden`, `contributor_id`, `created_at` |
 | `pulse_ratings` | Individual votes | `id`, `org_id`, `user_id` (NOT NULL, auth required), `metric` (selectivity/vibe/coop_boost), `value`, `created_at` — unique constraint on (user_id, org_id, metric) |
 | `pulse_aggregates` | Computed aggregates | `org_id`, `metric`, `aggregate_value`, `vote_count`, `last_computed_at` |
 | `external_links` | Structured links | `id`, `org_id`, `type` (website/instagram/linkedin/github/custom), `url`, `label` |
 | `users` | Authenticated accounts | `id`, `email`, `display_name`, `avatar_url`, `role` (user/reviewer/admin), `created_at` |
+| `user_affiliations` | Self-declared user–org relationships | `id`, `user_id`, `org_id`, `declared_at` — revocable by admin |
 | `bookmarks` | User bookmarks | `id`, `user_id`, `page_id`, `created_at` |
-| `notifications` | User notifications | `id`, `user_id`, `type`, `payload`, `read`, `created_at` |
+| `notifications` | User notifications | `id`, `user_id`, `type`, `payload` (JSONB), `read_at`, `delivered_email`, `created_at` — full schema defined in FRD-9 |
+| `notification_preferences` | Per-user notification opt-outs | `user_id`, `type`, `in_app_enabled`, `email_enabled` — full schema in FRD-9 |
 | `lifecycle_config` | Per-category thresholds | `category`, `needs_update_months`, `stale_months`, `defunct_months` |
 
 **Multi-university readiness:** The `universities` table and `university_id` foreign key on `organizations` ensure that adding a second university requires no schema migration -- only a new row in `universities` and scoping queries by `university_id`.
@@ -661,7 +647,7 @@ uw-wiki/
                 search/
                     route.ts           # RAG search API (streaming)
                 proposals/
-                    route.ts           # Edit proposal submission + AI pre-screen
+                    route.ts           # Edit proposal submission
                 cold-start/
                     route.ts           # Cold start agent trigger
                 pulse/
@@ -682,7 +668,6 @@ uw-wiki/
                 admin.ts               # Supabase admin client
             ai/
                 rag.ts                 # RAG retrieval + synthesis
-                pre-screener.ts        # AI pre-screening logic
                 cold-start.ts          # Cold start agent logic
                 embeddings.ts          # Embedding generation
             utils/                     # Shared utilities
@@ -736,7 +721,7 @@ The landing page has two zones:
 
 A two-column layout:
 
-- **Main content (left, ~70%):** Rich-text rendered page content with section headers, anchor links, inline images, and the "Official" section (if claimed) visually distinguished
+- **Main content (left, ~70%):** Rich-text rendered page content with section headers, anchor links, inline images, and the "Official" section (if present) visually distinguished
 - **Pulse sidebar (right, ~30%):** Fixed sidebar showing the Pulse infobox (selectivity, vibe check, co-op boost, tech stack tags, health status), external links, and the "Propose Edit" button
 - **Comments:** Inline comments are revealed on text highlight or via a margin indicator (small comment count badges next to paragraphs that have comments)
 
@@ -749,14 +734,16 @@ A two-column layout:
 **PR Submission View:**
 
 - Full-width Tiptap editor with the current page content pre-filled
-- A rationale text area below the editor ("Why does this edit align with UW Wiki's editorial values?")
-- Submit button triggers email verification (if not already verified) and AI pre-screening
+- A rationale text area below the editor describing the reason for the edit
+- Submit button submits the proposal for editorial review
 
 **Admin Dashboard:**
 
-- **PR Queue:** List of pending PRs with: org name, submitter (email or "Anonymous"), AI verdict (pass/fail badge), time submitted. Click to expand and review.
+- **PR Queue:** List of pending PRs with: org name, submitter (email or "Anonymous"), mergeability badge, time submitted. Click to expand and review.
 - **Cold Start:** Input field for org name + category dropdown. "Generate" button triggers the agent.
-- **Page Management:** List of all orgs, claimed status, last modified date, lifecycle status.
+- **Page Management:** List of all orgs, last modified date, lifecycle status.
+- **Official Sections:** Tool for admins to directly seed Official content onto any org page.
+- **Affiliations:** View and revoke user-declared org affiliations.
 
 ### Responsive Design
 
@@ -779,18 +766,19 @@ WCAG 2.1 AA compliance:
 
 ### Launch Strategy
 
-Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages before public launch. Reach out to those clubs for early buy-in and invite them to review their auto-generated page and claim it. Open contributions at launch with the editorial board in place.
+Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages before public launch. Reach out to those clubs for early buy-in and invite them to review their auto-generated page and declare affiliations to contribute to their Official section. Open contributions at launch with the editorial board in place.
 
 ### In MVP
 
 - Wiki pages for any UW org, browsable directory with six fixed categories
 - AI-powered RAG search with inline citations and conversational follow-ups as primary entry point
-- PR-style edit proposal flow with AI pre-screening (pass/fail); section-scoped multi-section proposals
+- PR-style edit proposal flow; section-scoped multi-section proposals
 - Rich-text WYSIWYG editor (Tiptap) for section editing
 - Anonymous and attributed contribution toggle
 - Inline section comments (Medium-style, threaded, anchored to highlighted text)
 - The Pulse sidebar infobox with crowdsourced ratings and standalone voting widget
-- Page claiming for verified orgs (Official section, manual admin approval)
+- Self-declared user affiliations and Official section seeding (affiliated user PR or admin direct seed)
+- In-app and email notifications (PR status, comment replies, page update digests) — FRD-9
 - Cold start admin agent (general web search + UW-specific sources via Tavily)
 - Reviewer dashboard for editorial board (PR queue with accept / reject / request-changes)
 - Bookmarks and contribution history (saved pages, personal PR history)
@@ -803,7 +791,6 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 ### Post-MVP / Future
 
 - UW SSO / CAS integration for stronger institutional trust signal
-- Notification delivery UI (page updates, PR status changes, comment replies — schema exists, no FRD yet)
 - Upvoting or endorsing specific sections or comments
 - Sentence-level upvote/downvote system: users can vote on individual sentences within a wiki page. Sentences with higher net upvotes are rendered progressively bolder, giving readers a visual signal of which claims are strongly backed by the community. Heavily downvoted sentences appear lighter/muted. This creates a heat map effect where the most trusted information stands out at a glance.
 - Expansion to other Canadian universities (same platform, scoped by `university_id`)
@@ -846,7 +833,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | Dependency | Type | Risk | Mitigation |
 |---|---|---|---|
 | Supabase | Managed platform | Service availability, pricing changes | Standard platform risk; Supabase is open-source and self-hostable as fallback |
-| OpenRouter API | External service | Rate limits, credit exhaustion, model deprecation | Budget monitoring; model fallback chain (if Gemini is unavailable, fall back to GPT-4o-mini for RAG) |
+| OpenRouter API | External service | Rate limits, credit exhaustion, model deprecation | Budget monitoring; model fallback chain (if Gemini is unavailable, fall back to another provider for RAG) |
 | Vercel | Hosting platform | Hobby tier limits, pricing at scale | Generous free tier for Next.js; upgrade to Pro ($20/month) if needed |
 | Web search API (cold start) | External service | API availability, cost | Cold start is an admin-only tool run infrequently; manual page creation is the fallback |
 | Google OAuth | Auth provider | OAuth configuration, consent screen approval | Standard integration; well-documented |
@@ -885,7 +872,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 
 **External Links:** Structured links to: Official Website, Instagram, LinkedIn, GitHub, Linktree, Competition Pages, YouTube, and any custom links.
 
-**Official Section (claimed pages only):** Verified content submitted by the org itself. Clearly labelled as "Official" with a distinct visual treatment. Typically contains factual information the org wants to ensure is accurate: founding date, current active projects, team size, application URL.
+**Official Section:** Verified content contributed by an affiliated user (via PR) or directly inserted by an admin (via the Official Section Seeder). Clearly labelled as "Official" with a distinct visual treatment. Typically contains factual information the org wants to ensure is accurate: founding date, current active projects, team size, application URL.
 
 ### Appendix C: Glossary
 
@@ -896,7 +883,7 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | **The Pulse** | The set of crowdsourced quantitative metrics displayed in a sidebar infobox on each wiki page (Selectivity, Vibe Check, Co-op Boost, Tech Stack, Health Status). |
 | **Cold Start Agent** | An AI-powered admin tool that auto-generates a first-draft wiki page for an org by searching public internet sources and UW-specific directories. |
 | **Editorial Board** | A small group of independent reviewers (3-5 people) who accept or reject edit proposals. They are platform-affiliated and have no active club memberships that create conflicts of interest. |
-| **Page Claiming** | The process by which an org establishes an official presence on its wiki page, gaining the ability to contribute to a labelled "Official" section. |
+| **Affiliation** | A self-declared user–org relationship. Users declare affiliations on their profile. Affiliated users' PRs are flagged `is_from_affiliated_contributor` for reviewer visibility. Admins can revoke affiliations. Replaces the former "Page Claiming" model. |
 | **Lifecycle Management** | Automated monitoring of page staleness. Pages that have not been edited within configurable time thresholds receive warning banners. |
 | **pgvector** | PostgreSQL extension for vector similarity search, used to store and query text embeddings for the RAG search feature. |
 | **Tiptap** | An open-source, ProseMirror-based rich-text editor framework used for the WYSIWYG page editing experience. |
@@ -908,11 +895,10 @@ Seed 5-10 well-known design teams and clubs with cold-start AI-generated pages b
 | Use Case | Model | Provider | Rationale | Approx. Cost (per 1M tokens in/out) |
 |---|---|---|---|---|
 | RAG Search Synthesis | Gemini 2.5 Flash | Google (via OpenRouter) | Cost-effective, fast inference, large context window (1M tokens) for multi-page retrieval, strong synthesis quality | ~$0.15 / $0.60 |
-| AI Pre-Screener | GPT-4o-mini | OpenAI (via OpenRouter) | Cheapest viable model for a simple pass/fail classification task. Does not require strong reasoning -- just editorial value alignment | ~$0.15 / $0.60 |
 | Cold Start Agent | Claude Sonnet 4 | Anthropic (via OpenRouter) | Strong at web research synthesis, structured output generation, and maintaining appropriate tone across long documents | ~$3.00 / $15.00 |
 | Embeddings | text-embedding-3-small | OpenAI (via OpenRouter) | Cost-effective embeddings with strong retrieval quality. 512 dimensions (truncated from 1536 for cost/storage efficiency at launch scale). Industry standard for RAG applications | ~$0.02 / N/A |
 
-**Cost-conscious strategy:** Premium models (Claude Sonnet 4) are used only for infrequent admin tasks (cold start). The high-volume user-facing feature (RAG search) uses the most cost-effective model (Gemini 2.5 Flash). The pre-screener uses the cheapest viable model (GPT-4o-mini) since it is a simple classification task.
+**Cost-conscious strategy:** Premium models (Claude Sonnet 4) are used only for infrequent admin tasks (cold start). The high-volume user-facing feature (RAG search) uses the most cost-effective model (Gemini 2.5 Flash).
 
 ---
 

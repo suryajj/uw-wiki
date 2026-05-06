@@ -508,7 +508,7 @@ Protected prefixes (from consumer FRDs):
 
 ### 2.1 Problem Statement
 
-Unauthenticated writes are a first-class UX pattern (PRD and FRD 2 §4.7: "Unauthenticated users can click Propose Edit and edit freely. Authentication is only required at submission time"). When the user is finally prompted to sign in:
+Unauthenticated writes are a first-class UX pattern. Comments and PR proposals can be submitted without any account. However, three actions still require authentication: Pulse voting, comment voting, and bookmarking. When a user without a session triggers one of these and is prompted to sign in:
 
 - **Email/password sign-in** stays on the same page; no state is lost.
 - **Google OAuth** causes a full-page redirect off-site; in-memory React state is lost.
@@ -786,10 +786,12 @@ FRD 6 adds two things:
 
 -- Add display_name validation (safe if column already exists)
 ALTER TABLE public.users
-  ADD CONSTRAINT users_display_name_length
-    CHECK (char_length(display_name) BETWEEN 2 AND 50),
-  ADD CONSTRAINT users_display_name_charset
-    CHECK (display_name ~ '^[\p{L}\p{N}_ \-]+$');
+  -- Canonical display name constraint (matches displayNameSchema in src/lib/auth/schemas.ts)
+  ADD CONSTRAINT users_display_name_format
+    CHECK (
+      length(display_name) BETWEEN 2 AND 50
+      AND display_name ~ '^[\p{L}\p{N} _\-''.]+$'
+    );
 
 -- Add email_verified_at (null until Supabase marks it)
 ALTER TABLE public.users
@@ -1302,28 +1304,38 @@ Client UI enforces a 60s cooldown on "Resend" buttons as a UX hint; server-side 
 
 **Layer 1 — Zod validation in the sign-up server action and display-name update action:**
 
+**Canonical validation pattern** (Unicode-aware, to support names from Google OAuth like "Abeer Das"):
+
 ```typescript
 // src/lib/auth/schemas.ts
+
+// Canonical display name regex: Unicode letters/digits + space, _, -, ', .  (2-50 chars)
+// This matches the Postgres CHECK constraint exactly. Use this single pattern everywhere.
+export const DISPLAY_NAME_REGEX = /^[\p{L}\p{N} _\-'.]{2,50}$/u;
 
 export const displayNameSchema = z
   .string()
   .min(2, "Display name must be at least 2 characters")
   .max(50, "Display name must be 50 characters or fewer")
   .regex(
-    /^[\w\s\-'.]+$/,
-    "Display name may only contain letters, numbers, spaces, hyphens, apostrophes, and periods"
+    DISPLAY_NAME_REGEX,
+    "Display name may only contain letters, numbers, spaces, hyphens, underscores, apostrophes, and periods"
   )
   .transform((s) => s.trim());
 ```
 
-The regex `^[\w\s\-'.]+$` allows letters, digits, underscores, spaces, hyphens, apostrophes, and periods — sufficient for real names and handles — while blocking all HTML-special characters (`<`, `>`, `"`, `&`, etc.).
+The regex `^[\p{L}\p{N} _\-'.]{2,50}$` (Unicode flag `u`) allows letters, digits, underscores, spaces, hyphens, apostrophes, and periods across all scripts — sufficient for real names and handles — while blocking all HTML-special characters (`<`, `>`, `"`, `&`, etc.).
 
-**Layer 2 — Postgres CHECK constraint (already referenced in Section 4, added in FRD 0 schema):**
+**Layer 2 — Postgres CHECK constraint (canonical version):**
 
 ```sql
+-- Canonical: this replaces any prior display_name CHECK constraint
 ALTER TABLE users
   ADD CONSTRAINT users_display_name_format
-  CHECK (display_name ~ '^[\w\s\-''.]+$' AND length(display_name) BETWEEN 2 AND 50);
+  CHECK (
+    length(display_name) BETWEEN 2 AND 50
+    AND display_name ~ '^[\p{L}\p{N} _\-''.]+$'
+  );
 ```
 
 This catches any insert that bypasses the application layer (e.g. a migration script or direct DB access).
@@ -1331,6 +1343,41 @@ This catches any insert that bypasses the application layer (e.g. a migration sc
 **Usage:** apply `displayNameSchema` in both `signUpAction` and any future profile-update action. The constraint is enforced server-side; client-side validation mirrors it for UX only.
 
 **Exit criterion:** attempt to create an account with display name `<script>alert(1)</script>` and verify the server action returns a validation error and the value is not stored.
+
+---
+
+## 9.9 Affiliation Management at `/my/profile`
+
+Users can self-declare their organizational affiliations from the profile settings page. No admin verification is required to add an affiliation.
+
+### Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  My Affiliations                                             │
+│                                                             │
+│  Search organizations:                                      │
+│  [ Type to search ... ]                                     │
+│                                                             │
+│  Your affiliations:                                         │
+│   ✕  Blueprint (Engineering Clubs)                          │
+│   ✕  Hack the North (Engineering Clubs)                     │
+│                                                             │
+│  Note: Affiliations are self-declared and used to identify  │
+│  your contributions to these orgs. Admins may revoke if     │
+│  the affiliation is inaccurate.                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### API
+
+- **Add**: `POST /api/me/affiliations` with `{ org_id: string }` — inserts into `user_affiliations`. 
+  - UNIQUE constraint `(user_id, org_id)` prevents duplicates.
+  - Rate limited: max 10 adds per hour to prevent abuse.
+- **Remove**: `DELETE /api/me/affiliations/[orgId]` — removes the `user_affiliations` row.
+- **List**: `GET /api/me/affiliations` — returns all user's current affiliations with org name and category.
+
+Both are behind `requireUser()`. Admins can revoke any affiliation via FRD-7 §7.4 (not via this endpoint).
 
 ---
 
@@ -1403,21 +1450,20 @@ FRD 6 is complete when ALL of the following are satisfied:
 | 10  | Verify-email banner appears for unverified users and disappears after verification   | Sign up, see banner; click verification link; banner gone                                             |
 | 11  | Sign out works and respects "stay on public page" rule                               | Sign out from a wiki page; stay on page. Sign out from `/my/bookmarks`; redirect to `/`               |
 | 12  | User menu links (My Contributions, Bookmarks) route to auth-gated stub pages         | Click each; verify stub page renders; visit while logged out; redirect to sign-in with returnTo       |
-| 13  | Comment submit from logged-out state auto-resumes after sign-in                      | Type comment, click Post, sign in via Google; comment is posted after OAuth round-trip               |
-| 14  | Comment vote from logged-out state auto-resumes after sign-in                        | Click upvote, sign in; vote is recorded                                                               |
-| 15  | PR submit from logged-out state auto-resumes after sign-in                           | Draft edit, click Submit, sign in; proposal is created and user lands on confirmation page           |
-| 16  | Bookmark toggle from logged-out state auto-resumes after sign-in                     | Click bookmark; sign in; bookmark toggles                                                             |
-| 17  | Pending action survives browser close and new-tab sign-in within 24h                 | Trigger action, close tab, sign in in new tab; action replays                                         |
-| 18  | Pending action is discarded after 24h                                                | Manually set `expiresAt` in the past; sign in; no replay occurs                                       |
-| 19  | Google OAuth auto-links to existing email/password account with same email           | Sign up with email/password; then sign in with Google (same email); land on the same user record     |
-| 20  | `returnTo` query param is sanitized (rejects external URLs)                          | Visit `/auth/sign-in?returnTo=https://evil.com`; after sign-in, land on `/` not evil.com              |
-| 21  | Unauthenticated user hitting `/admin/cold-start` is redirected to sign-in + returnTo | Visit while logged out; redirect has `returnTo=/admin/cold-start`; after sign-in, land there         |
-| 22  | Non-admin authenticated user hitting `/admin/cold-start` is redirected with toast    | Sign in as `user` role; visit `/admin/cold-start`; redirect to `/?error=not_authorized` + toast       |
-| 23  | Display name validation rejects invalid inputs                                       | Try 1-char, 51-char, emoji; form shows inline errors                                                  |
-| 24  | Error codes and messages match Section 11 table                                      | Manual review or test each failure path                                                               |
-| 25  | AuthModal meets WCAG 2.1 AA                                                          | Axe scan + keyboard navigation + screen reader check                                                  |
-| 26  | Supabase dashboard checklist is documented and followed                              | Checklist executed in Supabase project; screenshots or commit log                                     |
-| 27  | Branded email templates are applied                                                  | Send each email type; inspect in inbox                                                                |
+| 13  | Comment vote from logged-out state auto-resumes after sign-in                        | Click upvote, sign in; vote is recorded                                                               |
+| 14  | Pulse vote from logged-out state auto-resumes after sign-in                          | Click "Submit Rating" on Pulse widget, sign in via Google; rating is submitted after OAuth round-trip |
+| 15  | Bookmark toggle from logged-out state auto-resumes after sign-in                     | Click bookmark; sign in; bookmark toggles                                                             |
+| 16  | Pending action survives browser close and new-tab sign-in within 24h                 | Trigger action, close tab, sign in in new tab; action replays                                         |
+| 17  | Pending action is discarded after 24h                                                | Manually set `expiresAt` in the past; sign in; no replay occurs                                       |
+| 18  | Google OAuth auto-links to existing email/password account with same email           | Sign up with email/password; then sign in with Google (same email); land on the same user record     |
+| 19  | `returnTo` query param is sanitized (rejects external URLs)                          | Visit `/auth/sign-in?returnTo=https://evil.com`; after sign-in, land on `/` not evil.com              |
+| 20  | Unauthenticated user hitting `/admin/cold-start` is redirected to sign-in + returnTo | Visit while logged out; redirect has `returnTo=/admin/cold-start`; after sign-in, land there         |
+| 21  | Non-admin authenticated user hitting `/admin/cold-start` is redirected with toast    | Sign in as `user` role; visit `/admin/cold-start`; redirect to `/?error=not_authorized` + toast       |
+| 22  | Display name validation rejects invalid inputs                                       | Try 1-char, 51-char, emoji; form shows inline errors                                                  |
+| 23  | Error codes and messages match Section 11 table                                      | Manual review or test each failure path                                                               |
+| 24  | AuthModal meets WCAG 2.1 AA                                                          | Axe scan + keyboard navigation + screen reader check                                                  |
+| 25  | Supabase dashboard checklist is documented and followed                              | Checklist executed in Supabase project; screenshots or commit log                                     |
+| 26  | Branded email templates are applied                                                  | Send each email type; inspect in inbox                                                                |
 
 ---
 
@@ -1475,7 +1521,7 @@ export const pendingActionEnvelopeSchema = z.object({
       payload: z.object({
         orgId: z.string().uuid(),
         ratings: z.object({
-          selectivity: z.enum(["Open", "Application-Based", "Competitive", "Invite-Only"]).optional(),
+          selectivity: z.enum(["Open Membership", "Application-Based", "Invite-Only"]).optional(),
           vibeCheck: z.number().int().min(1).max(5).optional(),
           coopBoost: z.number().int().min(1).max(5).optional(),
           techStack: z.array(z.string().min(1).max(50)).optional(),
@@ -1558,13 +1604,13 @@ export async function replayPendingAction(
   ctx: { router: AppRouterInstance; toast: ToastFn; user: User }
 ): Promise<{ ok: boolean; navigateTo?: string }> {
   switch (action.type) {
-    case "comment.submit": {
-      const res = await fetch("/api/comments", {
+    case "pulse.vote": {
+      const res = await fetch("/api/pulse/vote", {
         method: "POST",
         body: JSON.stringify(action.payload),
       });
       if (!res.ok) return { ok: false };
-      ctx.toast({ title: "Your comment was posted." });
+      ctx.toast({ title: "Your Pulse rating was submitted." });
       return { ok: true };
     }
     case "comment.vote": {
@@ -1578,16 +1624,6 @@ export async function replayPendingAction(
       if (!res.ok) return { ok: false };
       ctx.toast({ title: "Vote recorded." });
       return { ok: true };
-    }
-    case "proposal.submit": {
-      const res = await fetch("/api/proposals", {
-        method: "POST",
-        body: JSON.stringify(action.payload),
-      });
-      if (!res.ok) return { ok: false };
-      const { proposalId } = await res.json();
-      ctx.toast({ title: "Proposal submitted for review." });
-      return { ok: true, navigateTo: `/proposals/${proposalId}` };
     }
     case "bookmark.toggle": {
       const res = await fetch("/api/bookmarks/toggle", {

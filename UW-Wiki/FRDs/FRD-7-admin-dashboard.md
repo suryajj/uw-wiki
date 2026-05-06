@@ -5,19 +5,21 @@
 | **Project**         | UW Wiki                                                                                                                                                                                                  |
 | **Parent Document** | [PRD v0.1](../PRD.md)                                                                                                                                                                                    |
 | **FRD Order**       | [FRD Order](../FRD-order.md)                                                                                                                                                                             |
-| **PRD Sections**    | 6.7 (Page Claiming), 6.8 (Cold Start), 7 (Editorial Model), 8 (Platform Editorial Values)                                                                                                                |
+| **PRD Sections**    | 6.7 (Affiliation and Official Sections), 6.8 (Cold Start), 7 (Editorial Model), 8 (Platform Editorial Values)                                                                                            |
 | **Type**            | Operator / moderator tooling                                                                                                                                                                             |
-| **Depends On**      | FRD 0 (schema, guards), FRD 2 (claim_requests, lifecycle_config), FRD 3 (comment_reports), FRD 4 (edit_proposals), FRD 5 (cold_start_jobs), FRD 6 (AuthModal, requireAdmin, requireReviewer, sign-in redirects) |
-| **Delivers**        | Reviewer PR queue with per-section diff cards and three-state decisions (accept / request changes / reject), page claim approval queue, cold-start job history with re-run, lifecycle configuration editor, user role + affiliation management, comment moderation queue, admin activity audit log |
+| **Depends On**      | FRD 0 (schema, guards), FRD 2 (lifecycle_config, affiliation model), FRD 3 (comment_reports), FRD 4 (edit_proposals), FRD 5 (cold_start_jobs), FRD 6 (AuthModal, requireAdmin, requireReviewer, sign-in redirects) |
+| **Delivers**        | Reviewer PR queue with per-section diff cards and three-state decisions (accept / request changes / reject), Official Section seeder, cold-start job history with re-run, lifecycle configuration editor, user role + affiliation management (with revoke), comment moderation queue, admin activity audit log |
 | **Created**         | 2026-04-18                                                                                                                                                                                               |
 
 ---
 
 ## Summary
 
-FRD 7 is the operator surface for UW Wiki. Six admin surfaces, unified under a single `/admin` shell, turn the editorial board from an abstract concept into a working tool: reviewers can triage and decide on pending edit proposals, admins can approve page claims, re-run failed cold-start jobs, tune lifecycle thresholds per category, manage user roles and conflict-of-interest affiliations, and hide reported comments. Every admin mutation is captured in a tamper-evident audit log accessible from `/admin/activity`, so the editorial board has a paper trail from day one.
+FRD 7 is the operator surface for UW Wiki. Six admin surfaces, unified under a single `/admin` shell, turn the editorial board from an abstract concept into a working tool: reviewers can triage and decide on pending edit proposals, admins can seed Official sections on org pages, re-run failed cold-start jobs, tune lifecycle thresholds per category, manage user roles and self-declared affiliations (with revoke capability), and hide reported comments. Every admin mutation is captured in a tamper-evident audit log accessible from `/admin/activity`, so the editorial board has a paper trail from day one.
 
-This FRD does not introduce any new user-facing features. It surfaces existing data models (`edit_proposals`, `claim_requests`, `cold_start_jobs`, `comment_reports`, `lifecycle_config`, `public.users`, `user_affiliations`) through a cohesive sidebar-based admin UI. Two schema additions are required: an `admin_activity_log` table for the audit trail, and a new `changes_requested` value on `edit_proposals.status` (with supporting `proposal_review_comments` table) to let reviewers ask for changes without rejecting outright. Both additions require small amendments to FRD 4 and FRD 2, documented in Section 12.
+This FRD does not introduce any new user-facing features. It surfaces existing data models (`edit_proposals`, `cold_start_jobs`, `comment_reports`, `lifecycle_config`, `public.users`, `user_affiliations`) through a cohesive sidebar-based admin UI. Two schema additions are required: an `admin_activity_log` table for the audit trail, and a new `changes_requested` value on `edit_proposals.status` (with supporting `proposal_review_comments` table) to let reviewers ask for changes without rejecting outright. Both additions require small amendments to FRD 4 and FRD 2, documented in Section 12.
+
+> **Note**: The page claim approval queue (`/admin/claims`, `claim_requests` table, `/api/claims/*` routes) is removed. The affiliation model (FRD-2 §10) replaces the claim flow. Admins manage affiliations in §7 (User Management) and can seed Official sections via the new Official Section seeder (§4).
 
 The admin dashboard uses a persistent left sidebar, `/admin` redirects to `/admin/reviews`, auth guards switch between `requireReviewer()` and `requireAdmin()` on a per-route basis, and nav badges show live pending counts. Scope is deliberately tight: no per-org lifecycle overrides, no user bans, no email notifications, no comment deletion. All are tracked as deferred items for a future FRD.
 
@@ -30,9 +32,9 @@ FRD 7 layers on top of data models that already exist. It does not duplicate or 
 | FRD | What it owns | What FRD 7 adds |
 |-----|-------------|-----------------|
 | FRD 0 | `public.users.role`, `user_affiliations` table, `lifecycle_config` table, `requireAdmin` / `requireReviewer` guards | Admin UI on top of these tables; guards are used unchanged |
-| FRD 2 | `claim_requests` table, `/api/claims/[id]/approve`, `/api/claims/[id]/reject`, `/admin/claims` route (stub) | Admin UI for the claim queue; adds `decision_reason` column for rejection reasons (amendment required) |
+| FRD 2 | `lifecycle_config`, `user_affiliations`, affiliation model (§10), Official section inline storage | Admin UI for lifecycle config and affiliation management; Official Section seeder tool (§4) |
 | FRD 3 | `comment_reports` table, `/api/admin/reports/[id]/resolve`, `comments.is_hidden` behavior | Admin UI for the moderation queue (hide-only action) |
-| FRD 4 | `edit_proposals` table, accept / reject endpoints, mergeability engine, per-section diff logic, COI rule ("affiliated reviewer cannot be accepting reviewer") | Reviewer UI, stacked diff card rendering, COI read-only detail view, new `changes_requested` state + `/api/proposals/[id]/request-changes` endpoint (amendment required) |
+| FRD 4 | `edit_proposals` table, accept / reject endpoints, mergeability engine, per-section diff logic, COI disclosure model (affiliated reviewers see banner; all actions enabled) | Reviewer UI, stacked diff card rendering, COI disclosure banner, new `changes_requested` state + `/api/proposals/[id]/request-changes` endpoint (amendment required) |
 | FRD 5 | `cold_start_jobs` table, `/admin/cold-start` entry route, `RecentJobsList` component | Dedicated job history route at `/admin/cold-start/jobs`, re-run action for failed jobs |
 | FRD 6 | `AuthModal`, `/auth/sign-in`, `requireAdmin()` redirect-to-sign-in pattern, header user menu | Admin routes consume the guards and redirect behavior unchanged; admin layout is separate from the public header |
 
@@ -58,21 +60,21 @@ What FRD 7 explicitly does NOT include:
 2. **Schema**:
    - `public.users (id, email, display_name, avatar_url, role, created_at, ...)` with `role IN ('user','reviewer','admin')`.
    - `user_affiliations (id, user_id, org_id, created_at, UNIQUE(user_id, org_id))` created by FRD 0.
-   - `edit_proposals (id, page_id, section_slugs TEXT[], proposed_content_json, rationale, ai_verdict, ai_reason, status, contributor_id, reviewer_id, submitted_at, reviewed_at, reviewer_comment, mergeability_status, ...)` with current `status IN ('pending','needs_rebase','accepted','rejected','superseded','withdrawn')`. See FRD 4 Section 3.
+   - `edit_proposals (id, page_id, section_slugs TEXT[], rationale, status, contributor_id, reviewer_id, submitted_at, reviewed_at, reviewer_comment, mergeability_status, ...)` with current `status IN ('pending','changes_requested','needs_rebase','accepted','rejected','withdrawn')`. See FRD 4 Section 3. Note: `proposed_content_json` (full-page storage) and `superseded` status are removed per FRD-4 reconciliation.
    - `edit_proposal_patchsets` per FRD 4 Section 3.
-   - `claim_requests (id, org_id, requester_id, requester_name, requester_email, requester_role, justification, status, reviewed_by, reviewed_at, created_at)` with `status IN ('pending','approved','rejected')`. See FRD 2 Section 12.2.
+   - `user_affiliations (id, user_id, org_id, created_at, UNIQUE(user_id, org_id))` created by FRD 0. No claim_requests table — the claim flow is removed; see FRD-2 §10.
    - `cold_start_jobs (id, created_by, status, org_metadata, research_data JSONB, draft_content JSONB, current_step, steps_completed, error TEXT, created_at, completed_at)`. See FRD 5 Section 12.1.
    - `comment_reports (id, comment_id, reporter_id, reason, details, status, resolved_by, resolved_at, created_at)` with `status IN ('pending','resolved','dismissed')`. See FRD 3 Section 14.3.
    - `comments.is_hidden BOOLEAN DEFAULT false` column per FRD 3 Section 12.
    - `lifecycle_config (category, needs_update_months, stale_months, defunct_months, updated_at)` per FRD 0 Section 4.
 3. **Existing API routes** referenced but not redefined here:
    - `POST /api/proposals/[id]/accept`, `POST /api/proposals/[id]/reject` -- FRD 4 Section 8.
-   - `POST /api/claims/[id]/approve`, `POST /api/claims/[id]/reject` -- FRD 2 Section 13.
+   - `/api/claims/*` routes are removed (claim flow replaced by affiliation model). See FRD-2 §10.
    - `POST /api/admin/reports/[id]/resolve` -- FRD 3 Section 15 (superseded by FRD 7; see Section 8.4).
    - `POST /api/cold-start` and child routes -- FRD 5 Section 13.
 4. **Routing stubs** from prior FRDs:
    - FRD 2 defined `/admin/proposals` as the reviewer queue URL (FRD 2 Sections 5–8). FRD 7 implements the reviewer queue at `/admin/reviews` — this is the canonical path. The `/admin/proposals` stub from FRD 2 should redirect to `/admin/reviews`.
-   - `/admin/claims` stub referenced by FRD 2.
+   - `/admin/claims` route is removed along with the claim flow.
    - `/admin/cold-start` entry built by FRD 5 (FRD 7 adds `/admin/cold-start/jobs`).
    - `/admin/reports` stub referenced by FRD 3.
 5. **Header / app shell** from FRD 0 and FRD 6 wraps all non-admin routes. The admin layout at `src/app/admin/layout.tsx` replaces the default public layout.
@@ -85,12 +87,12 @@ What FRD 7 explicitly does NOT include:
 |------|------------|
 | Admin shell | The `src/app/admin/layout.tsx` wrapper that renders the sidebar, guard-switches per route, and hosts every admin surface |
 | Reviewer | A user with `public.users.role = 'reviewer'` or `'admin'`; can view PR queue, accept / reject / request changes on proposals, and see comment reports |
-| Admin | A user with `public.users.role = 'admin'`; can do everything a reviewer can plus approve claims, re-run cold-start jobs, edit lifecycle config, manage roles, and view the activity log |
+| Admin | A user with `public.users.role = 'admin'`; can do everything a reviewer can plus seed Official sections, re-run cold-start jobs, edit lifecycle config, manage roles and affiliations, and view the activity log |
 | Changes requested | A new non-terminal `edit_proposals.status` value introduced by this FRD. Reviewer leaves structured feedback, contributor can submit a patchset response. |
 | Request Changes | The reviewer action that transitions a proposal from `pending` to `changes_requested` |
 | Proposal review comment | A row in the new `proposal_review_comments` table; stores the reviewer's request message plus optional per-section suggestions |
-| Conflict of interest (COI) | A reviewer who is affiliated with the target organization via `user_affiliations`; cannot accept or request changes on that proposal but can read the detail |
-| Admin activity log | A row in the new `admin_activity_log` table capturing every admin/reviewer mutation (accept, reject, request changes, approve claim, reject claim, re-run job, change role, edit affiliation, edit lifecycle, hide comment) |
+| Conflict of interest (COI) | A reviewer who is affiliated with the target organization via `user_affiliations`; a yellow disclosure banner is shown on the proposal detail, but all actions (accept / reject / request changes) remain available. The affiliation status is captured in the audit log. |
+| Admin activity log | A row in the new `admin_activity_log` table capturing every admin/reviewer mutation (accept, reject, request changes, seed official section, re-run job, change role, revoke affiliation, edit lifecycle, hide comment) |
 | Nav badge | Small pill on a sidebar nav item showing the live pending count (e.g., "PR Queue (3)", "Reports (1)") |
 | Quick action | An Accept or Reject button rendered directly on a queue row for low-ambiguity proposals; the full decision surface remains in the detail page |
 
@@ -126,7 +128,7 @@ Feature: Reviewer PR queue and three-state decisions
     And I click Accept
     Then the proposal transitions to accepted
     And an admin_activity_log row is written
-    And competing proposals touching any same section are superseded
+    And competing proposals touching any same section are marked needs_rebase
 
   Scenario: Reviewer requests changes on a proposal
     Given I am a reviewer
@@ -142,11 +144,12 @@ Feature: Reviewer PR queue and three-state decisions
     Then the proposal transitions back to pending
     And the reviewer queue shows the proposal again
 
-  Scenario: COI proposal renders read-only
+  Scenario: COI disclosure banner
     Given I am a reviewer affiliated with the target org
     When I open the proposal detail page
-    Then the Accept, Reject, and Request Changes buttons are disabled
-    And a tooltip "You are affiliated with this org" is shown
+    Then a yellow disclosure banner is shown: "You are affiliated with this organization. Your decision will be logged with your affiliation status."
+    And the Accept, Reject, and Request Changes buttons remain enabled
+    And my affiliation status is captured in the audit log when I take a decision
 
   Scenario: Queue row quick action
     Given I am viewing /admin/reviews with a pending proposal
@@ -154,23 +157,15 @@ Feature: Reviewer PR queue and three-state decisions
     Then a confirmation dialog opens with the proposal summary
     And confirming accepts the proposal without opening the detail page
 
-Feature: Claim approval
+Feature: Official Section seeder
 
-  Scenario: Admin approves a claim in one click
-    Given I am an admin and a pending claim exists
-    When I click Approve on the row
-    Then organizations.claimed_by and claimed_at are set
-    And claim_requests.status becomes approved
-    And an admin_activity_log row is written
-
-  Scenario: Admin rejects a claim with reason
-    Given I am an admin and a pending claim exists
-    When I click Reject
-    Then a modal requires a reason
-    When I submit a reason
-    Then claim_requests.status becomes rejected
-    And claim_requests.decision_reason is persisted
-    And the requester can see the reason if they view the claim
+  Scenario: Admin seeds an Official section on an org page
+    Given I am an admin on /admin/official-sections
+    When I select an org, enter content, and click Publish
+    Then a new page_versions row is created with is_admin_seeded = true
+    And the H2 heading carries attrs.official = true
+    And FRD-1 re-embedding is triggered
+    And an admin_activity_log row is written with action seed_official_section
 
 Feature: Cold-start re-run
 
@@ -197,11 +192,11 @@ Feature: User role and affiliation management
     Then public.users.role is updated
     And an admin_activity_log row is written
 
-  Scenario: Admin adds an affiliation
+  Scenario: Admin revokes a user affiliation
     Given I am an admin viewing a user's affiliations drawer
-    When I add an org affiliation
-    Then a user_affiliations row is inserted
-    And the user is now blocked from accepting PRs on that org
+    When I click revoke on an affiliation
+    Then the user_affiliations row is deleted
+    And an admin_activity_log row is written with action revoke_affiliation
 
 Feature: Comment moderation
 
@@ -231,7 +226,7 @@ Feature: Admin activity audit log
 /admin                          → server-side redirect to /admin/reviews
 /admin/reviews                  → reviewer queue                   [requireReviewer]
 /admin/reviews/[proposalId]     → proposal detail                  [requireReviewer]
-/admin/claims                   → claim approval queue             [requireAdmin]
+/admin/official-sections        → Official Section seeder          [requireAdmin]
 /admin/cold-start               → cold-start entry (owned by FRD 5) [requireAdmin]
 /admin/cold-start/jobs          → job history and re-run           [requireAdmin]
 /admin/lifecycle                → category threshold editor        [requireAdmin]
@@ -240,7 +235,7 @@ Feature: Admin activity audit log
 /admin/activity                 → audit log viewer                 [requireAdmin]
 ```
 
-Guard choice rule: surfaces that affect editorial decisions (reviews, reports) allow `reviewer`. Surfaces that affect operational or platform state (claims, cold-start, lifecycle, users, activity) require `admin`.
+Guard choice rule: surfaces that affect editorial decisions (reviews, reports) allow `reviewer`. Surfaces that affect operational or platform state (official seeding, cold-start, lifecycle, users, activity) require `admin`.
 
 ### 1.2 Layout Shell
 
@@ -261,7 +256,7 @@ Visual spec:
 │  👤 Alex (Admin) │  ┌────────────────────────────────┐   │
 │  ────────────    │  │  ... page content ...          │   │
 │  📋 PR Queue (3) │  └────────────────────────────────┘   │
-│  🏷️  Claims (1)   │                                       │
+│  📄 Official Sections │                                       │
 │  ✨ Cold Start    │                                       │
 │  ⏱️  Lifecycle    │                                       │
 │  👥 Users         │                                       │
@@ -296,7 +291,7 @@ Nav items:
 | Icon | Label | Route | Guard | Visible to reviewer? |
 |------|-------|-------|-------|---------------------|
 | `Inbox` | PR Queue | `/admin/reviews` | reviewer | yes |
-| `Award` | Claims | `/admin/claims` | admin | no (hidden) |
+| `FileText` | Official Sections | `/admin/official-sections` | admin | no (hidden) |
 | `Sparkles` | Cold Start | `/admin/cold-start` | admin | no (hidden) |
 | `Clock` | Lifecycle | `/admin/lifecycle` | admin | no (hidden) |
 | `Users` | Users | `/admin/users` | admin | no (hidden) |
@@ -315,17 +310,11 @@ Badge styling: small pill next to the label, rendered only when count > 0. Badge
 export async function getAdminBadgeCounts(userId: string, role: "reviewer" | "admin") {
   const supabase = await createServerClient();
 
-  const [reviews, claims, reports] = await Promise.all([
+  const [reviews, reports] = await Promise.all([
     supabase
       .from("edit_proposals")
       .select("id", { count: "exact", head: true })
       .in("status", ["pending", "changes_requested"]),
-    role === "admin"
-      ? supabase
-          .from("claim_requests")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending")
-      : Promise.resolve({ count: 0 }),
     supabase
       .from("comment_reports")
       .select("id", { count: "exact", head: true })
@@ -334,7 +323,6 @@ export async function getAdminBadgeCounts(userId: string, role: "reviewer" | "ad
 
   return {
     reviews: reviews.count ?? 0,
-    claims: claims.count ?? 0,
     reports: reports.count ?? 0,
   };
 }
@@ -358,8 +346,6 @@ const { data: proposals } = await supabase
   .select(`
     id,
     status,
-    ai_verdict,
-    ai_reason,
     section_slugs,
     mergeability_status,
     submitted_at,
@@ -429,11 +415,10 @@ Quick Reject dialog: identical layout, but with a required reason textarea (mini
 
 Quick `Request Changes` is NOT on the row. That action is intentionally detail-only because it requires a message.
 
-Row quick actions are disabled (greyed with tooltip) when:
+Row quick actions are disabled (greyed with tooltip) when (note: COI affiliation does NOT disable quick actions — disclosure banner shown on detail page only):
 
 - AI verdict is `fail` -- force detail review. Tooltip: "AI flagged this proposal; open detail to review."
 - Mergeability is `needs_rebase` or `conflict` -- Accept disabled. Tooltip: "Proposal requires rebase before acceptance."
-- Viewer is a COI reviewer for this proposal -- Accept and Reject both disabled. Tooltip: "You are affiliated with this org."
 
 ### 2.5 Proposal Detail View (`/admin/reviews/[proposalId]`)
 
@@ -446,14 +431,11 @@ Layout:
 │  ← Back to queue                                                  │
 │                                                                   │
 │  Blueprint -- Time Commitment + Culture and Vibe                  │
-│  [AI pass] [mergeable] [pending] · submitted 3d ago by @anon-4f2  │
+│  [mergeable] [pending] · submitted 3d ago by @anon-4f2            │
 │                                                                   │
 │  ─────────── Rationale ───────────────────────────────            │
 │  "Updated hours based on new exec onboarding. Added sub-team-    │
 │  specific breakdown."                                             │
-│                                                                   │
-│  ─────────── AI Pre-screen ───────────────────────────            │
-│  ✅ Pass -- "Specific numbers, honest tone, no harm."             │
 │                                                                   │
 │  ─────────── Section: Time Commitment ────────────────            │
 │  [mergeable]                                                      │
@@ -486,14 +468,14 @@ Stacked diff cards (Section 2.7) render each section as a full-width card in the
 
 | Action | Required input | Resulting status | Endpoint | Auth |
 |--------|---------------|------------------|----------|------|
-| Accept | None | `accepted` | `POST /api/proposals/[id]/accept` (existing, FRD 4) | reviewer, non-COI |
-| Request Changes | Message ≥ 10 chars | `changes_requested` | `POST /api/proposals/[id]/request-changes` (NEW, FRD 7) | reviewer, non-COI |
-| Reject | Message ≥ 10 chars | `rejected` | `POST /api/proposals/[id]/reject` (existing, FRD 4) | reviewer, non-COI |
+| Accept | None | `accepted` | `POST /api/proposals/[id]/accept` (existing, FRD 4) | reviewer |
+| Request Changes | Message ≥ 10 chars | `changes_requested` | `POST /api/proposals/[id]/request-changes` (NEW, FRD 7) | reviewer |
+| Reject | Message ≥ 10 chars | `rejected` | `POST /api/proposals/[id]/reject` (existing, FRD 4) | reviewer |
 
 Decision buttons are always visible on the detail page but disabled with tooltip copy when:
 
-- Viewer is a COI reviewer -- all three disabled.
-- Proposal status is terminal (`accepted`, `rejected`, `superseded`, `withdrawn`) -- all three disabled. Detail is read-only.
+- Reviewer is on their own proposal.
+- Proposal status is terminal (`accepted`, `rejected`, `withdrawn`) -- all three disabled. Detail is read-only.
 - Proposal status is `changes_requested` -- Accept and Request Changes both disabled; only Reject remains enabled. Tooltip: "Waiting for contributor patchset. Reject only."
 - Mergeability is not `mergeable` -- Accept disabled. Tooltip: "Proposal requires rebase before acceptance." Reject and Request Changes remain enabled.
 
@@ -519,9 +501,9 @@ Renders:
 2. Two columns (CSS grid, stacked on mobile): Original (left) and Proposed (right), each a read-only Tiptap renderer.
 3. Below the columns: a toggleable "Unified diff view" (text-level additions/removals highlighted). Unified view is collapsed by default; toggle reveals a line-oriented diff using `diff-match-patch` or similar library on the serialized markdown representation of each section. Unified view is a nice-to-have; if implementation time is tight, ship only the side-by-side and defer the unified toggle.
 
-### 2.8 COI Read-Only Mode
+### 2.8 COI Disclosure Banner
 
-FRD 4 currently says affiliated reviewers "cannot be accepting reviewer." FRD 7 tightens this to also prevent rejection and request-changes, because any decision by an affiliated reviewer creates the appearance of bias. The detail page is readable so the affiliated reviewer can stay informed.
+COI is disclosure-only. Affiliated reviewers can still accept, reject, or request changes — their affiliation is logged in the audit trail.
 
 Implementation:
 
@@ -534,10 +516,21 @@ const isAffiliated = await supabase
   .eq("org_id", proposal.page.organizations.id)
   .maybeSingle();
 
-const canDecide = !isAffiliated.data && currentUser.role !== "user";
+const showCoiDisclosure = !!isAffiliated.data;
 ```
 
-The `canDecide` boolean is passed to the decision button component. If `false`, all three buttons render with `aria-disabled="true"` and the affiliation tooltip.
+If `showCoiDisclosure` is true, render a yellow banner above the decision buttons:
+
+```tsx
+{showCoiDisclosure && (
+  <div className="rounded border border-yellow-600 bg-yellow-900/30 p-3 text-yellow-300 text-sm">
+    You are affiliated with this organization. Your decision on this proposal
+    will be logged with your affiliation status.
+  </div>
+)}
+```
+
+All three decision buttons remain enabled. The `is_reviewer_affiliated` field is included in every `admin_activity_log` payload at decision time.
 
 ### 2.9 Queue Performance
 
@@ -559,6 +552,8 @@ Migration additions to `edit_proposals.status` CHECK constraint:
 
 ```sql
 -- Drop and recreate the CHECK constraint
+-- Note: 'superseded' is intentionally omitted. It was collapsed into 'needs_rebase'
+-- during the FRD-4 reconciliation pass (see FRD-4 Appendix C).
 ALTER TABLE edit_proposals DROP CONSTRAINT IF EXISTS edit_proposals_status_check;
 ALTER TABLE edit_proposals ADD CONSTRAINT edit_proposals_status_check
   CHECK (status IN (
@@ -567,7 +562,6 @@ ALTER TABLE edit_proposals ADD CONSTRAINT edit_proposals_status_check
     'needs_rebase',
     'accepted',
     'rejected',
-    'superseded',
     'withdrawn'
   ));
 ```
@@ -645,18 +639,18 @@ Response:
 ```ts
 type RequestChangesResult =
   | { ok: true; proposal: { id: string; status: "changes_requested" } }
-  | { ok: false; error: string; code: "UNAUTHORIZED" | "COI" | "INVALID_STATE" | "INVALID_INPUT" };
+  | { ok: false; error: string; code: "UNAUTHORIZED" | "INVALID_STATE" | "INVALID_INPUT" };
 ```
 
 Server logic:
 
 1. `requireReviewer()`.
 2. Load proposal. If status is not `pending`, return `INVALID_STATE`.
-3. Check COI via `user_affiliations`. If affiliated, return `COI`.
-4. Validate input with Zod.
-5. Insert row into `proposal_review_comments`.
-6. Update `edit_proposals.status = 'changes_requested'` and `reviewer_id = currentUser.id` and `reviewed_at = now()`.
-7. Write to `admin_activity_log` (action = `request_changes`, target_id = proposal.id).
+3. Validate input with Zod.
+4. Insert row into `proposal_review_comments`.
+5. Update `edit_proposals.status = 'changes_requested'` and `reviewer_id = currentUser.id` and `reviewed_at = now()`.
+6. Check COI via `user_affiliations`. Set `is_reviewer_affiliated` boolean for audit log.
+7. Write to `admin_activity_log` (action = `request_changes`, target_id = proposal.id, payload includes `is_reviewer_affiliated`).
 8. Return success.
 
 ### 3.4 Contributor Response Flow
@@ -669,8 +663,7 @@ When `edit_proposals.status = 'changes_requested'`:
    - A `Submit Updated Patchset` button.
 3. Submitting an updated patchset (reusing FRD 4's patchset submission flow) transitions status from `changes_requested` back to `pending`.
 4. A fresh row in `edit_proposal_patchsets` captures the updated content.
-5. AI pre-screen re-runs on the new patchset (per FRD 4 Section 5.3).
-6. Mergeability re-computes.
+5. Mergeability re-computes.
 7. The proposal re-enters the reviewer queue at the top (sorted by `submitted_at` of the latest patchset).
 
 This flow is owned by FRD 4 (the amendment in Section 12 describes what changes there). FRD 7 only owns the reviewer-side Request Changes action.
@@ -696,101 +689,60 @@ See Appendix B for the full mermaid diagram.
 
 ---
 
-## 4. Page Claim Approval
+## 4. Official Section Seeder
 
-### 4.1 Queue View (`/admin/claims`)
+The page claim approval flow is removed. In its place, admins can seed an Official section directly on any org's wiki page using this tool.
 
-Server component. Guard: `requireAdmin({ returnTo: "/admin/claims" })`.
+### 4.1 Route (`/admin/official-sections`)
 
-Query:
+Server component. Guard: `requireAdmin({ returnTo: "/admin/official-sections" })`.
 
-```ts
-const { data: claims } = await supabase
-  .from("claim_requests")
-  .select(`
-    id,
-    requester_name,
-    requester_email,
-    requester_role,
-    justification,
-    status,
-    decision_reason,
-    created_at,
-    reviewed_at,
-    organizations ( id, name, slug, category )
-  `)
-  .eq("status", "pending")
-  .order("created_at", { ascending: true });
-```
+The page lists all organizations with a search/filter. Clicking an org opens the seeder editor.
 
-### 4.2 Claim Row Layout
+### 4.2 Seeder Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Blueprint (Engineering Clubs)                                    │
-│  Requester: Alex Chen <alex@uwblueprint.org> -- "Co-President"    │
-│  Justification: "I'm the current co-president; I'd like to add    │
-│  our official contact info and mission statement."                │
-│  Submitted 2d ago                                                 │
+│  Seed Official Section                                            │
+│  Org: Blueprint (Engineering Clubs)                               │
 │  ──────────────────────────────────────────────────────────────── │
-│                                    [Open Page ↗]  [Approve]  [Reject]│
+│  Official section content:                                        │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │  [Tiptap editor scoped to the Official H2 section content]  │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  [Cancel]                                     [Publish Official]  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Approve is a direct one-click action that opens a lightweight confirmation toast; no modal. Reject opens the `RejectClaimModal`.
+The editor is a scoped Tiptap instance (same extensions as FRD-2 §4.2). It produces ProseMirror JSON for the body content of the Official section (excluding the H2 heading node itself — that is injected server-side).
 
-### 4.3 RejectClaimModal Component
+### 4.3 Publish Endpoint
 
-`src/components/admin/RejectClaimModal.tsx`:
+`POST /api/admin/official-sections/[orgId]/seed`:
 
-```
-┌────────────────────────────────────────┐
-│  Reject claim?                          │
-│                                         │
-│  Blueprint                              │
-│  Requester: Alex Chen                   │
-│                                         │
-│  Reason (shown to requester):           │
-│  ┌─────────────────────────────────┐    │
-│  │                                 │    │
-│  │                                 │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-│  [Cancel]            [Reject claim]     │
-└────────────────────────────────────────┘
-```
+1. `requireAdmin()`.
+2. Load the org's current `page.content_json`.
+3. Build an Official H2 section block:
+   ```json
+   {
+     "type": "heading",
+     "attrs": { "level": 2, "slug": "official", "official": true },
+     "content": [{ "type": "text", "text": "Official" }]
+   }
+   ```
+   Followed by the submitted body content nodes.
+4. Upsert the Official section into `content_json` (replace existing Official section if present, otherwise insert after Overview).
+5. Insert a new `page_versions` row with `is_admin_seeded = true`. Set `pages.current_version_id` to the new version.
+6. Trigger FRD-1 `reembedSections` for the Official section.
+7. Trigger FRD-3 `updateAnchorStatusForPage`.
+8. Write `admin_activity_log` row (action = `seed_official_section`, payload = `{ org_id, page_id, page_version_id }`).
 
-Reason is required (min 20 chars). Stored in the new `claim_requests.decision_reason` column.
+### 4.4 Seeder Side Effects
 
-### 4.4 Approve and Reject Endpoints
-
-Existing endpoints (FRD 2 Section 13):
-
-- `POST /api/claims/[id]/approve` -- already defined.
-- `POST /api/claims/[id]/reject` -- already defined.
-
-FRD 7 wraps both with:
-
-1. `requireAdmin()` guard.
-2. `admin_activity_log` insert (action = `approve_claim` or `reject_claim`).
-
-Amendment to `/api/claims/[id]/reject` handler: accept new `decision_reason` field in request body, persist to `claim_requests.decision_reason`. Amendment to FRD 2 is documented in Section 12.
-
-### 4.5 Approve Side Effects
-
-On approve:
-
-1. `claim_requests.status = 'approved'`, `reviewed_by = currentUser.id`, `reviewed_at = now()`.
-2. `organizations.claimed_by = claim_requests.requester_id` (or fallback to NULL if requester was not authenticated; in that case an admin manually assigns after email correspondence).
-3. `organizations.claimed_at = now()`.
-4. `admin_activity_log` row inserted.
-
-### 4.6 Reject Side Effects
-
-1. `claim_requests.status = 'rejected'`, `reviewed_by`, `reviewed_at` set.
-2. `claim_requests.decision_reason` = input reason.
-3. `admin_activity_log` row inserted.
-4. No notification to requester for MVP (in-app badges only); requester sees the rejection if they return to the claim status page (deferred UI).
+- The Official section rendered on the wiki page immediately reflects the seeded content (SSR on next load).
+- If an affiliated user later submits a PR targeting the Official section, it goes through the standard FRD-4 pipeline — the seeded content is the base for the diff.
+- No `claim_requests` table or `organizations.claimed_by` column is involved.
 
 ---
 
@@ -1043,7 +995,13 @@ Remove: `DELETE /api/admin/users/[id]/affiliations/[affiliationId]`.
 
 Every change writes to `admin_activity_log`.
 
-Affiliation purpose: this is the data that drives the COI rule in the reviewer queue. An admin who knows a reviewer has a conflict of interest for an org adds the affiliation here; from that point on, the COI guard in `/admin/reviews/[proposalId]` kicks in.
+**Self-declared affiliations**: users add and remove their own affiliations at `/my/profile` (FRD-6). The admin drawer shows the current state and allows admins to **revoke** any affiliation (but not add new ones on behalf of users — self-declaration is intentional).
+
+Remove: `DELETE /api/admin/users/[id]/affiliations/[affiliationId]`.
+
+Every removal writes to `admin_activity_log` (action = `revoke_affiliation`).
+
+Affiliation purpose: this data drives the COI disclosure banner in the reviewer queue (FRD-4 §5.3) and the `is_from_affiliated_contributor` badge on proposals. A reviewer with an active affiliation for an org sees a yellow disclosure banner on that org's proposals; all actions remain enabled.
 
 ---
 
@@ -1099,8 +1057,16 @@ const { data: reports } = await supabase
 1. `requireReviewer()`.
 2. `UPDATE comments SET is_hidden = true WHERE id = ?`.
 3. `UPDATE comment_reports SET status = 'resolved', resolved_by = currentUser.id, resolved_at = now() WHERE comment_id = ?` (all pending reports for this comment resolved at once).
-4. `admin_activity_log` row inserted (action = `hide_comment`, payload = `{ comment_id, report_ids }`).
-5. Hidden comments remain in the database for audit; FRD 3 rendering rule hides them from readers.
+4. Trigger async chunk deletion: `DELETE FROM chunks WHERE source_comment_id = $1` (FRD-1 §3.3). Hidden comments must not appear in AI search results.
+5. `admin_activity_log` row inserted (action = `hide_comment`, payload = `{ comment_id, report_ids }`).
+6. Hidden comments remain in the database for audit; FRD 3 rendering rule hides them from readers.
+
+**Unhide**: `POST /api/admin/comments/[id]/unhide`:
+
+1. `requireReviewer()`.
+2. `UPDATE comments SET is_hidden = false WHERE id = ?`.
+3. Trigger async `reembedComment(commentId)` (FRD-1 §3.3) to re-create the RAG chunk.
+4. `admin_activity_log` row inserted (action = `unhide_comment`, payload = `{ comment_id }`).
 
 **Dismiss**: `POST /api/admin/reports/[id]/dismiss`:
 
@@ -1136,14 +1102,13 @@ Action values (finite enum enforced in application code, NOT DB, to allow extens
 | `accept_proposal` | `edit_proposal` | accept route |
 | `reject_proposal` | `edit_proposal` | reject route |
 | `request_changes` | `edit_proposal` | request-changes route |
-| `approve_claim` | `claim_request` | approve route |
-| `reject_claim` | `claim_request` | reject route |
+| `seed_official_section` | `page` | official-sections seed route |
 | `rerun_cold_start_job` | `cold_start_job` | rerun route |
 | `update_lifecycle_config` | `lifecycle_config` | config route |
 | `change_role` | `user` | role route |
-| `add_affiliation` | `user` | affiliations route |
-| `remove_affiliation` | `user` | affiliations route |
+| `revoke_affiliation` | `user` | affiliations revoke route |
 | `hide_comment` | `comment` | hide route |
+| `unhide_comment` | `comment` | unhide route |
 | `dismiss_report` | `comment_report` | dismiss route |
 
 ### 9.3 Write Helper
@@ -1208,7 +1173,7 @@ Filter UI:
 ┌──────────────────────────────────────────────────────────────────┐
 │  [accept_proposal]   Alex Chen (admin)           2h ago            │
 │  Target: edit_proposal abc123                                     │
-│  Payload: { mergeability: "mergeable", ai_verdict: "pass" }       │
+│  Payload: { mergeability: "mergeable" }                           │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1326,9 +1291,9 @@ Ordering: create `admin_activity_log`, create `proposal_review_comments`, alter 
 
 | Route | Method | Guard | FRD Ownership | Purpose |
 |-------|--------|-------|---------------|---------|
-| `/api/proposals/[id]/accept` | POST | reviewer, non-COI | FRD 4 (amend for audit log call) | Accept proposal |
-| `/api/proposals/[id]/reject` | POST | reviewer, non-COI | FRD 4 (amend for audit log call) | Reject proposal |
-| `/api/proposals/[id]/request-changes` | POST | reviewer, non-COI | FRD 7 (new) | Transition proposal to changes_requested |
+| `/api/proposals/[id]/accept` | POST | reviewer | FRD 4 (amend for audit log call) | Accept proposal |
+| `/api/proposals/[id]/reject` | POST | reviewer | FRD 4 (amend for audit log call) | Reject proposal |
+| `/api/proposals/[id]/request-changes` | POST | reviewer | FRD 7 (new) | Transition proposal to changes_requested |
 | `/api/claims/[id]/approve` | POST | admin | FRD 2 (amend for audit log call) | Approve claim |
 | `/api/claims/[id]/reject` | POST | admin | FRD 2 (amend for decision_reason + audit log call) | Reject claim with reason |
 | `/api/admin/cold-start/jobs/[id]/rerun` | POST | admin | FRD 7 (new) | Create re-run job from failed source |
@@ -1622,12 +1587,12 @@ All of the following must be true before FRD 7 is considered complete:
 | 10 | Proposal detail shows stacked per-section diff cards in `section_slugs` order | Verify visual |
 | 11 | Request Changes button requires a message ≥ 10 chars | Submit with 5 chars; verify validation error |
 | 12 | Request Changes transitions status to `changes_requested` and writes `proposal_review_comments` row | Verify DB state |
-| 13 | COI reviewer sees all three decision buttons disabled with tooltip | Add affiliation, open detail; verify |
-| 14 | Terminal proposals (accepted/rejected/superseded/withdrawn) render read-only detail | Verify visual |
-| 15 | Claims queue lists pending claims with requester info and justification | Seed claim; verify |
-| 16 | Approve Claim is a one-click action that updates organizations.claimed_by | Click; verify DB |
-| 17 | Reject Claim opens a modal requiring ≥ 20 char reason | Verify validation |
-| 18 | Reject Claim persists `claim_requests.decision_reason` | Verify DB |
+| 13 | COI reviewer sees yellow disclosure banner on affiliated org proposals; all three action buttons remain enabled | Add affiliation, open detail; verify |
+| 14 | Terminal proposals (accepted/rejected/withdrawn) render read-only detail | Verify visual |
+| 15 | Official Section seeder at `/admin/official-sections` lists all orgs with a search field | Navigate; verify |
+| 16 | Seeder Publish creates a new `page_versions` row with `is_admin_seeded = true` | Publish; verify DB |
+| 17 | Seeded Official section is immediately reflected on the wiki page | Publish; load wiki page; verify |
+| 18 | Admin affiliation drawer shows revoke button; clicking it deletes the `user_affiliations` row | Click revoke; verify DB |
 | 19 | Cold-start job history at `/admin/cold-start/jobs` shows all jobs ordered by newest | Navigate; verify |
 | 20 | Re-run action on a failed job creates a new job with `supersedes_job_id` set | Click re-run; verify DB |
 | 21 | Re-run is disabled on non-failed jobs | Verify tooltip |
@@ -1657,7 +1622,7 @@ flowchart LR
       subgraph sidebar [Left Sidebar 256px]
         user["User: Alex (admin)"]
         nav1["PR Queue (3)"]
-        nav2["Claims (1)"]
+        nav2["Official Sections"]
         nav3["Cold Start"]
         nav4["Lifecycle"]
         nav5["Users"]
@@ -1669,7 +1634,7 @@ flowchart LR
     end
 
     nav1 --> reviews["/admin/reviews"]
-    nav2 --> claims["/admin/claims"]
+    nav2 --> officialsections["/admin/official-sections"]
     nav3 --> coldstart["/admin/cold-start"]
     nav4 --> lifecycle["/admin/lifecycle"]
     nav5 --> users["/admin/users"]
@@ -1687,25 +1652,25 @@ stateDiagram-v2
     pending --> accepted: reviewer accepts
     pending --> rejected: reviewer rejects
     pending --> changes_requested: reviewer requests changes
-    pending --> needs_rebase: base section changes
+    pending --> needs_rebase: base section changes or competing proposal accepted
     pending --> withdrawn: contributor withdraws
-    pending --> superseded: competing proposal accepted
 
     changes_requested --> pending: contributor submits new patchset
+    changes_requested --> needs_rebase: base section changes while awaiting contributor
     changes_requested --> rejected: reviewer rejects (no waiting)
     changes_requested --> withdrawn: contributor withdraws
-    changes_requested --> superseded: competing proposal accepted
 
-    needs_rebase --> pending: contributor rebases
+    needs_rebase --> pending: contributor rebases and resubmits
     needs_rebase --> withdrawn: contributor withdraws
 
     accepted --> [*]
     rejected --> [*]
-    superseded --> [*]
     withdrawn --> [*]
 ```
 
 `changes_requested` is non-terminal. It exists to give the reviewer a way to keep a proposal alive while asking for improvements, rather than rejecting and forcing the contributor to resubmit from scratch.
+
+`needs_rebase` covers two scenarios: (1) the page section drifted since the contributor's base version, and (2) a competing proposal was accepted on the same section. In both cases the contributor rebases and resubmits; `superseded` (previously a terminal status) has been removed and collapsed into `needs_rebase`.
 
 ---
 

@@ -18,7 +18,7 @@
 
 FRD 4 defines the PR-Edit system as a **section-scoped proposal workflow** where contributors select one or more sections to edit in a single proposal. This gives contributors the flexibility to make related changes across multiple sections (e.g., updating both "Time Commitment" and "Culture and Vibe" together) while preserving clean, per-section diffs for reviewers. Every section in a proposal is reviewed independently, but accepted atomically as a single version change.
 
-The system includes deterministic per-section mergeability checks (a proposal is only mergeable if every selected section is unchanged since the base version), patchset-based resubmission for stale proposals, and hard conflict-of-interest rules so reviewers cannot approve proposals for organizations they are affiliated with.
+The system includes deterministic per-section mergeability checks (a proposal is only mergeable if every selected section is unchanged since the base version), patchset-based resubmission for stale proposals, and a disclosure-only conflict-of-interest model: affiliated reviewers see a yellow banner on proposals for their orgs, but all decision actions remain available. Affiliation is captured in the audit log at decision time.
 
 ---
 
@@ -33,9 +33,9 @@ This FRD resolves overlap with existing docs as follows:
 Superseded areas in FRD 2 (implementation replaced by FRD 4):
 
 1. PR submission flow details (FRD 2 Section 5)
-2. Diff generation for proposal review (FRD 2 Section 7)
-4. Reviewer decision semantics and accept flow specifics (FRD 2 Section 8.4-8.6)
-5. Proposal-related API routes in FRD 2 Section 13
+2. Diff generation for proposal review (FRD 2 Section 6)
+3. Reviewer decision semantics and accept flow specifics (FRD 2 Section 7)
+4. Proposal-related API routes in FRD 2 Section 12
 
 ---
 
@@ -72,7 +72,6 @@ Feature: Section-scoped PR edit proposals (multi-section)
   Background:
     Given FRD 0-3 are complete
     And wiki pages render with stable section slugs
-    And edit proposals require authenticated users
 
   Scenario: User proposes an edit to one section
     When a user clicks "Propose Edit" on the "Time Commitment" section
@@ -92,10 +91,12 @@ Feature: Section-scoped PR edit proposals (multi-section)
     When a reviewer checks the per-section diffs and rationale
     Then the reviewer can accept or reject the whole proposal
 
-  Scenario: Conflict-of-interest rule
+  Scenario: Conflict-of-interest disclosure
     Given reviewer is affiliated with the target organization
     When reviewer opens a proposal for that organization
-    Then accept action is blocked by policy
+    Then a yellow disclosure banner is shown
+    And all three decision actions (accept, reject, request changes) remain enabled
+    And the affiliation status is captured in the audit log at decision time
 
   Scenario: One section becomes stale (out of several)
     Given a multi-section proposal is pending
@@ -192,6 +193,25 @@ When editing multiple sections, the editor presents:
 4. **Attribution toggle** — only shown when the user is signed in. Defaults to "Anonymous." If the user is not signed in, no toggle is shown and the proposal is always submitted as "Anonymous" (`contributor_id = NULL`).
 5. **Submit Proposal** button — submits all edited sections as one proposal. No authentication is required to submit; anonymous submissions are accepted.
 
+**Anonymous submit nudge**: When an unauthenticated user clicks "Submit Proposal," a soft modal is shown before the submission is sent:
+
+```
+┌────────────────────────────────────────────────┐
+│  Submit anonymously?                            │
+│                                                 │
+│  You're about to submit without an account.     │
+│  Note: anonymous proposals can't be revised —  │
+│  if a reviewer asks for changes, the proposal  │
+│  would need to be resubmitted as a new one.    │
+│                                                 │
+│  [Submit Anonymously]    [Sign In to Attribute] │
+└────────────────────────────────────────────────┘
+```
+
+- "Submit Anonymously" proceeds immediately with `contributor_id = NULL`.
+- "Sign In to Attribute" opens the AuthModal without losing draft content.
+- The modal is shown once per submission attempt; no repeat gate on the same session.
+
 For single-section proposals, the tab bar is hidden and the layout is the same as before.
 
 ### 1.5 Rationale and Validation
@@ -205,17 +225,26 @@ Rationale constraints:
 
 Submission constraints:
 
-1. Auth required at submit time.
+1. Auth optional; anonymous submissions allowed (see §8.1).
 2. Proposal requires current `base_page_version_id`.
 3. Proposal requires `section_slugs` (array, minimum length 1) and a `base_section_hash` per section.
 
-### 1.6 Official Section Guard
+### 1.6 Official Section Guard and Seeding Paths
 
-When any selected section is inside the organization's Official block:
+The Official section is an H2 section stored inline in `pages.content_json` with `attrs.official: true` on its heading node (see FRD-2 §10.2). The proposal submission route detects it by inspecting the `official` attribute of each selected section's H2 node.
+
+**Affiliation guard** (PR path):
 
 1. Only users affiliated with the org (or reviewer/admin) may submit proposals to that section.
 2. Non-affiliated users receive a policy error and cannot submit a proposal that includes the Official section.
 3. Non-affiliated users can still propose edits to non-Official sections on the same page in a separate proposal.
+
+**Two seeding paths for Official content** (per FRD-2 §10.2):
+
+1. **Affiliated user PR**: An affiliated user includes a new H2 with `attrs.official: true` in their PR. After reviewer acceptance via the standard pipeline, the Official section is live. The accept pipeline (§6.1) preserves `attrs.official` values on existing H2s and inserts the new one.
+2. **Admin direct seed**: An admin uses the Official Section seeder in FRD-7 §4. This bypasses the PR pipeline entirely, inserting the section and producing a `page_versions` row with `is_admin_seeded: true`. FRD-1 re-embedding and FRD-3 anchor updates fire as usual.
+
+In both cases, once an Official section exists, subsequent PRs targeting it are subject to the affiliation guard above.
 
 ---
 
@@ -226,11 +255,11 @@ When any selected section is inside the organization's Official block:
 `edit_proposals.status` values:
 
 1. `pending`
-2. `needs_rebase`
-3. `accepted`
-4. `rejected`
-5. `withdrawn`
-6. `superseded`
+2. `changes_requested`
+3. `needs_rebase`
+4. `accepted`
+5. `rejected`
+6. `withdrawn`
 
 ### 2.2 Patchset Model
 
@@ -245,15 +274,16 @@ A proposal can have multiple patchsets, inspired by change revision workflows:
 
 1. Proposal starts as `pending`.
 2. Accept/reject transitions proposal to terminal status.
-4. If page/section drift is detected pre-accept, proposal becomes `needs_rebase`.
-5. Contributor may withdraw while `pending` or `needs_rebase`.
+3. If page/section drift is detected pre-accept, proposal becomes `needs_rebase`.
+4. `changes_requested` is a non-terminal reviewer action; contributor may respond with a new patchset.
+5. Contributor may withdraw while `pending`, `changes_requested`, or `needs_rebase`.
 
-### 2.4 Superseding Competing Proposals
+### 2.4 Marking Competing Proposals Stale
 
 On acceptance:
 
-1. Other pending proposals on the same page that share **any** section slug with the accepted proposal are marked `superseded`.
-2. Contributors of superseded proposals receive a message to reopen from the latest page version.
+1. Other `pending` or `changes_requested` proposals on the same page that share **any** section slug with the accepted proposal are marked `needs_rebase` — their base content has shifted under them.
+2. Contributors of affected proposals receive a notification to rebase against the latest page version.
 3. Proposals that target entirely non-overlapping sections are not affected.
 
 ---
@@ -266,8 +296,6 @@ The key change from a single `section_slug` to `section_slugs TEXT[]` captures m
 
 ```sql
 ALTER TABLE edit_proposals
-  ADD COLUMN proposal_scope TEXT NOT NULL DEFAULT 'section'
-    CHECK (proposal_scope IN ('section')),
   ADD COLUMN section_slugs TEXT[] NOT NULL,
   ADD COLUMN base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
   ADD COLUMN current_patchset_number INTEGER NOT NULL DEFAULT 1,
@@ -275,11 +303,11 @@ ALTER TABLE edit_proposals
     CHECK (mergeability_status IN ('unknown','mergeable','needs_rebase','conflict'));
 ```
 
-> **Amendment (FRD 7):** The `edit_proposals.status` column must also accept `'changes_requested'` as a valid value. Add to the CHECK constraint in the baseline migration:
+> **Amendment (FRD 7 + FRD 4 reconciliation):** The `edit_proposals.status` column must accept `'changes_requested'` (added by FRD 7) and does **not** include `'superseded'` (collapsed into `needs_rebase` during FRD-4 reconciliation). Apply to the baseline migration:
 > ```sql
 > ALTER TABLE edit_proposals DROP CONSTRAINT IF EXISTS edit_proposals_status_check;
 > ALTER TABLE edit_proposals ADD CONSTRAINT edit_proposals_status_check
->   CHECK (status IN ('pending','changes_requested','needs_rebase','accepted','rejected','superseded','withdrawn'));
+>   CHECK (status IN ('pending','changes_requested','needs_rebase','accepted','rejected','withdrawn'));
 > ```
 
 `section_slugs` must contain at least one element. The overall `mergeability_status` is `mergeable` only when every section in `section_slugs` passes its individual mergeability check (see Section 4.3).
@@ -328,6 +356,7 @@ CREATE UNIQUE INDEX idx_edit_proposal_patchsets_current
 5. Patchset numbers must be monotonic.
 6. `accepted` and `rejected` are terminal.
 7. Accept operation requires current patchset to be `is_current = true`.
+8. When a new patchset with `patchset_number = N+1` is inserted, the prior patchset (`N`) must be set `is_current = false` in the same transaction.
 
 ### 3.4 Performance Indexes
 
@@ -420,6 +449,28 @@ Diff view for reviewers must show:
 3. **Mergeability badge** on each card: `mergeable` (green), `needs_rebase` (amber), `conflict` (red).
 4. Sections are displayed in the order they appear on the page (top to bottom), not in the order the contributor selected them.
 
+### 4.6 When Mergeability Runs
+
+Mergeability is checked at three distinct points:
+
+1. **On proposal/patchset submission** — initial check run server-side before storing the patchset; sets `mergeability_status` for immediate badge display in the queue.
+2. **On any accepted page version that touches an overlapping section** — background recompute for all proposals sharing any section slug with the just-accepted proposal; keeps queue badges current without polling.
+3. **At accept-time inside the row lock** — final authoritative check (Section 6.1 step 4). This is the only check that can block the accept transaction. Steps 1 and 2 are best-effort optimizations.
+
+### 4.7 Section Slug Stability
+
+Section slugs are stable identifiers: generated once when a section is first authored (or on initial page creation) and persisted as a `slug` attribute on the H2 node in the ProseMirror JSON. If an H2 heading's display text is later changed, its slug does **not** change — the slug is decoupled from the visible heading text after creation.
+
+Normalization rules (applied only at slug creation time):
+
+1. Lowercase the heading text.
+2. Replace spaces and non-alphanumeric characters with hyphens.
+3. Collapse consecutive hyphens to one.
+4. Trim leading and trailing hyphens.
+5. On collision within the same page, append `-2`, `-3`, etc.
+
+The mergeability hash model (Section 4.3) depends on slugs remaining stable; a slug change would invalidate all existing base section hashes for that section.
+
 ---
 
 ## 5. Reviewer Experience and Policy Enforcement
@@ -446,34 +497,29 @@ Only reviewer/admin can decide. Decision options:
 
 1. `accept`
 2. `reject`
+3. `request-changes` (non-terminal; see §6.3)
 
-### 5.3 Conflict-of-Interest Policy
+### 5.3 Conflict-of-Interest Policy (Disclosure-Only)
+
+COI is now disclosure-only. No decision action is blocked for affiliated reviewers.
 
 Hard checks before any decision action (accept, reject, or request changes):
 
 1. Reviewer cannot act on their own proposal.
-2. Reviewer cannot perform any decision action (accept, reject, request changes) on a proposal for an org they are affiliated with. The proposal detail page is read-only for affiliated reviewers — all action buttons are disabled with a tooltip "You are affiliated with this org."
+2. If the reviewer is affiliated with the target org (via `user_affiliations`): a yellow disclosure banner is shown on the proposal detail page — "You are affiliated with this organization. Your decision on this proposal will be logged with your affiliation status." All three action buttons (Accept, Reject, Request Changes) remain **enabled**.
 3. Reviewer cannot accept if proposal status is not `pending`.
 4. Reviewer cannot accept if mergeability is not `mergeable`.
 
-Minimum requirement from product direction is enforced: affiliated reviewer can never take any decision action on a proposal for their affiliated org's page.
+The affiliation status at the moment of decision is captured in the `admin_activity_log` payload (see §5.4 below).
 
-### 5.4 Optional Expanded Guard
-
-Recommended policy toggle (enabled by default):
-
-1. Affiliated reviewer cannot perform any final decision (accept or reject) on own org.
-
-Reason: avoids both positive and negative bias in outcomes.
-
-### 5.5 Reviewer Audit Fields
+### 5.4 Reviewer Audit Fields
 
 On decision, record:
 
 1. `reviewer_id`
 2. `reviewed_at`
 3. `reviewer_comment` (required for reject)
-4. decision source (`manual`)
+4. `is_reviewer_affiliated` boolean in the `admin_activity_log` metadata payload — set by checking `user_affiliations` at decision time
 
 ---
 
@@ -488,18 +534,20 @@ Server algorithm:
 3. Validate reviewer role and policy constraints.
 4. Re-run mergeability check for **each section** in `section_diffs` against latest version.
 5. If any section is `needs_rebase` or `conflict`, abort and set `mergeability_status = needs_rebase` on the proposal.
-6. For each section in `section_diffs`, replace that section in the full page content with the proposed section JSON.
+6. For each section in `section_diffs`, replace that section in the full page content with the proposed section JSON. The `official: true` attribute on the H2 heading node is preserved from the existing page content — contributors cannot grant or remove it via the proposal content.
 7. Insert single new `page_versions` row with the fully updated `content_json`.
 8. Update `pages.current_version_id` and `pages.last_modified_at`.
 9. Mark proposal as `accepted`.
-10. Mark competing pending proposals that overlap any of the same sections as `superseded`.
+10. Mark competing `pending` and `changes_requested` proposals that share any section slug as `needs_rebase`.
 11. Commit transaction.
 
 Post-commit async jobs:
 
-1. `reembedPage` (FRD 1).
-2. `reanchorCommentsForPageSections` (FRD 3) -- invoked for all sections that changed.
-3. Notification events (if enabled later).
+1. `reembedSections(pageId, sectionSlugs, orgMeta, newContent)` (FRD 1 §3.3) — re-embeds only the changed sections, not the full page.
+2. `updateAnchorStatusForPage(pageId, newContentJson)` (FRD 3) — checks all page comments against the merged content for anchor drift.
+3. Clear lifecycle staleness banner per FRD 2 §9.6 (page is no longer stale after accept).
+4. `emitNotification({ userId: proposal.contributor_id, type: 'pr.accepted', payload: { proposal_id, page_slug, org_name } })` (FRD 9 §3.1). Skip if `contributor_id = NULL` (anonymous PR).
+5. For each competing proposal marked `needs_rebase` (step 10): `emitNotification({ userId: competing.contributor_id, type: 'pr.needs_rebase', ... })` (FRD 9 §3.1). Skip if anonymous.
 
 ### 6.2 Reject Pipeline
 
@@ -507,6 +555,7 @@ Post-commit async jobs:
 2. Require reviewer comment (minimum 10 chars).
 3. Mark proposal `rejected`.
 4. Preserve patchsets for audit history.
+5. `emitNotification({ userId: proposal.contributor_id, type: 'pr.rejected', payload: { proposal_id, page_slug, org_name, reviewer_comment } })` (FRD 9 §3.1). Skip if anonymous.
 
 ### 6.3 Request Changes Pipeline
 
@@ -514,12 +563,12 @@ When a reviewer wants to keep the proposal open but requires revisions:
 
 1. Validate reviewer role (`requireReviewer()`).
 2. Confirm proposal status is `pending`. If not, return `INVALID_STATE`.
-3. Confirm reviewer is not affiliated with the target org (`user_affiliations`). If affiliated, return `COI`.
-4. Validate input: `message` (10–2000 chars, required) + optional `section_suggestions` array.
-5. Insert row into `proposal_review_comments` (per FRD 7 Section 3.2).
-6. Update `edit_proposals.status = 'changes_requested'`, set `reviewer_id = currentUser.id`, `reviewed_at = now()`.
-7. Do **not** mark competing proposals as superseded — the proposal is not yet accepted.
-8. Write `admin_activity_log` row (action = `request_changes`).
+3. Validate input: `message` (10–2000 chars, required) + optional `section_suggestions` array.
+4. Insert row into `proposal_review_comments` (per FRD 7 Section 3.2).
+5. Update `edit_proposals.status = 'changes_requested'`, set `reviewer_id = currentUser.id`, `reviewed_at = now()`.
+6. Do **not** mark competing proposals as `needs_rebase` — the proposal is not yet accepted; no page version has changed.
+7. Write `admin_activity_log` row (action = `request_changes`, with `is_reviewer_affiliated` in payload).
+8. `emitNotification({ userId: proposal.contributor_id, type: 'pr.changes_requested', payload: { proposal_id, page_slug, org_name, reviewer_message: message } })` (FRD 9 §3.1). Skip if anonymous.
 
 The contributor sees the reviewer's `message` and optional per-section `suggestions` on their proposal detail page. Submitting a new patchset transitions the proposal back to `pending` and returns it to the reviewer queue.
 
@@ -539,7 +588,7 @@ If accept fails after lock due to drift:
 
 | Route                           | Method | Auth                            | Purpose                                   |
 | ------------------------------- | ------ | ------------------------------- | ----------------------------------------- |
-| `/api/proposals`                | POST   | Required                        | Create section proposal (patchset 1)      |
+| `/api/proposals`                | POST   | Optional (anonymous allowed)    | Create section proposal (patchset 1)      |
 | `/api/proposals/[id]`           | GET    | Required (owner/reviewer/admin) | Get proposal detail + current patchset    |
 | `/api/proposals/[id]/patchsets` | POST   | Required (owner)                | Submit rebased patchset                   |
 | `/api/proposals/[id]/withdraw`  | POST   | Required (owner)                | Withdraw pending or needs_rebase proposal |
@@ -594,15 +643,12 @@ interface SectionProposalDetail {
     | "needs_rebase"
     | "accepted"
     | "rejected"
-    | "withdrawn"
-    | "superseded";
+    | "withdrawn";
   mergeabilityStatus: "unknown" | "mergeable" | "needs_rebase" | "conflict";
   currentPatchsetNumber: number;
   currentPatchset: {
     patchsetNumber: number;
     rationale: string;
-    aiVerdict: "pass" | "fail" | null;
-    aiReason: string | null;
     sectionDiffs: PerSectionDiff[];
     createdAt: string;
   };
@@ -651,7 +697,7 @@ Uses `src/lib/rate-limit.ts` shared helper (see FRD 5 Section 12).
 
 The `POST /api/proposals` and `POST /api/proposals/[id]/patchsets` route handlers must validate all `proposed_section_json` values against the canonical Tiptap extension list before inserting into the DB. Any payload containing a node type not in the allowlist is rejected with `422 Unprocessable Entity`.
 
-**Allowed node types (mirrors the registered Tiptap extension set from FRD 2 Section 4.2):**
+**Allowed node types (mirrors the registered Tiptap extension set from FRD 2 Section 4.2, which was updated during the FRD-4 reconciliation pass to include `Underline` and `Highlight` extensions):**
 
 ```typescript
 // src/lib/prosemirror/validate.ts
@@ -684,6 +730,8 @@ export function validateProseMirrorNode(node: unknown): boolean {
   // 3. image src passes ALLOWED_IMAGE_SRC
   // 4. link href passes ALLOWED_LINK_HREF
   // 5. No extra keys on node objects beyond: type, attrs, content, marks, text
+  // 6. heading nodes: attrs.official must not be present in contributor-submitted JSON
+  //    (the accept pipeline re-stamps the server-side value; contributor cannot grant/revoke Official status)
   // Returns false (reject) if any violation found
   // Implementation: recursive walk, throw on first violation
 }
@@ -757,7 +805,7 @@ FRD 4 is complete when ALL of the following are satisfied:
 | 12  | Reviewer cannot accept own proposal                     | Endpoint enforces non-uploader approval                                             |
 | 13  | One stale section causes entire proposal needs_rebase   | Drift in any selected section transitions whole proposal to needs_rebase            |
 | 14  | Contributor can rebase and resubmit all sections        | New patchset increments number and becomes current                                  |
-| 15  | Competing proposals for any overlapping section superseded on accept | Proposals touching any same section are marked superseded             |
+| 15  | Competing proposals for any overlapping section marked needs_rebase on accept | Proposals touching any same section are marked needs_rebase; contributor can rebase and resubmit |
 | 16  | FRD 1 re-embedding triggers post-accept                 | New chunks generation triggered asynchronously                                      |
 | 17  | FRD 3 re-anchoring triggers for all changed sections    | Comment anchor maintenance routine invoked for each accepted section                |
 | 18  | Reviewer can request changes with a required message         | `request-changes` endpoint transitions proposal to `changes_requested` and creates `proposal_review_comments` row |
@@ -777,24 +825,26 @@ FRD 4 is complete when ALL of the following are satisfied:
 ## Appendix A: Status State Machine
 
 ```text
-pending --> accepted
-pending --> rejected
-pending --> needs_rebase
-pending --> withdrawn
-pending --> changes_requested  (reviewer action; non-terminal)
+pending --> accepted              (reviewer accepts)
+pending --> rejected              (reviewer rejects)
+pending --> needs_rebase          (section drift detected, or competing proposal accepted on same section)
+pending --> withdrawn             (contributor withdraws)
+pending --> changes_requested     (reviewer requests changes; non-terminal)
 
-changes_requested --> pending         (contributor submits new patchset)
-changes_requested --> rejected        (reviewer rejects after waiting)
-changes_requested --> withdrawn       (contributor withdraws)
+changes_requested --> pending     (contributor submits new patchset)
+changes_requested --> needs_rebase (section drift while awaiting contributor response)
+changes_requested --> rejected    (reviewer rejects after waiting)
+changes_requested --> withdrawn   (contributor withdraws)
 
-needs_rebase --> pending (via new patchset)
-needs_rebase --> withdrawn
+needs_rebase --> pending          (contributor submits rebased patchset)
+needs_rebase --> withdrawn        (contributor withdraws)
 
-accepted (terminal)
-rejected (terminal)
+accepted  (terminal)
+rejected  (terminal)
 withdrawn (terminal)
-superseded (terminal)
 ```
+
+Note: `superseded` has been removed. Proposals that were previously terminal-superseded (competing proposal accepted on same section) are now marked `needs_rebase` and remain recoverable via rebase.
 
 ---
 
@@ -807,8 +857,6 @@ superseded (terminal)
 ALTER TABLE edit_proposals ALTER COLUMN contributor_id DROP NOT NULL;
 
 ALTER TABLE edit_proposals
-  ADD COLUMN proposal_scope TEXT NOT NULL DEFAULT 'section'
-    CHECK (proposal_scope IN ('section')),
   ADD COLUMN section_slugs TEXT[] NOT NULL,
   ADD COLUMN base_page_version_id UUID NOT NULL REFERENCES page_versions(id),
   ADD COLUMN current_patchset_number INTEGER NOT NULL DEFAULT 1,
@@ -863,8 +911,11 @@ CREATE INDEX idx_edit_proposals_base_version
 | Tabbed editor for multi-section editing                            | Keeps each section's original/proposed content side-by-side without overwhelming the contributor with a wall of diff; one rationale field covers all sections     |
 | Per-section mergeability inside JSONB `section_diffs`              | Keeps the schema flat (one patchset row) while supporting any number of sections; avoids a fan-out join table for a fundamentally bounded dataset                 |
 | Overall mergeability = AND of all per-section checks               | Ensures the accept operation is safe: a proposal with even one stale section cannot be silently merged, preventing partial content corruption                     |
-| Competing proposals superseded if any section overlaps             | Prevents contradictory concurrent merges; any proposal touching a section that was just accepted must be rebased against the new truth                           |
+| Competing proposals marked needs_rebase if any section overlaps    | Prevents contradictory concurrent merges; any proposal touching a section that was just accepted must be rebased against the new truth. Originally `superseded` (terminal); changed to `needs_rebase` (recoverable) because contributor edits are not necessarily invalidated just because another proposal was accepted first — they may target different content within the same section, or represent a superior alternative. |
 | Patchset support for rebases                                       | Mirrors proven review systems where updates to the same proposal are tracked without losing audit history                                                        |
+| `superseded` status collapsed into `needs_rebase`                  | Both statuses represent the same condition (base content shifted); a single recoverable status is simpler and more contributor-friendly than a terminal one. The rebase UI + patchset model already exists and handles both cases identically. |
+| `aiVerdict` / `aiReason` removed from patchset response payload    | No FRD defines an AI verification pipeline that populates these fields. Removed to avoid misleading empty/null fields. Re-introduce when an AI moderation FRD is written. |
+| `proposal_scope` column removed                                    | Single-value enum (`'section'`) provides no discriminating information. Section-scoped proposals are the only supported type; the column is unnecessary until a future scope type (e.g. `'full-page'`) is introduced. |
 | Non-uploader + non-affiliated accept rule                          | Implements conflict-of-interest and reviewer independence expectations from PRD/editorial model                                                                   |
 | Mergeability based on base section hash                            | Deterministic stale/conflict detection without brittle positional assumptions                                                                                    |
 | Structured diff with ProseMirror changeset                         | Better fidelity for rich-text editor output than plain string diff alone                                                                                         |

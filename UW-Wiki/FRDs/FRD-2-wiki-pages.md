@@ -8,14 +8,14 @@
 | **PRD Sections**    | 6.2 (Browsable Directory), 6.3 (Wiki Pages and Version Control), 6.4 (PR-Style Edit Proposals), 6.6 (The Pulse), 6.7 (Page Claiming), 6.9 (Automated Lifecycle Management)                                                                                   |
 | **Type**            | Core product feature                                                                                                                                                                                                                                         |
 | **Depends On**      | FRD 0 (Setup Document)                                                                                                                                                                                                                                       |
-| **Delivers**        | Browsable directory with grid/list toggle, three-column wiki page view with auto-TOC, Pulse sidebar and voting widget, inline Tiptap editor with PR submission flow, AI pre-screening, reviewer dashboard, version history, lifecycle banners, page claiming |
+| **Delivers**        | Browsable directory with grid/list toggle, three-column wiki page view with auto-TOC, Pulse sidebar and voting widget, inline Tiptap editor with PR submission flow, reviewer dashboard, version history, lifecycle banners, page claiming |
 | **Created**         | 2026-04-06                                                                                                                                                                                                                                                   |
 
 ---
 
 ## Summary
 
-FRD 2 builds the core content layer of UW Wiki -- everything a user sees and interacts with when browsing, reading, editing, and reviewing wiki pages. The feature set spans three layers. The **viewing layer** delivers a browsable landing-page directory (grid/list toggle, category sections, org cards with taglines), a three-column wiki page view (auto-generated TOC on the left, ProseMirror-rendered content in the center, Pulse infobox sidebar on the right), lifecycle staleness banners, and a page-claiming flow for orgs to establish an official section. The **editing layer** provides an inline Tiptap WYSIWYG editor (headings, lists, tables, images, code blocks, blockquotes, dividers) that transforms the page in place when a user clicks "Propose Edit," autosaves drafts to localStorage, and requires no account at any step — submission is anonymous by default; signed-in users get an optional attribution toggle. The **review layer** includes a PR submission flow with inline diff and rendered preview tabs, a rationale field, an AI pre-screener (GPT-4o-mini pass/fail verdict), a reviewer dashboard with accept/reject/request-changes actions, and a version history view. Accepting a PR creates a new page version, updates the page, resets lifecycle timers, and triggers the re-embedding pipeline from FRD 1.
+FRD 2 builds the core content layer of UW Wiki -- everything a user sees and interacts with when browsing, reading, editing, and reviewing wiki pages. The feature set spans three layers. The **viewing layer** delivers a browsable landing-page directory (grid/list toggle, category sections, org cards with taglines), a three-column wiki page view (auto-generated TOC on the left, ProseMirror-rendered content in the center, Pulse infobox sidebar on the right), lifecycle staleness banners, and a page-claiming flow for orgs to establish an official section. The **editing layer** provides an inline Tiptap WYSIWYG editor (headings, lists, tables, images, code blocks, blockquotes, dividers) that transforms the page in place when a user clicks "Propose Edit," autosaves drafts to localStorage, and requires no account at any step — submission is anonymous by default; signed-in users get an optional attribution toggle. The **review layer** includes a PR submission flow with inline diff and rendered preview tabs, a rationale field, a reviewer dashboard with accept/reject/request-changes actions, and a version history view. Accepting a PR creates a new page version, updates the page, resets lifecycle timers, and triggers the re-embedding pipeline from FRD 1.
 
 **Supersession Note:** FRD 4 is the canonical source for PR-Edit workflow implementation details (section-scoped proposals, patchsets/rebase, mergeability, and reviewer decision policy). FRD 2 remains canonical for page UX, editor primitives, and surrounding page experience.
 
@@ -45,7 +45,6 @@ The following are assumed to be in place from FRD 0:
 | Inline edit mode   | The state where the wiki page content area transforms in place into an editable Tiptap instance. The user edits directly on the page rather than navigating to a separate editor.   |
 | Edit proposal (PR) | A proposed set of changes to a wiki page, submitted by a contributor and reviewed by the editorial board before being merged. Stored as the full proposed ProseMirror JSON content. |
 | Diff               | A visual representation of changes between the current page content and a proposed edit, rendered as inline additions (green) and deletions (red).                                  |
-| AI pre-screen      | An automated pass/fail assessment of an edit proposal against the Platform Editorial Values, run by GPT-4o-mini on submission.                                                      |
 | Pulse              | The set of crowdsourced quantitative metrics displayed in a sidebar infobox: Selectivity, Vibe Check, Co-op Boost, Tech Stack, Health Status.                                       |
 | Lifecycle banner   | A colored warning banner displayed at the top of a wiki page when it has not been updated within configurable time thresholds.                                                      |
 | Page claiming      | The process by which an org establishes an official presence on its wiki page, gaining an "Official" section.                                                                       |
@@ -194,13 +193,6 @@ Feature: Wiki Pages, Directory, Editor, and Edit Proposals
     And    the proposal is displayed publicly as "Anonymous"
     And    no auth modal appears
 
-  Scenario: PR receives an AI pre-screen verdict
-    When   an edit proposal is submitted
-    Then   the system calls GPT-4o-mini with the diff and editorial values
-    And    receives a pass/fail verdict with a one-line reason
-    And    stores the verdict on the edit_proposals record
-    And    the user is redirected to a confirmation page showing the verdict
-
   # --- Reviewer Dashboard ---
 
   Scenario: Reviewer views pending proposals
@@ -257,21 +249,19 @@ Feature: Wiki Pages, Directory, Editor, and Edit Proposals
 3. [Pulse Sidebar and Voting Widget](#3-pulse-sidebar-and-voting-widget)
 4. [Tiptap Editor](#4-tiptap-editor)
 5. [PR Submission Flow](#5-pr-submission-flow)
-6. [AI Pre-Screening](#6-ai-pre-screening)
-7. [Diff Generation](#7-diff-generation)
-8. [Reviewer Dashboard](#8-reviewer-dashboard)
-9. [Version History](#9-version-history)
-10. [Lifecycle Banners](#10-lifecycle-banners)
-11. [Page Claiming](#11-page-claiming)
-12. [Database Schema Additions](#12-database-schema-additions)
-13. [API Routes](#13-api-routes)
-14. [Non-Functional Requirements](#14-non-functional-requirements)
-15. [Exit Criteria](#15-exit-criteria)
-16. [Appendix A: Tiptap Extension Configuration](#appendix-a-tiptap-extension-configuration)
-17. [Appendix B: Diff Rendering Example](#appendix-b-diff-rendering-example)
-18. [Appendix C: AI Pre-Screener Prompt Template](#appendix-c-ai-pre-screener-prompt-template)
-19. [Appendix D: Org Card Component Spec](#appendix-d-org-card-component-spec)
-20. [Design Decisions Log](#design-decisions-log)
+6. [Diff Generation](#6-diff-generation)
+7. [Reviewer Dashboard](#7-reviewer-dashboard)
+8. [Version History](#8-version-history)
+9. [Lifecycle Banners](#9-lifecycle-banners)
+10. [Page Claiming](#10-page-claiming)
+11. [Database Schema Additions](#11-database-schema-additions)
+12. [API Routes](#12-api-routes)
+13. [Non-Functional Requirements](#13-non-functional-requirements)
+14. [Exit Criteria](#14-exit-criteria)
+15. [Appendix A: Tiptap Extension Configuration](#appendix-a-tiptap-extension-configuration)
+16. [Appendix B: Diff Rendering Example](#appendix-b-diff-rendering-example)
+17. [Appendix C: Org Card Component Spec](#appendix-c-org-card-component-spec)
+18. [Design Decisions Log](#design-decisions-log)
 
 ---
 
@@ -526,7 +516,7 @@ The system shall:
 2. Render the ProseMirror JSON into HTML using Tiptap's `generateHTML` utility (server-side) or a read-only Tiptap editor instance.
 3. Inject `id` attributes on all heading elements for anchor link support.
 4. Images reference Supabase Storage URLs and are rendered as `<img>` tags with lazy loading.
-5. The "Official" section (if the page is claimed) renders after the Overview section with a gold left border (`border-l-4 border-[#FEC93B]`) and a label.
+5. The "Official" section (if the page is claimed) renders inline — it is part of `content_json` as an H2 node with `attrs.official: true`. The renderer applies the gold border (`border-l-4 border-[#FEC93B]`) and org-name label when it encounters this attribute. No separate query is required.
 
 ### 2.6 SEO
 
@@ -761,6 +751,8 @@ The editor loads the following Tiptap extensions:
 | Extension                                       | Purpose                                                                                                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `StarterKit`                                    | Paragraphs, bold, italic, strike, code, hard break, heading (H2, H3 only), bullet list, ordered list, blockquote, horizontal rule, history (undo/redo) |
+| `Underline`                                     | Underline inline mark (`@tiptap/extension-underline`)                                                                                                  |
+| `Highlight`                                     | Text highlight inline mark (`@tiptap/extension-highlight`)                                                                                             |
 | `Link`                                          | Inline hyperlinks with `autolink: true` and `openOnClick: false` in edit mode                                                                          |
 | `Image`                                         | Inline images with custom upload handler                                                                                                               |
 | `Table`, `TableRow`, `TableHeader`, `TableCell` | Table support                                                                                                                                          |
@@ -873,9 +865,17 @@ export const SUGGESTED_TEMPLATE = {
       content: [{ type: "text", text: "How to Apply" }],
     },
     { type: "paragraph", content: [{ type: "text", text: "" }] },
+    {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "External Links" }],
+    },
+    { type: "paragraph", content: [{ type: "text", text: "" }] },
   ],
 };
 ```
+
+> **Note on External Links**: The `External Links` section is for free-form prose linking to resources the org wants to highlight (e.g. "Find us on the SLC bulletin board, room 3034," external websites, social profiles, etc.). The structured sidebar fields (Website, Instagram, GitHub) in the Pulse infobox are separate and are managed via FRD-7 admin tooling — they live alongside the body content, not inside it.
 
 Users can delete, reorder, or add sections freely.
 
@@ -941,361 +941,33 @@ No account is required to click "Propose Edit," edit content, or submit a propos
 
 ## 5. PR Submission Flow
 
-### 5.1 Overview
-
-After editing, the user clicks "Submit Proposal" in the editor toolbar. A multi-step submission dialog guides them through reviewing, explaining, and submitting their changes.
-
-### 5.2 Submission Dialog
-
-The submission dialog is a full-width panel that replaces the editor view (not a modal overlay -- avoids z-index issues with the three-column layout). It contains:
-
-**Step 1 -- Review Changes:**
-
-Two tabs:
-
-- **Diff tab:** Inline diff showing additions (green background, `bg-green-900/30`) and deletions (red background, `bg-red-900/30`) against the current page version. This is the default tab.
-- **Preview tab:** Rendered preview of the proposed page as it would appear to a reader.
-
-**Step 2 -- Rationale and Attribution:**
-
-Below the diff/preview area:
-
-- **Rationale field:** A textarea with label "Why does this edit align with UW Wiki's editorial values?" Required, minimum 20 characters, maximum 500 characters. Character count displayed.
-- **Attribution toggle:** Shown only to signed-in users. Defaults to "Anonymous." Toggling on shows the user's display name with a preview: "This edit will be attributed to: [Name]." Unauthenticated users see a static label "Submitting as: Anonymous" with no toggle.
-
-**Step 3 -- Submit:**
-
-Clicking "Submit" fires `POST /api/proposals` with the proposed content, rationale, page ID, and attribution preference.
-
-### 5.3 Post-Submission Confirmation
-
-After successful submission, the user is redirected to a confirmation page showing:
-
-- **Status badge:** "Pending Review" (yellow)
-- **AI pre-screen verdict:** "Pass" (green badge) or "Fail" (red badge) with the one-line reason
-- **Summary:** "Your edit to [Org Name] has been submitted and is awaiting review by the editorial board."
-- **Links:** "Back to [Org Name]." For signed-in users, also shows "View your proposals" (links to FRD 8 contribution history). Omitted for anonymous submissions.
+> **Superseded by FRD 4.** The canonical PR submission flow, rationale validation, attribution toggle, section selection UI, and post-submission confirmation are fully specified in [FRD-4 §1](FRD-4-pr-edit-system.md#1-workflow-scope-and-ux). Original content removed during the FRD-4 reconciliation pass. When implementing, defer entirely to FRD-4 for all submission behavior.
 
 ---
 
-## 6. AI Pre-Screening
+## 6. Diff Generation
 
-### 6.1 Overview
-
-On edit proposal submission, the system runs an AI pre-screener that evaluates the proposed changes against the Platform Editorial Values (PRD Section 8). The pre-screener produces a pass/fail verdict with a one-line reason.
-
-### 6.2 Model
-
-GPT-4o-mini via OpenRouter. Selected because this is a simple classification task that does not require strong reasoning -- just editorial value alignment against five clear criteria.
-
-### 6.3 Input
-
-The pre-screener receives:
-
-1. The diff between the current and proposed content (text representation of additions and removals).
-2. The org name and category for context.
-3. The contributor's rationale.
-
-### 6.4 Output
-
-```typescript
-interface PreScreenResult {
-  verdict: "pass" | "fail";
-  reason: string; // One-line reason, max 100 chars
-}
-```
-
-### 6.5 Implementation
-
-```typescript
-// src/lib/ai/pre-screener.ts
-
-import { generateObject } from "ai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { z } from "zod";
-import { PRE_SCREEN_PROMPT } from "./prompts";
-
-const openrouter = createOpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY!,
-});
-
-export async function preScreenProposal(input: {
-  orgName: string;
-  category: string;
-  diffText: string;
-  rationale: string;
-}): Promise<{ verdict: "pass" | "fail"; reason: string }> {
-  const { object } = await generateObject({
-    model: openrouter("openai/gpt-4o-mini"),
-    schema: z.object({
-      verdict: z.enum(["pass", "fail"]),
-      reason: z.string().max(100),
-    }),
-    prompt: PRE_SCREEN_PROMPT.replace("{{ORG_NAME}}", input.orgName)
-      .replace("{{CATEGORY}}", input.category)
-      .replace("{{DIFF}}", input.diffText)
-      .replace("{{RATIONALE}}", input.rationale),
-  });
-
-  return object;
-}
-```
-
-The full prompt template is in [Appendix C](#appendix-c-ai-pre-screener-prompt-template).
-
-### 6.6 Storage
-
-The verdict and reason are stored on the `edit_proposals` record:
-
-- `ai_verdict`: `"pass"` or `"fail"`
-- `ai_reason`: One-line string
-
-### 6.7 Async Execution
-
-Pre-screening runs asynchronously after the proposal is saved. The user sees the confirmation page immediately with a "Pre-screening in progress..." spinner. The verdict appears once the API call completes (typically <3 seconds). The confirmation page polls `GET /api/proposals/[id]` until the verdict is populated.
+> **Superseded by FRD 4.** The canonical diff engine uses `prosemirror-changeset` for structured per-section diffs (not plain-text `diffWords`). Full specification in [FRD-4 §4](FRD-4-pr-edit-system.md#4-diff-and-mergeability-engine). `proposed_content_json` (full-document storage) is superseded by the per-section `section_diffs` JSONB model in `edit_proposal_patchsets` (FRD-4 §3.2). Original content removed during the FRD-4 reconciliation pass.
 
 ---
 
-## 7. Diff Generation
+## 7. Reviewer Dashboard
 
-### 7.1 Overview
-
-Diffs are generated by comparing the current ProseMirror JSON with the proposed ProseMirror JSON. The diff is used in the submission dialog (contributor review), the reviewer dashboard, and the version history.
-
-### 7.2 Approach
-
-The system converts both ProseMirror JSON documents to plain text (preserving heading structure and paragraph breaks), then computes a word-level diff. This is simpler than structural ProseMirror diffing and produces readable output for both contributors and reviewers.
-
-### 7.3 Implementation
-
-```typescript
-// src/lib/diff.ts
-
-import { diffWords } from "diff";
-
-export interface DiffSegment {
-  type: "added" | "removed" | "unchanged";
-  value: string;
-}
-
-export function generateDiff(
-  currentJson: object,
-  proposedJson: object,
-): DiffSegment[] {
-  const currentText = prosemirrorToPlainText(currentJson);
-  const proposedText = prosemirrorToPlainText(proposedJson);
-
-  const changes = diffWords(currentText, proposedText);
-
-  return changes.map((change) => ({
-    type: change.added ? "added" : change.removed ? "removed" : "unchanged",
-    value: change.value,
-  }));
-}
-
-function prosemirrorToPlainText(doc: any): string {
-  const lines: string[] = [];
-
-  function walk(node: any) {
-    if (node.type === "heading") {
-      const level = node.attrs?.level || 2;
-      const prefix = "#".repeat(level);
-      const text = extractText(node);
-      lines.push(`${prefix} ${text}`);
-    } else if (node.type === "paragraph") {
-      lines.push(extractText(node));
-    } else if (node.type === "bulletList" || node.type === "orderedList") {
-      for (const item of node.content || []) {
-        lines.push(`- ${extractText(item)}`);
-      }
-    }
-    if (node.content) {
-      for (const child of node.content) {
-        if (
-          !["heading", "paragraph", "bulletList", "orderedList"].includes(
-            child.type,
-          )
-        ) {
-          walk(child);
-        }
-      }
-    }
-  }
-
-  function extractText(node: any): string {
-    if (node.text) return node.text;
-    if (!node.content) return "";
-    return node.content.map(extractText).join("");
-  }
-
-  walk(doc);
-  return lines.join("\n");
-}
-```
-
-### 7.4 Diff Rendering
-
-The diff is rendered as a `DiffView` React component that maps `DiffSegment[]` to styled spans:
-
-- Added text: `bg-green-900/30 text-green-300`
-- Removed text: `bg-red-900/30 text-red-300 line-through`
-- Unchanged text: `text-zinc-300`
-
-### 7.5 Storage
-
-The full proposed ProseMirror JSON is stored on `edit_proposals.proposed_content_json`. The diff is not stored -- it is computed on demand from the proposed content and the current page version. This avoids stale diffs if the page is updated between submission and review.
+> **Superseded by FRD 4 and FRD 7.** The canonical reviewer decision workflow (accept, reject, request-changes), conflict-of-interest enforcement, accept pipeline, and per-section diff cards are fully specified in [FRD-4 §5–6](FRD-4-pr-edit-system.md#5-reviewer-experience-and-policy-enforcement). The admin UI surface lives at `/admin/reviews` per [FRD-7 §2](FRD-7-admin-dashboard.md). The `/admin/proposals` scaffolding route may redirect to `/admin/reviews` on implementation. Original content (§§7.2–7.6, accept server code) removed during the FRD-4 reconciliation pass — defer to FRD-4 for all reviewer and accept logic.
 
 ---
 
-## 8. Reviewer Dashboard
+## 8. Version History
 
 ### 8.1 Overview
 
-The reviewer dashboard at `/admin/proposals` is a protected route accessible only to users with the `reviewer` or `admin` role. It displays all pending edit proposals and provides accept/reject/request-changes actions.
-
-> **Supersession note (FRD 7):** The fully-implemented reviewer dashboard lives at `/admin/reviews` (FRD 7 Section 3). The `/admin/proposals` route defined here serves as a scaffolding stub only. When implementing FRD 7, redirect `/admin/proposals` → `/admin/reviews` and defer to FRD 7 for all reviewer UI and decision logic.
-
-### 8.2 Proposal List
-
-The list shows all proposals with `status = 'pending'` or `status = 'changes_requested'`, ordered by `submitted_at` ascending (oldest first -- FIFO review).
-
-**List columns:**
-
-| Column     | Content                                            |
-| ---------- | -------------------------------------------------- |
-| Org        | `organizations.name` (linked to the wiki page)     |
-| Submitter  | Display name if attributed, "Anonymous" otherwise  |
-| AI Verdict | Pass (green badge) or Fail (red badge)             |
-| Submitted  | Relative time (e.g., "2 hours ago")                |
-| Status     | "Pending" (yellow) or "Changes Requested" (orange) |
-
-### 8.3 Proposal Detail
-
-Clicking a row expands an inline detail panel showing:
-
-1. **Inline diff:** The full diff (Section 7) between the current page and the proposed content.
-2. **Contributor rationale:** The text the contributor provided.
-3. **AI pre-screen reason:** The one-line reason from GPT-4o-mini.
-4. **Previous reviewer comments** (if status is `changes_requested`).
-
-### 8.4 Reviewer Actions
-
-Three action buttons at the bottom of the detail panel:
-
-| Action              | Behavior                                                                                                                                                                                                                                                                                                            |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Accept**          | Creates a new `page_versions` record. Updates `pages.current_version_id` and `pages.last_modified_at`. Sets `edit_proposals.status = 'accepted'` and `edit_proposals.reviewer_id`. Clears lifecycle banners. Triggers `reembedSections(proposal.page_id, proposal.section_slugs, ...)` from FRD 1 — only re-embeds the sections touched by this PR. Clears localStorage drafts for this page (via a broadcast channel). |
-| **Reject**          | Sets `edit_proposals.status = 'rejected'` and `edit_proposals.reviewer_id`. Optionally stores a rejection reason in `edit_proposals.reviewer_comment`.                                                                                                                                                              |
-| **Request Changes** | Sets `edit_proposals.status = 'changes_requested'` and stores the reviewer's comment in `edit_proposals.reviewer_comment`. The contributor can revise and resubmit (future: notification triggers).                                                                                                                 |
-
-### 8.5 Conflict of Interest Guard
-
-The system shall:
-
-1. Load the reviewer's `affiliated_org_ids` (stored on the `users` table or a separate `user_affiliations` table).
-2. If the proposal's org matches any of the reviewer's affiliations, the Accept button is disabled with a tooltip: "You cannot approve proposals for organizations you are affiliated with."
-
-### 8.6 Accept Flow (Server-Side)
-
-```typescript
-// src/app/api/proposals/[id]/accept/route.ts
-
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
-  const supabase = createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Verify reviewer role
-  const { data: profile } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (!profile || !["reviewer", "admin"].includes(profile.role)) {
-    return Response.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  // Fetch proposal
-  const { data: proposal } = await supabase
-    .from("edit_proposals")
-    .select("*, pages(org_id, current_version_id)")
-    .eq("id", params.id)
-    .single();
-
-  // Get current max version number
-  const { data: latestVersion } = await supabase
-    .from("page_versions")
-    .select("version_number")
-    .eq("page_id", proposal.page_id)
-    .order("version_number", { ascending: false })
-    .limit(1)
-    .single();
-
-  const newVersionNumber = (latestVersion?.version_number || 0) + 1;
-
-  // Create new page version
-  const { data: newVersion } = await supabase
-    .from("page_versions")
-    .insert({
-      page_id: proposal.page_id,
-      version_number: newVersionNumber,
-      content_json: proposal.proposed_content_json,
-      summary: proposal.rationale.slice(0, 100),
-      contributor_id: proposal.contributor_id,
-      is_anonymous: proposal.is_anonymous,
-    })
-    .select("id")
-    .single();
-
-  // Update page
-  await supabase
-    .from("pages")
-    .update({
-      current_version_id: newVersion.id,
-      last_modified_at: new Date().toISOString(),
-    })
-    .eq("id", proposal.page_id);
-
-  // Update proposal status
-  await supabase
-    .from("edit_proposals")
-    .update({
-      status: "accepted",
-      reviewer_id: user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq("id", params.id);
-
-  // Trigger re-embedding (FRD 1) -- async, non-blocking
-  const orgMeta = await getOrgMeta(proposal.pages.org_id);
-  reembedSections(
-    proposal.page_id,
-    proposal.section_slugs,
-    orgMeta,
-    proposal.proposed_content_json,
-  ).catch(console.error);
-
-  return Response.json({ success: true, versionId: newVersion.id });
-}
-```
-
----
-
-## 9. Version History
-
-### 9.1 Overview
-
 Each wiki page has a version history accessible via a "View History" link in the page header. The history is a chronological summary list -- it does not support reconstructing or viewing full old versions.
 
-### 9.2 Route
+### 8.2 Route
 
 `/wiki/[slug]/history`
 
-### 9.3 Display
+### 8.3 Display
 
 A vertical list of version entries, ordered by `version_number` descending (newest first):
 
@@ -1305,9 +977,8 @@ A vertical list of version entries, ordered by `version_number` descending (newe
 | Date           | `page_versions.created_at` (formatted as "April 5, 2026 at 2:30 PM")                |
 | Summary        | `page_versions.summary` (the contributor's rationale, truncated to 100 chars)       |
 | Contributor    | Display name if not anonymous, "Anonymous contributor" otherwise                    |
-| AI verdict     | Badge showing the pre-screen verdict from the corresponding `edit_proposals` record |
 
-### 9.4 Data Fetching
+### 8.4 Data Fetching
 
 ```typescript
 // src/app/wiki/[slug]/history/page.tsx
@@ -1317,27 +988,26 @@ const { data: versions } = await supabase
   .select(
     `
     id, version_number, summary, created_at, is_anonymous,
-    contributor:users(display_name),
-    edit_proposals(ai_verdict)
+    contributor:users(display_name)
   `,
   )
   .eq("page_id", page.id)
   .order("version_number", { ascending: false });
 ```
 
-### 9.5 No Version Reconstruction
+### 8.5 No Version Reconstruction
 
 Clicking a version entry does not navigate to a reconstructed view. The history is informational only -- it shows what changed and when, not the full content at that point. Full version reconstruction is a post-MVP feature.
 
 ---
 
-## 10. Lifecycle Banners
+## 9. Lifecycle Banners
 
-### 10.1 Overview
+### 9.1 Overview
 
 Wiki pages that have not been updated within configurable time thresholds display a colored warning banner at the top of the page. This prevents users from relying on outdated information.
 
-### 10.2 Threshold Configuration
+### 9.2 Threshold Configuration
 
 Thresholds are stored in the `lifecycle_config` table and loaded at page render time:
 
@@ -1347,10 +1017,10 @@ Thresholds are stored in the `lifecycle_config` table and loaded at page render 
 | Engineering Clubs     | 6                     | 12             | 18                           |
 | Non-Engineering Clubs | 6                     | 12             | 18                           |
 | Academic Programs     | 12                    | 24             | 36                           |
-| Student Societies     | 6                     | 12             | 18                           |
+| Student Societies     | 12                    | 12             | 18                           |
 | Campus Organizations  | 12                    | 24             | 36                           |
 
-### 10.3 Computation
+### 9.3 Computation
 
 The lifecycle status is computed server-side on each page load (not stored as a field):
 
@@ -1383,7 +1053,7 @@ export function computeLifecycleStatus(
 }
 ```
 
-### 10.4 Banner Rendering
+### 9.4 Banner Rendering
 
 Banners are rendered at the top of the wiki page content area, below the page header and above the three-column layout:
 
@@ -1395,7 +1065,7 @@ Banners are rendered at the top of the wiki page content area, below the page he
 
 Each banner includes a "Propose Edit" link to encourage contribution.
 
-### 10.5 Health Status in Pulse Sidebar
+### 9.5 Health Status in Pulse Sidebar
 
 The Health Status metric in the Pulse infobox mirrors the computed lifecycle status:
 
@@ -1404,77 +1074,89 @@ The Health Status metric in the Pulse infobox mirrors the computed lifecycle sta
 - `stale`: Orange dot + "Stale"
 - `potentially_defunct`: Red dot + "Potentially Defunct"
 
-### 10.6 Reset on Accept
+### 9.6 Reset on Accept
 
-When a PR is accepted (Section 8.6), `pages.last_modified_at` is updated to `now()`. The next page load computes the status as `active`, and no banner is shown.
+When a PR is accepted (see FRD-4 §6.1 post-commit step 3), `pages.last_modified_at` is updated to `now()`. The next page load computes the status as `active`, and no banner is shown.
 
 ---
 
-## 11. Page Claiming
+## 10. Affiliation and Official Sections
 
-### 11.1 Overview
+### 10.1 Affiliation
 
-Organizations can claim their wiki page to establish an official presence. Claiming adds a "Claimed" badge to the page header and enables an "Official" section.
+Users self-declare their affiliations with organizations from their profile settings at `/my/profile` (managed by FRD-6). Declaring an affiliation adds a row to `user_affiliations` — no admin verification step is required. Admins can revoke any affiliation from the admin dashboard (FRD-7 §5).
 
-### 11.2 Claim Request Flow
+There is no "Claim This Page" button. The claim flow, `claim_requests` table, and `/api/claims` routes are not part of this product. An org's presence on the wiki is established by the community contributing content; the Official section (§10.2) provides a path for affiliated members to add authoritative content.
 
-1. A "Claim This Page" button is visible on all unclaimed pages (below the Pulse sidebar).
-2. Clicking the button navigates to a claim request form with fields: requester name, email, role in org, and a short justification.
-3. The form submits to `POST /api/claims` and creates a row in a `claim_requests` table (status: `pending`).
-4. An admin reviews the claim at `/admin/claims` and approves or rejects it.
-5. On approval, `organizations.claimed_by` is set to the requester's user ID and `organizations.claimed_at` is set to now.
+### 10.2 Official Sections
 
-### 11.3 Official Section
+The Official section is an H2 section stored **inline within `pages.content_json`** with `attrs.official: true` on the heading node:
 
-On claimed pages, an "Official" section is rendered after the Overview section. It is stored as a separate field on the `organizations` table: `official_content_json` (ProseMirror JSON). Edits to the Official section go through the standard PR pipeline -- the submitter's org affiliation is noted on the PR, and the same editorial review applies.
+```json
+{
+  "type": "heading",
+  "attrs": { "level": 2, "slug": "official", "official": true },
+  "content": [{ "type": "text", "text": "Official" }]
+}
+```
 
-### 11.4 Visual Treatment
+There are two paths for seeding an Official section on a page:
+
+1. **Affiliated user PR**: A user affiliated with the org submits a regular PR that includes a new H2 section with `official: true`. A reviewer accepts via the standard FRD-4 pipeline. The affiliation guard (FRD-4 §1.6) ensures that only affiliated users can propose changes to Official sections.
+
+2. **Admin direct seed**: An admin uses the Official Section seeder in the admin dashboard (FRD-7) to insert Official content directly. This creates a new `page_versions` row with `is_admin_seeded: true` and the H2 `attrs.official: true`. FRD-1 re-embedding and FRD-3 re-anchoring are triggered as usual.
+
+Contributors cannot grant or remove the `official` attribute through the PR system — FRD-4's accept pipeline preserves the existing attribute value, and the ProseMirror allowlist validation (FRD-4 §8.3) rejects submissions that attempt to modify it.
+
+The Official section participates in the standard PR pipeline uniformly with all other sections: it appears in the version history, is chunked for RAG search, and comment anchors apply normally.
+
+### 10.3 Affiliation Badge on PRs
+
+When an affiliated user submits a PR for an org they are affiliated with, the proposal is stamped with `is_from_affiliated_contributor = true` at submission time. This badge is visible to reviewers in the PR queue and on the proposal detail page. It is informational only — it does not block or require any additional action.
+
+### 10.4 Visual Treatment
+
+The render layer detects Official sections by reading `attrs.official === true` on H2 heading nodes during ProseMirror-to-HTML conversion. No special query or separate data source is needed — the attribute is embedded in `content_json`.
 
 The Official section has:
 
 - A gold left border: `border-l-4 border-[#FEC93B]`
-- A header label: "Official -- submitted by [org name]" in gold text
+- A header label: "Official — contributed by affiliated members" in gold text
 - A subtle surface background: `bg-[#141414]` (elevated surface)
 
 ---
 
-## 12. Database Schema Additions
+## 11. Database Schema Additions
 
 The following columns or tables are needed beyond the FRD 0 baseline:
 
-### 12.1 Column Additions
+### 11.1 Column Additions
 
 ```sql
 -- organizations table
 ALTER TABLE organizations ADD COLUMN tagline TEXT;
-ALTER TABLE organizations ADD COLUMN official_content_json JSONB;
+-- Note: claimed_by and claimed_at are NOT added. The claim flow is removed.
+-- Official section content is stored inline within pages.content_json as an H2 node
+-- with attrs.official = true (see §10.2). No claim_requests table.
 
 -- edit_proposals table
 ALTER TABLE edit_proposals ADD COLUMN is_anonymous BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE edit_proposals ADD COLUMN reviewer_comment TEXT;
 ALTER TABLE edit_proposals ADD COLUMN contributor_id UUID REFERENCES users(id);
+ALTER TABLE edit_proposals ADD COLUMN is_from_affiliated_contributor BOOLEAN NOT NULL DEFAULT false;
+-- Note: section_slugs, base_page_version_id, current_patchset_number, mergeability_status
+-- are added by FRD-4 §3.1 (not duplicated here).
 
 -- page_versions table
 ALTER TABLE page_versions ADD COLUMN is_anonymous BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE page_versions ADD COLUMN is_admin_seeded BOOLEAN NOT NULL DEFAULT false;
 ```
 
-### 12.2 New Tables
+### 11.2 New Tables
 
 ```sql
-CREATE TABLE claim_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id UUID NOT NULL REFERENCES organizations(id),
-  requester_id UUID REFERENCES users(id),
-  requester_name TEXT NOT NULL,
-  requester_email TEXT NOT NULL,
-  requester_role TEXT NOT NULL,
-  justification TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  decision_reason TEXT,
-  reviewed_by UUID REFERENCES users(id),
-  reviewed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+-- claim_requests table is removed. The claim flow is replaced by the self-declared
+-- affiliation model (§10.1). See FRD-0 for user_affiliations baseline schema.
 
 CREATE TABLE user_affiliations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1485,42 +1167,32 @@ CREATE TABLE user_affiliations (
 );
 ```
 
-### 12.3 Indexes
+### 11.3 Indexes
 
 ```sql
 CREATE INDEX idx_edit_proposals_status ON edit_proposals (status);
 CREATE INDEX idx_edit_proposals_page_id ON edit_proposals (page_id);
-CREATE INDEX idx_claim_requests_status ON claim_requests (status);
-CREATE INDEX idx_claim_requests_org_id ON claim_requests (org_id);
 CREATE INDEX idx_user_affiliations_user_id ON user_affiliations (user_id);
 ```
 
 ---
 
-## 13. API Routes
+## 12. API Routes
 
 | Route                                 | Method | Auth     | Purpose                                      |
 | ------------------------------------- | ------ | -------- | -------------------------------------------- |
-| `/api/proposals`                      | POST   | Required | Submit an edit proposal                      |
-| `/api/proposals/[id]`                 | GET    | None     | Get proposal status (for polling AI verdict) |
-| `/api/proposals/[id]/accept`          | POST   | Reviewer | Accept a proposal                            |
-| `/api/proposals/[id]/reject`          | POST   | Reviewer | Reject a proposal                            |
-| `/api/proposals/[id]/request-changes` | POST   | Reviewer | Request changes with comment                 |
-| `/api/pulse/vote`                     | POST   | None     | Submit a Pulse rating                        |
-| `/api/claims`                         | POST   | Required | Submit a claim request                       |
-| `/api/claims/[id]/approve`            | POST   | Admin    | Approve a claim                              |
-| `/api/claims/[id]/reject`             | POST   | Admin    | Reject a claim (body: `{ decision_reason: string }`) |
+| `/api/proposals` (and all sub-routes) | —      | —        | **Superseded by FRD 4 §7.** See [FRD-4 API Contracts](FRD-4-pr-edit-system.md#7-api-contracts) for the full proposal route table (create, patchset, withdraw, accept, reject, request-changes, mergeability). |
+| `/api/pulse/vote`                     | POST   | Required | Submit a Pulse rating                        |
 
 ---
 
-## 14. Non-Functional Requirements
+## 13. Non-Functional Requirements
 
 | Requirement               | Target                                                                        |
 | ------------------------- | ----------------------------------------------------------------------------- |
 | **Wiki page load (SSR)**  | < 2 seconds for full server-rendered page                                     |
 | **Editor initialization** | < 1 second from "Propose Edit" click to editable state                        |
 | **Diff generation**       | < 500ms for typical page-length documents                                     |
-| **AI pre-screen latency** | < 5 seconds (async, does not block submission)                                |
 | **Image upload**          | < 3 seconds for a 2MB image                                                   |
 | **Directory page load**   | < 1 second (all orgs fetched in one query)                                    |
 | **SEO**                   | All wiki pages server-side rendered with og:title and og:description          |
@@ -1528,7 +1200,7 @@ CREATE INDEX idx_user_affiliations_user_id ON user_affiliations (user_id);
 
 ---
 
-## 15. Exit Criteria
+## 14. Exit Criteria
 
 FRD 2 is complete when ALL of the following are satisfied:
 
@@ -1551,8 +1223,7 @@ FRD 2 is complete when ALL of the following are satisfied:
 | 14  | Submission dialog shows diff and preview tabs                | Click "Submit Proposal" and verify both tabs render correctly                                                          |
 | 15  | PR proposals can be submitted anonymously                    | Attempt to submit a proposal without signing in and verify it succeeds, with contributor shown as "Anonymous"          |
 | 15b | Auth modal appears for unauthenticated users attempting to vote Pulse | Attempt to submit a Pulse vote without signing in and verify the auth modal appears                           |
-| 16  | AI pre-screen returns a verdict                              | Submit a proposal and verify a pass/fail badge appears on the confirmation page                                        |
-| 17  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/reviews` (FRD 7; `/admin/proposals` stub redirects there), and verify pending PRs appear |
+| 16  | Reviewer dashboard lists pending proposals                   | Sign in as a reviewer, visit `/admin/reviews` (FRD 7; `/admin/proposals` stub redirects there), and verify pending PRs appear |
 | 18  | Accept creates a new page version                            | Accept a proposal and verify the page content updates and version number increments                                    |
 | 19  | Request Changes stores reviewer comment                      | Request changes and verify the comment is stored on the proposal                                                       |
 | 20  | Re-embedding triggers on accept                              | Accept a proposal and verify new chunks are created in the `chunks` table (FRD 1 integration)                          |
@@ -1572,6 +1243,8 @@ FRD 2 is complete when ALL of the following are satisfied:
 // src/lib/editor/extensions.ts
 
 import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Table from "@tiptap/extension-table";
@@ -1589,6 +1262,8 @@ export const editorExtensions = [
     heading: { levels: [2, 3] },
     codeBlock: false, // replaced by CodeBlockLowlight
   }),
+  Underline,
+  Highlight.configure({ multicolor: false }),
   Link.configure({
     autolink: true,
     openOnClick: false,
@@ -1635,42 +1310,7 @@ In the UI, added text has a green-tinted background and removed text has a red-t
 
 ---
 
-## Appendix C: AI Pre-Screener Prompt Template
-
-```
-You are an editorial pre-screener for UW Wiki, a student-driven knowledge base about University of Waterloo clubs, design teams, and programs.
-
-Evaluate the following proposed edit against UW Wiki's editorial values and return a verdict.
-
-## Editorial Values
-
-1. The SLC Test: Content should be what you'd say if a student stopped you in SLC and asked. Nothing more extreme, nothing less honest.
-2. No Harm: Opinions are valid, but defamation, identifying individuals negatively by name, or unverifiable accusations are not.
-3. Honest, Not Unhinged: Student-journalism tone. Candid and grounded, not a press release or a rant.
-4. Credible: Should be believable as a student experience, not an axe-grind or PR campaign.
-5. Specific Over Vague: Specific numbers beat vague impressions. "8-10 hours a week" beats "a lot of time."
-
-## Context
-
-Organization: {{ORG_NAME}} ({{CATEGORY}})
-Contributor's rationale: {{RATIONALE}}
-
-## Proposed Changes (Diff)
-
-{{DIFF}}
-
-## Instructions
-
-Return a JSON object with:
-- "verdict": "pass" if the edit broadly aligns with editorial values, "fail" if it clearly violates one or more values.
-- "reason": A single sentence (max 100 characters) explaining your verdict.
-
-Be lenient. Minor tone issues are a "pass" with a note. Only "fail" clear violations: marketing fluff, defamation, rants without substance, or completely vague content.
-```
-
----
-
-## Appendix D: Org Card Component Spec
+## Appendix C: Org Card Component Spec
 
 ```typescript
 // src/components/directory/OrgCard.tsx
@@ -1736,8 +1376,7 @@ export function OrgCard({ org, layout }: OrgCardProps) {
 | **localStorage autosave over server-side drafts**               | Zero-auth requirement for drafts. No server round-trips. Instantaneous saves. At launch, the editorial overhead of server-side draft management is unnecessary.                                                                                                                 |
 | **Full proposed content JSON stored, not just diff**            | Enables rendering the preview tab without reconstructing from diff. Diffs are computed on demand so they stay current if the page is edited between submission and review. Slightly more storage but negligible at launch scale.                                                |
 | **Word-level diff over ProseMirror structural diff**            | Structural ProseMirror diffing (prosemirror-changeset) is complex and produces diffs that are hard for non-technical users to read. Word-level diff via the `diff` npm package is simple, readable, and sufficient for editorial review.                                        |
-| **No auth required for PR submission**                          | Removing all auth friction for edit proposals maximises the contributor pool. Anonymous PRs still go through AI pre-screening and editorial review before any content goes live, so the trust model is maintained without requiring an account. Signed-in users can optionally attribute proposals to their account. |
-| **GPT-4o-mini for pre-screening over Gemini Flash**             | The pre-screener is a simple classification task (pass/fail against 5 criteria). GPT-4o-mini is the cheapest model that reliably produces structured JSON output. Gemini Flash would work but GPT-4o-mini's structured output support (JSON mode) is more reliable.             |
+| **No auth required for PR submission**                          | Removing all auth friction for edit proposals maximises the contributor pool. Anonymous PRs still go through editorial review before any content goes live, so the trust model is maintained without requiring an account. Signed-in users can optionally attribute proposals to their account. |
 | **Inline diff over side-by-side diff**                          | Inline diff takes less horizontal space (important in the three-column layout and the reviewer dashboard). Side-by-side requires duplicating the full page content. The diff library produces clean inline output.                                                              |
 | **Three actions (Accept/Reject/Request Changes) over binary**   | Request Changes enables a conversation between reviewer and contributor without rejecting the PR entirely. This encourages iteration and keeps contributors engaged rather than discouraging them with outright rejections.                                                     |
 | **Summary-only version history over full reconstruction**       | Full version reconstruction requires replaying diffs or storing full content snapshots for every version. At launch, the version history is primarily for transparency ("who changed what when"), not for restoring old content. Keeps the implementation simple.               |

@@ -590,6 +590,8 @@ Reports are stored in a `comment_reports` table:
 
 Each comment stores the exact `anchor_text` that was selected at creation time. On page load, the system attempts to re-anchor comments by finding exact matches of the anchor text in the current page content. This determines whether a comment is "anchored" (text found) or "orphaned" (text not found).
 
+> **Official sections:** The Official section on claimed pages is stored inline in `pages.content_json` as an H2 node with `attrs.official: true` (see FRD-2 §10.3). Comments can be anchored to Official section text and are re-anchored uniformly with all other page content — no special handling is required.
+
 ### 3.2 Re-anchoring Algorithm
 
 On page load, for each comment on the page:
@@ -666,7 +668,7 @@ When a comment becomes orphaned:
 
 ### 3.6 Updating Anchor Status on Page Edit
 
-When a page edit is accepted (FRD 2, Section 8.6), the system runs re-anchoring for all comments on that page:
+When a page edit is accepted (FRD-4 §6.1 step 2 post-commit: `updateAnchorStatusForPage`), the system runs re-anchoring for all comments on that page:
 
 ```typescript
 // src/lib/comments/anchoring.ts
@@ -1601,7 +1603,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
 ---
 
-### 12.4 Rate Limiting
+### 12.5 Rate Limiting
 
 Comment and reply submission are rate-limited using Upstash. Because no account is required, the primary key is the client IP address. When a signed-in user submits, their `user_id` is used instead for more accurate tracking.
 
@@ -1692,6 +1694,27 @@ await supabase
   .eq("source_comment_id", commentId);
 ```
 
+### 13.5 Hide/Unhide Chunk Lifecycle
+
+**Comment hidden** (reviewer sets `is_hidden = true` via FRD-7 §8.4):
+
+```typescript
+// Delete the chunk immediately — hidden comments must not appear in AI search
+await supabase
+  .from("chunks")
+  .delete()
+  .eq("source_comment_id", commentId);
+```
+
+**Comment unhidden** (admin reverses the hide):
+
+```typescript
+// Re-create the chunk so the comment is searchable again
+await reembedComment(commentId, orgMeta, commentData);
+```
+
+This mirrors the comment-delete behavior and ensures that `is_hidden = true` comments are excluded from the RAG corpus regardless of any retrieval-side filter (defense in depth). See also FRD-1 §3.3 trigger table and §4 retrieval filter.
+
 ---
 
 ## 14. Database Schema
@@ -1706,7 +1729,10 @@ ALTER TABLE comments ADD COLUMN is_edited BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE comments ADD COLUMN upvotes INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE comments ADD COLUMN downvotes INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE comments ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE comments ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT false;
 ```
+
+> **Note on `is_hidden`**: When `is_hidden` is set to `true` by a reviewer (via FRD-7 §8.4), the comment's RAG chunk is deleted immediately (see §13 and FRD-1 §3.3). If an admin later unhides the comment, `reembedComment(commentId, orgMeta, commentData)` is called to re-create the chunk. This ensures hidden comments never appear in AI search results.
 
 ### 14.2 Comment Votes Table
 
@@ -1782,9 +1808,10 @@ CREATE INDEX idx_comments_user_id ON comments (user_id);
 | `/api/comments/[id]` | DELETE | Required (author) | Delete a comment |
 | `/api/comments/[id]/vote` | POST | Required | Cast or change a vote |
 | `/api/comments/[id]/report` | POST | None | Report a comment |
-| `/api/comments/[id]/replies` | POST | Required | Create a reply |
+| `/api/comments/[id]/replies` | POST | Required | Create a reply; emits `comment.reply` notification (FRD 9) if parent author is signed in |
 | `/admin/reports` | GET | Reviewer | Get reported comments |
-| `/api/admin/comments/[id]/hide` | POST | Reviewer | Hide a reported comment (hide-only; no deletion) |
+| `/api/admin/comments/[id]/hide` | POST | Reviewer | Hide a reported comment; triggers RAG chunk deletion (FRD 9 side: comment.reply notifications for future replies are suppressed for hidden comments) |
+| `/api/admin/comments/[id]/unhide` | POST | Reviewer | Unhide a comment; triggers `reembedComment` |
 | `/api/admin/reports/[id]/dismiss` | POST | Reviewer | Dismiss a report without hiding the comment |
 
 ---
@@ -2144,4 +2171,5 @@ function escapeHtml(text: string): string {
 | **Light/dark highlight levels** | A single highlight level makes it hard to distinguish the selected comment from others. Two levels provide visual hierarchy: "these are all commented" (light) vs "this is the one you're looking at" (dark). |
 | **1500 character limit** | Long enough for substantive comments with examples, short enough to prevent essay-length walls of text. Encourages focused, concise contributions. Matches Twitter/X thread-post length, which users are familiar with. |
 | **Basic markdown (bold, italic, links) over rich formatting** | Full rich text editing adds complexity and inconsistent rendering. Basic markdown is familiar to technical users and renders predictably. Covers the essential formatting needs for emphasis and references. |
-| **No notifications for MVP** | Notification systems require infrastructure (email, push, in-app) that adds significant scope. MVP focuses on the core commenting experience. Notifications can be added post-launch once usage patterns are understood. |
+| **Comment reply notifications via FRD 9** | When a reply is posted to a signed-in user's comment, `emitNotification` (FRD 9 §3.2) fires after the reply is inserted. Anonymous comment authors (author_id = NULL) receive no notification. The notification infrastructure is owned by FRD 9; FRD 3 is the trigger point only. |
+| **`page_version_id` and `anchor_offset` dropped from `comments`** | The PRD §10 schema listed these columns, but FRD-3's anchor model stores `anchor_text` (string) and `section_slug` only. Version-pinning an anchor to a specific `page_version_id` is unnecessary because re-anchoring runs on every accepted edit and orphan-flags stale anchors. `anchor_offset` is a character-position concept superseded by text-match re-anchoring. FRD-3 is canonical; PRD §10 will be updated in the PRD cleanup pass. |

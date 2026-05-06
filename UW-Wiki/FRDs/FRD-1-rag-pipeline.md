@@ -68,7 +68,6 @@ Feature: RAG Pipeline
     And    parses the new ProseMirror JSON content
     And    splits it into section-based chunks at heading boundaries
     And    prepends context headers (e.g., "[Midnight Sun > Time Commitment]")
-    And    skips the "External Links" section
     And    embeds each chunk as a 512-dimensional vector
     And    stores each chunk with org metadata and section metadata
 
@@ -411,6 +410,8 @@ Each chunk carries two categories of fields:
 
 The corpus is not static -- it changes whenever wiki pages are edited, comments are posted, or Pulse ratings are submitted. Re-embedding keeps the RAG corpus in sync with the current state of the platform.
 
+> **Official sections:** The Official section on claimed pages is stored inline in `pages.content_json` as an H2 node with `attrs.official: true` (see FRD-2 §10.3). It is chunked and re-embedded uniformly with all other sections — no special handling is required.
+
 ### 3.2 Trigger Mechanism
 
 **Application-level triggers.** The Next.js API route that performs the triggering action (accepting an edit proposal, creating a comment, etc.) fires an async background task to re-embed affected chunks. This was chosen over database triggers for MVP because it keeps all logic in one TypeScript codebase, is simpler to debug and test locally, and the small team benefits from reduced infrastructure.
@@ -423,6 +424,9 @@ The corpus is not static -- it changes whenever wiki pages are edited, comments 
 | Comment created | Create a new comment chunk, embed it | `INSERT INTO chunks ...` |
 | Comment updated | Delete old comment chunk, create and embed new one | `DELETE FROM chunks WHERE source_comment_id = $1` then `INSERT` |
 | Comment deleted | Delete the comment chunk | `DELETE FROM chunks WHERE source_comment_id = $1` |
+| Comment hidden (`is_hidden` set to true) | Delete the comment chunk immediately | `DELETE FROM chunks WHERE source_comment_id = $1` |
+| Comment unhidden (admin reverses hide) | Re-create the comment chunk | `reembedComment(commentId, orgMeta, commentData)` |
+| Cold-start initial publish | Embed all sections of the newly published page | `reembedPage(pageId, orgMeta, content)` |
 | Comment anchor fails re-anchoring | Update the flag on the existing chunk | `UPDATE chunks SET references_previous_version = true WHERE source_comment_id = $1` |
 
 **Note:** Pulse aggregate updates no longer trigger re-embedding. Pulse data is served live from `pulse_aggregates` via the `get_org_data` tool at query time.
@@ -557,6 +561,18 @@ export async function reembedComment(commentId: string, orgMeta: OrgMeta, commen
 
 The retrieval engine combines two search methods -- semantic (vector) and keyword (full-text) -- and merges results using Reciprocal Rank Fusion (RRF). This hybrid approach achieves ~84% retrieval precision compared to ~62% for semantic-only search.
 
+**Hidden comment defense-in-depth filter**: Both queries below include a subquery filter to exclude any chunk linked to a hidden comment. Even if a chunk slips through deletion (e.g., a hide event that occurred before re-embedding completed), it will not surface in results:
+
+```sql
+AND NOT EXISTS (
+  SELECT 1 FROM comments c
+  WHERE c.id = chunks.source_comment_id
+    AND c.is_hidden = true
+)
+```
+
+This filter is a no-op for `chunk_type = 'content'` chunks (which have `source_comment_id = NULL`).
+
 ### 4.2 Semantic Search
 
 The system shall:
@@ -571,6 +587,10 @@ SELECT id, content_text, org_name, org_slug, section_title, section_slug,
        1 - (embedding <=> $1::vector) AS similarity_score
 FROM chunks
 WHERE ($2::uuid IS NULL OR university_id = $2)
+  AND NOT EXISTS (
+    SELECT 1 FROM comments c
+    WHERE c.id = chunks.source_comment_id AND c.is_hidden = true
+  )
 ORDER BY embedding <=> $1::vector
 LIMIT 20
 ```
@@ -591,6 +611,10 @@ SELECT id, content_text, org_name, org_slug, section_title, section_slug,
 FROM chunks, plainto_tsquery('english', $1) AS query
 WHERE content_tsvector @@ query
   AND ($2::uuid IS NULL OR university_id = $2)
+  AND NOT EXISTS (
+    SELECT 1 FROM comments c
+    WHERE c.id = chunks.source_comment_id AND c.is_hidden = true
+  )
 ORDER BY rank_score DESC
 LIMIT 20
 ```
@@ -1285,7 +1309,7 @@ CREATE TABLE chunks (
   source_comment_id UUID REFERENCES comments(id),
 
   -- LLM-facing: returned in search results
-  chunk_type TEXT NOT NULL CHECK (chunk_type IN ('content', 'metadata', 'comment')),
+  chunk_type TEXT NOT NULL CHECK (chunk_type IN ('content', 'comment')),
   org_name TEXT NOT NULL,
   org_slug TEXT NOT NULL,
   category TEXT NOT NULL,
@@ -1398,7 +1422,7 @@ FRD 1 is complete when ALL of the following are satisfied:
 | 2 | Batch embedding handles multiple texts | Call `embedBatch(["text1", ..., "text10"])` and verify 10 vectors returned in order |
 | 3 | Wiki page content is chunked by section | Parse a test ProseMirror doc and verify sections become separate chunks |
 | 4 | Context headers are prepended | Verify chunk text starts with `[OrgName > SectionTitle]` |
-| 5 | "External Links" section is skipped | Verify no chunk is created for a section titled "External Links" |
+| 5 | External Links section IS chunked (no skip rule) | Parse a test doc with an External Links section and verify a chunk is created |
 | 6 | Large sections are split with overlap | Create a section >1000 tokens and verify it splits with 100-token overlap |
 | 7 | No metadata chunks exist in the DB | Query `chunks` table and verify zero rows have `chunk_type = 'metadata'` — Pulse data is served live via `get_org_data`, not stored as chunks |
 | 8 | Comment chunk is generated | Call `reembedComment` and verify a chunk with `chunk_type = 'comment'` exists |
@@ -1522,8 +1546,6 @@ Competition season (May-July) can spike to 15-20 hours/week.
 [Midnight Sun > Culture and Vibe]
 Very engineering-focused culture. Members are passionate about solar car technology.
 ```
-
-**"External Links" section is skipped -- no chunk created.**
 
 ### B.2 Large Section Split with Overlap
 
@@ -1761,7 +1783,7 @@ For Pulse ratings sourced from get_org_data, cite the org's main page:
 | Section-based chunking over fixed-size | Wiki pages have natural section structure (ProseMirror headings). Section-based chunking preserves semantic boundaries. Fixed-size chunks would split mid-section, losing context. |
 | Context header prepended to chunks | Bakes org name and section title into the embedding vector, improving retrieval precision when generic content (e.g., "competitive culture") could match multiple orgs. ~10 extra tokens per chunk, negligible cost. |
 | No min chunk size or merging | Adds complexity for marginal benefit. Short sections (e.g., a brief "Overview") are still useful through keyword search. Embedding quality for very short text is lower but acceptable. |
-| Skip "External Links" section | URL-only content has no semantic value for retrieval. Keyword search on other chunks already catches org-specific queries. Saves embedding API calls. |
+| External Links section is now chunked | Previously skipped; now a full page section (FRD-2 §4.5 template). Free-form prose in this section (event locations, resource descriptions) has semantic value. Embedding cost is negligible per page. |
 | Tool-calling over query rewriting | Tool-calling is native to the Vercel AI SDK (`streamText` with tools). More flexible than query rewriting -- the LLM can make multiple targeted searches per turn. Fewer LLM calls on follow-ups (no separate rewriting step). |
 | `get_org_data` tool instead of metadata chunks | Pulse ratings and structured org data are already in `pulse_aggregates` and `organizations` tables in exact form. Encoding them as natural-language prose, embedding them as vectors, and retrieving them semantically is wasteful indirection — numbers don't embed meaningfully, and the retrieval is probabilistic. A direct SQL lookup is deterministic, always returns the latest data without re-embedding on every vote, and returns structured JSON the LLM can reason over precisely. |
 | Hybrid search with RRF over semantic-only | Pure semantic search achieves ~62% precision. Adding keyword search with RRF merging pushes it to ~84%. Critical for exact term matches (org names, tech stack terms like "ROS2"). ~2-4 hours additional implementation. |

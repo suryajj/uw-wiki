@@ -259,7 +259,17 @@ UW-Wiki/
 | `UPSTASH_REDIS_REST_URL` | Server only | Yes | Upstash Redis REST endpoint (rate limiting) |
 | `UPSTASH_REDIS_REST_TOKEN` | Server only | Yes | Upstash Redis auth token (rate limiting) |
 
-### 2.2 Optional Variables
+### 2.2 FRD-Specific Required Variables
+
+These are required for specific features but are not needed for the core scaffold. They must be present in `.env.example` from FRD-0 onward:
+
+| Variable | Scope | Defined In | Purpose |
+|---|---|---|---|
+| `TAVILY_API_KEY` | Server only | FRD-5 §14 | Tavily web search/extract (cold start agent). Soft-required — cold start degrades gracefully if absent |
+| `RESEND_API_KEY` | Server only | FRD-9 §5.1 | Resend email delivery (notifications). Required for FRD-9 |
+| `EMAIL_FROM` | Server only | FRD-9 §5.1 | Notification sender address (e.g. `notifications@uw-wiki.ca`) |
+
+### 2.3 Optional Variables
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -335,7 +345,7 @@ FRD 0 shall create baseline tables required by PRD Section 10 and FRD order:
 
 1. `universities`
 2. `organizations`
-3. `pages`
+3. `pages` — baseline columns must include `id`, `org_id`, `current_version_id UUID REFERENCES page_versions(id)`, `created_at TIMESTAMPTZ`, `last_modified_at TIMESTAMPTZ` (FRDs 2 and 4 reference `last_modified_at` for lifecycle banners and PR mergeability checks)
 4. `page_versions`
 5. `edit_proposals`
 6. `comments`
@@ -344,8 +354,9 @@ FRD 0 shall create baseline tables required by PRD Section 10 and FRD order:
 9. `external_links`
 10. `users`
 11. `bookmarks`
-12. `notifications`
+12. `notifications` — full schema (type, payload, read_at, delivered_email) is defined in FRD-9; this baseline creates only the table stub
 13. `lifecycle_config`
+14. `notification_preferences` — created as a stub here; full schema in FRD-9
 
 ### 4.3 FRD 1 Baseline Table
 
@@ -371,13 +382,15 @@ To avoid repeated early migrations, FRD 0 includes these up front:
 **FRD 2-related:**
 
 1. `organizations.tagline`
-2. `organizations.official_content_json`
-3. `edit_proposals.is_anonymous`
-4. `edit_proposals.reviewer_comment`
-5. `edit_proposals.contributor_id`
+2. `edit_proposals.is_anonymous`
+3. `edit_proposals.reviewer_comment`
+4. `edit_proposals.contributor_id`
+5. `edit_proposals.is_from_affiliated_contributor`
 6. `page_versions.is_anonymous`
-7. `claim_requests` table
+7. `page_versions.is_admin_seeded`
 8. `user_affiliations` table
+
+> **Note:** `organizations.official_content_json` and the `claim_requests` table have been removed. Official sections are stored inline in ProseMirror content with `attrs.official: true` (FRD-2 §10). Affiliations are self-declared by users via `/my/profile` and managed by admins in FRD-7.
 
 **FRD 3-related:**
 
@@ -755,6 +768,13 @@ OPENROUTER_X_TITLE=UW Wiki
 # Upstash Redis (rate limiting)
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
+
+# Tavily (server only -- cold start agent, FRD 5)
+TAVILY_API_KEY=
+
+# Resend (server only -- email notifications, FRD 9)
+RESEND_API_KEY=
+EMAIL_FROM=notifications@uw-wiki.ca
 
 # Optional analytics
 POSTHOG_KEY=

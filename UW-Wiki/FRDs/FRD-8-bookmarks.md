@@ -19,7 +19,7 @@ FRD 6 ships `/my/bookmarks` and `/my/contributions` as Coming Soon stubs, wires 
 
 **Bookmarks** let authenticated users save wiki pages they want to return to. The bookmark icon lives in the wiki page header (alongside the page title). Toggling it is a single-click action — no modal, no form. If the user is unauthenticated, the `AuthModal` appears and the pending action is queued via FRD 6's pending-action system so the bookmark fires automatically after sign-in.
 
-**Contribution History** gives contributors a personal record of every edit proposal they have submitted. Proposals are listed with their status (`pending`, `changes_requested`, `needs_rebase`, `accepted`, `rejected`, `withdrawn`, `superseded`), the sections they targeted, and a link to the proposal detail. This closes the loop on FRD 4's contributor UX — after submitting a PR, users have somewhere to check its status without relying on reviewer notifications.
+**Contribution History** gives contributors a personal record of every edit proposal they have submitted. Proposals are listed with their status (`pending`, `changes_requested`, `needs_rebase`, `accepted`, `rejected`, `withdrawn`), the sections they targeted, and a link to the proposal detail. This closes the loop on FRD 4's contributor UX — after submitting a PR, users have somewhere to check its status without relying on reviewer notifications.
 
 Both pages are behind `requireUser()`. Neither requires a new database table — `bookmarks` is created by FRD 0 and `edit_proposals` is created by FRD 4.
 
@@ -33,14 +33,15 @@ Both pages are behind `requireUser()`. Neither requires a new database table —
 | FRD 2 | Wiki page header layout | Adds the bookmark icon button to the header |
 | FRD 4 | `edit_proposals` table, status enum | Nothing — reads the existing table |
 | FRD 6 | `/my/bookmarks` stub, `/my/contributions` stub, `bookmark.toggle` pending action + replay handler, user menu links | Replaces stub content with real implementations; `POST /api/bookmarks/toggle` referenced by FRD 6's replay handler |
+| FRD 9 | `notification_preferences.page_update_digest_frequency`, bookmarked-page update digest job | FRD 8's `bookmarks` table is the data source for the FRD 9 digest. FRD 9 owns the digest delivery; FRD 8 owns the bookmark data. No additional schema from FRD 8 is needed. |
 
 ---
 
 ## Given Context (Pre-conditions from Prior FRDs)
 
 1. `bookmarks` table exists with columns: `id UUID PK`, `user_id UUID FK → public.users`, `page_id UUID FK → pages`, `created_at TIMESTAMPTZ`, `UNIQUE(user_id, page_id)`. RLS: auth-only insert/delete on own rows.
-2. `edit_proposals` table exists with `contributor_id UUID FK → public.users`, `page_id`, `section_slugs TEXT[]`, `status` (`pending` | `changes_requested` | `needs_rebase` | `accepted` | `rejected` | `withdrawn` | `superseded`), `submitted_at`, `reviewed_at`. (Full schema in FRD 4.)
-3. `pages` table has `title TEXT`, `org_id UUID FK → organizations`, `updated_at TIMESTAMPTZ`.
+2. `edit_proposals` table exists with `contributor_id UUID FK → public.users`, `page_id`, `section_slugs TEXT[]`, `status` (`pending` | `changes_requested` | `needs_rebase` | `accepted` | `rejected` | `withdrawn`), `submitted_at`, `reviewed_at`. (Full schema in FRD 4.)
+3. `pages` table has `org_id UUID FK → organizations`, `updated_at TIMESTAMPTZ`. Display name for a page is `organizations.name` via join (no separate `pages.title` column).
 4. `organizations` table has `name TEXT`, `category TEXT`, `slug TEXT`.
 5. FRD 6 ships stub pages at `/my/bookmarks` and `/my/contributions` with a "Coming Soon" placeholder.
 6. FRD 6's `replayPendingAction` function already has a `bookmark.toggle` case that calls `POST /api/bookmarks/toggle` and reads `payload.page_id` and `payload.desiredState`.
@@ -56,7 +57,7 @@ Both pages are behind `requireUser()`. Neither requires a new database table —
 | **Toggle** | A single action that adds a bookmark if none exists, or removes it if it does |
 | **Desired state** | The `desiredState` field in the `bookmark.toggle` pending action payload; either `"bookmarked"` or `"unbookmarked"` — ensures the pending action replays correctly even if the user's auth state has changed |
 | **Contribution** | An edit proposal submitted by the authenticated user; read from `edit_proposals` where `contributor_id = current_user.id` |
-| **Status badge** | A colored pill that communicates proposal status: yellow for `pending`, amber for `changes_requested`, orange for `needs_rebase`, green for `accepted`, red for `rejected`, grey for `withdrawn` and `superseded` |
+| **Status badge** | A colored pill that communicates proposal status: yellow for `pending`, amber for `changes_requested`, orange for `needs_rebase`, green for `accepted`, red for `rejected`, grey for `withdrawn` |
 
 ---
 

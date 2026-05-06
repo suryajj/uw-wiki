@@ -9,6 +9,10 @@
 
 ---
 
+## Pre-Implementation Requirement
+
+**Read [`CONSTRAINTS.md`](./CONSTRAINTS.md) before implementing any FRD.** It documents framework version-specific gotchas (Tailwind v4 CSS-first config, AI SDK v5 import paths, migration file numbering, complete env var list) that are not obvious from the FRDs themselves and will cause silent runtime failures if missed.
+
 ## Overview
 
 Each FRD represents a single unit of full functionality that can be implemented, tested, and delivered independently. FRDs are ordered by dependency -- each assumes all prior FRDs are complete. A Setup Document (FRD 0) establishes the project foundation before any feature work begins.
@@ -29,11 +33,12 @@ Each FRD represents a single unit of full functionality that can be implemented,
 | 1   | [RAG Pipeline](./FRDs/FRD-1-rag-pipeline.md)                                  | 6.1                         | FRD 0                      | Embedding service, chunking, hybrid retrieval, search_wiki tool, RAG streaming endpoint, re-embedding pipeline                                                                                                                    |
 | 2   | [Wiki Pages, Directory, Editor, and Core Page UX](./FRDs/FRD-2-wiki-pages.md) | 6.2, 6.3, 6.4, 6.6, 6.7, 6.9 | FRD 0                    | Browsable directory, three-column wiki page view, Tiptap editor primitives, Pulse sidebar + voting, lifecycle banners, page claiming, version history shell, external links section. **Note: PR submission UI and reviewer dashboard in FRD 2 are superseded by FRD 4.** |
 | 3   | [Comments System](./FRDs/FRD-3-comments-system.md)                            | 6.5                         | FRD 0, FRD 2               | Inline section comments, threaded replies, anchor text management, comment persistence across edits                                                                                                                               |
-| 4   | [PR-Edit System (Section-Scoped)](./FRDs/FRD-4-pr-edit-system.md)             | 6.3, 6.4, 7, 8, 9           | FRD 0, FRD 1, FRD 2, FRD 3 | Section-scoped edit proposals (single or multi-section), contributor rationale, AI pre-screen, reviewer accept / reject / request-changes decisions, `changes_requested` workflow, conflict-of-interest enforcement, patchset/rebase workflow |
+| 4   | [PR-Edit System (Section-Scoped)](./FRDs/FRD-4-pr-edit-system.md)             | 6.3, 6.4, 7, 8, 9           | FRD 0, FRD 1, FRD 2, FRD 3 | Section-scoped edit proposals (single or multi-section), contributor rationale, reviewer accept / reject / request-changes decisions, `changes_requested` workflow, conflict-of-interest enforcement, patchset/rebase workflow |
 | 5   | [Cold Start Agent](./FRDs/FRD-5-cold-start-agent.md)                          | 6.8, 6.6, 13                | FRD 0, FRD 2               | Admin-triggered agent: org identification (name or URL), Tavily web research, ProseMirror JSON synthesis, Pulse seeding, draft preview and publish flow                                                                           |
 | 6   | [Auth UI and Pending Action Preservation](./FRDs/FRD-6-auth-ui.md)            | 9, 12                       | FRD 0                      | `/auth/sign-in` page, AuthModal component, signup with magic-link verification, passwordless magic-link sign-in, password reset, Google OAuth, sign-out, header user state, pending-action localStorage (24h TTL) with auto-resume, `returnTo` routing, guard redirects, `/my/*` stubs |
 | 7   | [Admin Dashboard and Moderation](./FRDs/FRD-7-admin-dashboard.md)             | 6.7, 6.8, 7, 8              | FRD 0, FRD 2, FRD 3, FRD 4, FRD 5, FRD 6 | Reviewer PR queue (accept / reject / request-changes), page claim approval, cold-start job history + re-run, lifecycle config editor, user role + affiliation management, comment moderation (hide-only), `admin_activity_log` audit trail. **Requires amendments to FRD 2, 3, 4, 5 — see Amendment Tracker below.** |
 | 8   | [Bookmarks and Contribution History](./FRDs/FRD-8-bookmarks.md)               | 9                           | FRD 0, FRD 2, FRD 4, FRD 6 | Bookmark toggle (wiki page header + route handler), `/my/bookmarks` page, `/my/contributions` PR history page with all status states                                                                                             |
+| 9   | [Notifications](./FRDs/FRD-9-notifications.md)                                | §13 (moved from Post-MVP)   | FRD 0, FRD 3, FRD 4, FRD 6, FRD 8 | In-app bell icon + unread badge, `/my/notifications` page, email delivery via Resend/Supabase SMTP, `notification_preferences` schema with per-channel opt-out, PR status / comment reply / page-update digest notifications |
 
 ---
 
@@ -78,7 +83,7 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 **Supersession note:** FRD 2 contains early drafts of the PR submission flow, diff generation, and reviewer dashboard (Sections 5–8 and the `/admin/proposals` route). These sections are **superseded by FRD 4**, which is the canonical source of truth for all proposal workflow logic. When implementing, defer to FRD 4 for any proposal/reviewer behavior. FRD 2's UI/routing stubs serve as scaffolding only.
 
-**Exit criteria:** Directory renders with grid/list toggle and category sections; wiki pages render in three-column layout (TOC, content, Pulse sidebar); Tiptap inline editor base works with image upload and autosave; lifecycle banners; page claiming with Official section; version history shell.
+**Exit criteria:** Directory renders with grid/list toggle and category sections; wiki pages render in three-column layout (TOC, content, Pulse sidebar); Tiptap inline editor base works with image upload and autosave; lifecycle banners; External Links section included in template; Official section rendered from inline `attrs.official: true`; version history shell.
 
 ---
 
@@ -100,7 +105,7 @@ Each FRD represents a single unit of full functionality that can be implemented,
 
 **Scope:** See [FRD-4-pr-edit-system.md](./FRDs/FRD-4-pr-edit-system.md)
 
-**Exit criteria:** Contributors can propose edits to one or more sections with rationale; AI pre-screen verdict is visible to contributor and reviewers; reviewer performs accept / reject / request-changes decision; contributor can respond to a `changes_requested` proposal with a new patchset; affiliated reviewers cannot make any decision on own-org proposals (detail is read-only); stale proposals require rebase patchset; accepted proposals create new page versions and trigger FRD 1/3 downstream updates.
+**Exit criteria:** Contributors can propose edits to one or more sections with rationale (anonymous or attributed); anonymous submit nudge modal shown; reviewer performs accept / reject / request-changes decision; affiliated reviewers see COI disclosure banner but all actions remain enabled; contributor can respond to a `changes_requested` proposal with a new patchset; stale proposals require rebase patchset; accepted proposals create new page versions and trigger FRD 1/3 downstream updates.
 
 ---
 
@@ -135,17 +140,17 @@ Each FRD represents a single unit of full functionality that can be implemented,
 **Depends on:** FRD 0, FRD 2, FRD 3, FRD 4, FRD 5, FRD 6
 
 **Surfaces:**
-- **Reviewer queue** (`/admin/reviews`) — paginated list of pending edit proposals with per-section diff cards, AI pre-screen verdict, accept / reject / request-changes actions, COI enforcement
-- **Page claim approval queue** (`/admin/claims`) — review org claim requests, approve or reject with required reason
+- **Reviewer queue** (`/admin/reviews`) — paginated list of pending edit proposals with per-section diff cards, accept / reject / request-changes actions, COI disclosure banner
+- **Official Section seeder** (`/admin/official-sections`) — admin tool to seed Official content directly on an org's wiki page
 - **Cold-start job history** (`/admin/cold-start/jobs`) — view and re-run failed jobs
 - **Lifecycle config editor** (`/admin/lifecycle`) — edit per-category staleness thresholds
-- **User management** (`/admin/users`) — role picker, affiliations drawer for COI tracking
-- **Comment moderation** (`/admin/reports`) — hide reported comments (hide-only; no deletion)
+- **User management** (`/admin/users`) — role picker, affiliations drawer with admin revoke capability
+- **Comment moderation** (`/admin/reports`) — hide/unhide reported comments (hide-only; no deletion)
 - **Audit log** (`/admin/activity`) — append-only log of every admin mutation
 
-**New schema:** `admin_activity_log`, `proposal_review_comments`, `edit_proposals.status` extended with `changes_requested`, `claim_requests.decision_reason`, `cold_start_jobs.supersedes_job_id`.
+**New schema:** `admin_activity_log`, `proposal_review_comments`, `edit_proposals.status` extended with `changes_requested`, `cold_start_jobs.supersedes_job_id`.
 
-**Exit criteria:** All seven admin surfaces render behind appropriate guards; reviewer can accept, reject, and request changes on PRs end-to-end; COI check blocks affiliated reviewers from all decision actions; cold-start re-run creates a new job with `supersedes_job_id` set; lifecycle config saves and is respected by page renders; role + affiliation changes persist; reported comments can be hidden; every admin mutation writes to `admin_activity_log`.
+**Exit criteria:** All seven admin surfaces render behind appropriate guards; reviewer can accept, reject, and request changes on PRs end-to-end; affiliated reviewers see COI disclosure banner (all actions enabled); Official Section seeder creates `page_versions` row with `is_admin_seeded: true`; cold-start re-run creates a new job with `supersedes_job_id` set; lifecycle config saves and is respected by page renders; role + affiliation changes persist; reported comments can be hidden/unhidden; every admin mutation writes to `admin_activity_log`.
 
 ---
 
@@ -170,13 +175,14 @@ Each FRD represents a single unit of full functionality that can be implemented,
 ```
 FRD 0 (Setup)
 ├── FRD 1 (RAG Pipeline)
-├── FRD 2 (Wiki Pages, Directory, Editor, Core Page UX) [note: External Links section spec is included here]
+├── FRD 2 (Wiki Pages, Directory, Editor, Core Page UX) [includes External Links section template]
 │   └── FRD 3 (Comments System)
 │       └── FRD 4 (PR-Edit System) ← canonical source of truth for all proposal/reviewer behavior
 ├── FRD 5 (Cold Start Agent) [depends on FRD 0 + FRD 2]
 ├── FRD 6 (Auth UI) [depends on FRD 0; unblocks write paths in FRDs 2, 3, 4, 5]
 │   └── FRD 7 (Admin Dashboard & Moderation) [depends on FRD 0, 2, 3, 4, 5, 6]
 │       └── FRD 8 (Bookmarks & Contribution History) [depends on FRD 0, 2, 4, 6]
+│           └── FRD 9 (Notifications) [depends on FRD 0, 3, 4, 6, 8]
 ```
 
 > **Note on External Links (formerly FRD 10):** The External Links section (PRD Appendix B) is specified directly within FRD 2. No separate FRD is needed — the `external_links` table schema is already in FRD 0 and the rendering logic belongs to the wiki page UX.
@@ -203,9 +209,13 @@ When two FRDs describe the same surface (e.g., the reviewer dashboard appears in
 
 | What was defined | Where | Superseded by | Notes |
 |-----------------|-------|---------------|-------|
-| PR submission UI, diff generation, reviewer dashboard, `/admin/proposals` route | FRD 2 §§5–8, §13 | FRD 4 | FRD 4 is the canonical PR/reviewer implementation. FRD 2's reviewer stubs serve as scaffolding only. |
+| PR submission UI, diff generation, reviewer dashboard, `/admin/proposals` route | FRD 2 §§5–7, §12 | FRD 4 | FRD 4 is the canonical PR/reviewer implementation. FRD 2 §§5–7 are now stub-replaced with "Superseded by FRD 4" notes. Original section numbers corrected during FRD-4 reconciliation pass. |
+| `organizations.official_content_json` (separate column for Official content) | FRD 2 §10.3, §11.1 | FRD 2 (updated) + FRD 4 | Official content is now stored inline in `pages.content_json` as an H2 node with `attrs.official: true`. Separate column dropped. |
 | `/api/admin/reports/[id]/resolve` (described as "delete comment") | FRD 3 §15, exit criterion 23 | FRD 7 | Replaced by `/api/admin/comments/[id]/hide` (hide-only) and `/api/admin/reports/[id]/dismiss`. |
 | Reviewer accept/reject only (two-state decisions) | FRD 4 (pre-amendment) | FRD 7 + FRD 4 (amended) | FRD 7 introduces `changes_requested` as a third non-terminal decision state. FRD 4 must be amended to include it. |
+| `superseded` proposal status (terminal) | FRD 4, FRD 7, FRD 8 | FRD 4 reconciliation pass | Collapsed into `needs_rebase` (recoverable). Competing proposals on accepted sections are now marked `needs_rebase` instead of terminal `superseded`. All three FRDs updated. |
+| Page claim flow (`/admin/claims`, `claim_requests` table, `organizations.claimed_by/claimed_at`, `POST /api/claims/*`) | FRD 2 §§10–12, FRD 7 §4 | Round 2 Reconciliation | Replaced entirely by self-declared affiliation model. Users declare affiliations at `/my/profile` (FRD-6). Admins revoke via FRD-7 §7. Official sections seeded by affiliated PR or admin tool (FRD-7 §4). |
+| `notifications` as Schema-Only / Post-MVP | FRD-order.md Schema-Only table, FRD-3 "no notifications" note | Round 2 Reconciliation → FRD 9 | Notifications moved to MVP. FRD 9 covers full delivery. |
 
 ### FRD 7 Amendment Tracker
 
@@ -225,13 +235,65 @@ FRD 7 introduces schema and behavioral changes that require amendments to four p
 | Add `supersedes_job_id` column to `cold_start_jobs` | FRD 5 | §12.1 | ✅ Applied |
 | Add `POST /api/admin/cold-start/jobs/[id]/rerun` to API routes | FRD 5 | §13 | ✅ Applied |
 
+### FRD 4 Reconciliation Pass Amendment Tracker
+
+Applied during the May 2026 cross-FRD reconciliation pass. All amendments below are ✅ Applied.
+
+| Amendment | Target FRD(s) | Section(s) | Status |
+|-----------|--------------|------------|--------|
+| Drop `superseded` status; expand `needs_rebase` to cover competing-accept cases | FRD 4, FRD 7, FRD 8 | FRD 4 §§2.1, 2.4, 6.1, 7.4, Appendix A, C; FRD 7 §§3.1, 2.6, Appendix B; FRD 8 §2, §3.2 | ✅ Applied |
+| Inline Official content: drop `organizations.official_content_json`; add `official: true` H2 attr in `pages.content_json`; update claim-approval insert flow | FRD 2, FRD 4 | FRD 2 §§10.2–10.4, §11.1, §2.5, Appendix A; FRD 4 §§1.6, 6.1, 8.3 | ✅ Applied |
+| Add `Underline` and `Highlight` Tiptap extensions to match FRD-4 §8.3 allowlist | FRD 2 | §4.2, Appendix A | ✅ Applied |
+| Stub-replace FRD-2 §§5–7 (PR submission, diff gen, reviewer dashboard) with "Superseded by FRD 4" notices; fix §12 API table | FRD 2 | §§5–7, §12 | ✅ Applied |
+| Correct FRD-4 supersession block section numbers (§7→§6, §13→§12, §8.4-8.6→§7) | FRD 4 | Supersession block | ✅ Applied |
+| Drop vestigial fields: `proposal_scope`, `aiVerdict`, `aiReason`, `decision source ('manual')` | FRD 4 | §§3.1, 5.5, 7.4, Appendix B, C | ✅ Applied |
+| Fix FRD-4 internal: auth contradiction (§1.5, §7.1 now say anonymous allowed); status list (add `changes_requested`, drop `superseded`); lifecycle rule numbering; `is_current` flip constraint; mergeability timing (§4.6); slug stability (§4.7); post-commit function names | FRD 4 | §§1.5, 2.1, 2.3, 3.3, 4.6, 4.7, 5.2, 6.1, 7.1, Gherkin | ✅ Applied |
+| Fix FRD-7 precondition: remove `proposed_content_json` reference; update status enum listing | FRD 7 | Given Context | ✅ Applied |
+
+### FRD 9: Notifications
+
+**PRD Section:** §13 (moved from Post-MVP to MVP)
+
+**Scope:** See [FRD-9-notifications.md](./FRDs/FRD-9-notifications.md)
+
+**Depends on:** FRD 0, FRD 3, FRD 4, FRD 6, FRD 8
+
+**Delivers:** In-app notification bell with unread count, `/my/notifications` full history page, email delivery via Resend/Supabase SMTP, `notification_preferences` table with per-channel opt-out, PR status notifications (accepted/rejected/changes-requested/needs-rebase), comment reply notifications, bookmarked-page update digest.
+
+**Exit criteria:** Bell shows correct unread count; clicking navigates to relevant resource; preferences are honored; email is sent/withheld based on preferences; anonymous PR contributors receive no notifications; digest job delivers weekly summaries for bookmarked pages.
+
+---
+
+### Round 2 Reconciliation Amendment Tracker
+
+Applied during the May 2026 Round 2 cross-FRD reconciliation pass. All amendments below are ✅ Applied.
+
+| Amendment | Target FRD(s) | Section(s) | Status |
+|-----------|--------------|------------|--------|
+| Drop claim flow; replace with self-declared affiliation model | FRD 2, FRD 7 | FRD 2 §§10–12; FRD 7 §§4, 7, 9.2, 1.1, Gherkin | ✅ Applied |
+| Add `is_from_affiliated_contributor` to `edit_proposals`; add `is_admin_seeded` to `page_versions` | FRD 2, FRD 4 | FRD 2 §11.1; FRD 4 §1.6, §3.1 | ✅ Applied |
+| Official Section seeder admin tool | FRD 7 | New §4 (replacing claim approval queue) | ✅ Applied |
+| Switch COI from blocking to disclosure-only (yellow banner; all actions enabled; affiliation captured in audit log) | FRD 4, FRD 7 | FRD 4 §§5.3, 5.4, Gherkin; FRD 7 §§2.6, 2.8, 3.3, exit criteria 13 | ✅ Applied |
+| Exclude hidden comments from AI search: chunk deletion on hide, re-embed on unhide, defense-in-depth retrieval filter | FRD 1, FRD 3, FRD 7 | FRD 1 §§3.3, 4.1, 4.2, 4.3; FRD 3 §§13.5, 14.1; FRD 7 §8.4 | ✅ Applied |
+| Promote External Links to a page section (add to template, drop FRD-1 skip rule) | FRD 2, FRD 1 | FRD 2 §4.5 template; FRD 1 §3.3 trigger, §4.1 design decision | ✅ Applied |
+| Add anonymous PR sign-in nudge modal before submit | FRD 4 | §1.4 | ✅ Applied |
+| Student Societies lifecycle threshold: Needs Update 6 → 12 months | FRD 2 | §9.2 | ✅ Applied |
+| Fix `pulse/vote` API auth: None → Required | FRD 2 | §12 API table | ✅ Applied |
+| Create FRD-9 Notifications (full MVP: in-app + email + preferences) | FRD 9 (new) | All sections | ✅ Applied |
+| Wire FRD-9 notification triggers into PR pipelines | FRD 4 | §6.1 post-commit jobs | ✅ Applied |
+| Wire FRD-9 comment reply notification | FRD 3 | §6 reply flow | ✅ Applied |
+| Wire FRD-9 page update digest into bookmarks | FRD 8 | §8 (reference added) | ✅ Applied |
+| Drop `is_hidden` from `chunk_type` CHECK; add to comments ALTER | FRD 1, FRD 3 | FRD 1 schema; FRD 3 §14.1 | ✅ Applied |
+| Affiliation profile management section | FRD 6 | §affiliation management | ✅ Applied (FRD 6 cleanup) |
+| Drop `pages.title` reference from bookmarks display | FRD 8 | §4 | ✅ Applied |
+
 ### Schema-Only Features (No UI FRD Yet)
 
 The following tables exist in the FRD 0 database schema but have no FRD covering their UI or delivery logic. They are not bugs — they are intentionally deferred. Do not implement UI for them without a future FRD.
 
 | Table | Planned for | Notes |
 |-------|------------|-------|
-| `notifications` | Post-MVP | Schema exists (FRD 0). No delivery FRD. FRD 3 explicitly defers in-app notifications to Post-MVP. When a Notifications FRD is written, it will layer on top of the existing table. |
+| *(none at this time)* | — | All deferred tables from prior rounds have been addressed. `notifications` is now covered by FRD 9. |
 
 ### Route Conventions
 

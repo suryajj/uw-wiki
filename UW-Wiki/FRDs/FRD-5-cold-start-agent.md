@@ -663,7 +663,7 @@ function deduplicateByUrl(results: TavilySearchResult[]): TavilySearchResult[] {
 
 ### 4.4 Tavily API Budget
 
-Each research run is capped at a maximum of **15 Tavily API calls** total (searches + extracts). The research plan as defined makes approximately 13 search calls and up to 6 extract attempts, staying within budget even if all extract URLs are reachable.
+Each research run is capped at a maximum of **20 Tavily API calls** total (searches + extracts). The research plan as defined makes approximately 13 search calls and up to 6 extract attempts, leaving buffer for retries or extended section research.
 
 If the budget is exhausted mid-plan, remaining sections are marked as skipped with no research data.
 
@@ -729,10 +729,14 @@ The synthesis produces a `ColdStartOutput` object (see Section 11 for full Zod s
 
 | Field            | Type            | Description                                                      |
 | ---------------- | --------------- | ---------------------------------------------------------------- |
-| `pageContent`    | ProseMirror JSON| Complete wiki page matching `SUGGESTED_TEMPLATE` structure       |
+| `pageContent`    | ProseMirror JSON| Complete wiki page matching `SUGGESTED_TEMPLATE` structure (including `External Links` H2 section with verified URLs populated from research) |
 | `pulseEstimates` | Object          | Selectivity and Tech Stack only (factual, source-backed). Vibe Check and Co-op Boost are excluded — user-only. |
 | `sectionSources` | Array           | Per-section list of source URLs used                             |
 | `tagline`        | String          | One-line tagline for the org directory card                      |
+
+**Section slug stamping**: Each H2 heading node in the generated `pageContent` must carry an `attrs.slug` computed by normalizing the section title per FRD-4 §4.7 (lowercase, replace spaces with hyphens, strip non-alphanumeric). For example, "External Links" → `"external-links"`. The synthesis prompt must explicitly instruct the LLM to include `slug` in heading attrs. This ensures the cold-start page is immediately compatible with the FRD-4 mergeability engine.
+
+**External Links section**: The synthesis must always produce an `External Links` H2 section. When research has identified verified URLs (website, social media, GitHub), they are included as a bulleted list. If no URLs are found, the section is present with an empty paragraph. The section heading slug is always `"external-links"`.
 
 ---
 
@@ -754,10 +758,10 @@ When synthesis completes, the admin sees a draft preview page:
 │  │  Midnight Sun is a student-  │  │  [Application-Based]    │      │
 │  │  led solar car design team   │  │                         │      │
 │  │  at the University of...     │  │  Vibe Check             │      │
-│  │                               │  │  ● ● ● ○ ○  3.0/5     │      │
+│  │                               │  │  No ratings yet         │      │
 │  │  ## Time Commitment           │  │                         │      │
 │  │  Members typically dedicate  │  │  Co-op Boost            │      │
-│  │  10-15 hours per week...     │  │  ★ ★ ★ ★ ☆  4.0/5     │      │
+│  │  10-15 hours per week...     │  │  No ratings yet         │      │
 │  │                               │  │                         │      │
 │  │  (... remaining sections)    │  │  Tech Stack             │      │
 │  │                               │  │  [SolidWorks] [Altium] │      │
@@ -821,6 +825,7 @@ export async function POST(request: Request) {
       summary: "AI-generated cold start page",
       contributor_id: null,
       is_anonymous: false,
+      is_cold_start: true,  // triggers the yellow AI-generated banner (FRD-2 §2.8)
     })
     .select("id")
     .single();
@@ -842,6 +847,9 @@ export async function POST(request: Request) {
     .from("cold_start_jobs")
     .update({ status: "published", completed_at: new Date().toISOString() })
     .eq("id", jobId);
+
+  // 7. Trigger re-embedding for the newly published page (FRD-1 §3.3)
+  await reembedPage(page.id, { name: org.name, slug, category: org.category }, job.draft_content.pageContent);
 
   return NextResponse.json({ slug, orgId: org.id, pageId: page.id });
 }
@@ -1835,11 +1843,11 @@ The system executes 7 research tasks. Progress updates:
 
 ### Step 5: Synthesis (Phase 3)
 
-Claude Sonnet 4 generates ProseMirror JSON with ~150 words per populated section, empty placeholder for Exec History, and Pulse estimates:
+Claude Sonnet 4 generates ProseMirror JSON with ~150 words per populated section, empty placeholder for Exec History, and Pulse seeds:
 - Selectivity: Application-Based
-- Vibe Check: 3 (balanced)
-- Co-op Boost: 4 (strong engineering pipeline)
 - Tech Stack: ["SolidWorks", "Altium", "C", "Python", "MATLAB"]
+- Vibe Check: No ratings yet — user-driven only
+- Co-op Boost: No ratings yet — user-driven only
 
 ### Step 6: Publish
 
