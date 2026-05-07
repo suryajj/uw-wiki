@@ -436,14 +436,14 @@ create policy "user deletes own comment_vote"
   on public.comment_votes for delete using (auth.uid() = user_id);
 
 -- comment_reports: anyone signed in can insert; reporter reads own; admins read all (server-enforced)
+-- helper function MUST be created before the policy that references it
+create or replace function public.is_anonymous_report()
+returns boolean language sql immutable as $$ select false; $$;
+
 create policy "user inserts comment_report"
   on public.comment_reports for insert with check (auth.uid() = reporter_id or is_anonymous_report());
 create policy "user reads own comment_report"
   on public.comment_reports for select using (auth.uid() = reporter_id);
-
--- helper to keep the comment_reports insert policy compilable (returns false; placeholder)
-create or replace function public.is_anonymous_report()
-returns boolean language sql immutable as $$ select false; $$;
 
 -- comments: insert allowed if user is authenticated (anonymous comments still attach an auth user via FRD-3)
 create policy "auth user inserts comment"

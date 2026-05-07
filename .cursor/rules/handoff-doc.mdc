@@ -1,0 +1,39 @@
+---
+description: Keep UW-Wiki/HANDOFF.md current as the single source of truth for external-service state and out-of-codebase context
+alwaysApply: true
+---
+
+# Keep `HANDOFF.md` current
+
+`UW-Wiki/HANDOFF.md` is the single source of truth for everything that exists **outside** the codebase: dashboard configurations, external accounts, manual SQL runs, schema state on cloud DBs, deployed environments, and any caveat a future contributor would need to know but cannot see by reading the code.
+
+## When to update
+
+Append a new dated entry whenever any of these happen:
+
+1. **External service mutated** — Supabase dashboard click, Vercel env var added, Resend domain verified, OpenRouter credit added, Upstash region changed, Google OAuth client created, etc.
+2. **Migration or seed run against a cloud DB** — record which file and which environment.
+3. **One-off manual SQL** executed in a dashboard.
+4. **Account / billing change** — credits topped up, plan upgraded, key rotated.
+5. **Caveat discovered** that isn't visible in code — e.g. a legacy key kept around, a column the migration creates but no FRD uses, a pre-flight step the docs don't mention.
+6. **Setup script or smoke test run** that confirms or rejects external state.
+7. **User reports completing browser-side work** — capture which buttons they clicked.
+
+Do NOT update for routine code changes (those are tracked in git history and FRDs).
+
+## How to update
+
+1. Read the existing `UW-Wiki/HANDOFF.md` first.
+2. Append a new section at the top of the relevant table or list (most recent first).
+3. Use the existing structure — don't reformat or rewrite history.
+4. Keep entries short: what was done, when, and any caveat. Link to the related FRD section if applicable.
+5. Date entries in `YYYY-MM-DD` format.
+
+## What NOT to put in `HANDOFF.md`
+
+- Code changes (git tracks those)
+- FRD/PRD design decisions (those have their own docs)
+- API keys or secrets (those go in `.env.local`, never committed)
+- Anything ephemeral (temp branches, work-in-progress)
+
+The doc should remain readable cover-to-cover by a new contributor in under 5 minutes.
