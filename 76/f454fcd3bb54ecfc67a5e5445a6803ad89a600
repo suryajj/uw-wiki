@@ -1,0 +1,28 @@
+UW-Wiki/.gitignore
+  s_55d256654aa195::t_4faf388b00356b 44
+UW-Wiki/scripts/smoke-test-supabase.mjs
+  s_55d256654aa195::t_3f9597ffcb0bea 2-5,31,42-43,55-59,61-65,67-73,75-82,86-99,103-111,113-115
+  s_55d256654aa195::t_8014b1749d4c83 1,6-30,32-41,44-54,60,66,74,83-85,100-102,112,116
+UW-Wiki/supabase/migrations/001_init_foundation.sql
+  s_55d256654aa195::t_0e8760124e7803 439-442
+.cursor/rules/handoff-doc.mdc
+  s_55d256654aa195::t_535dcc23db2560 1-39
+UW-Wiki/HANDOFF.md
+  s_55d256654aa195::t_193992311282c0 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "76f454fcd3bb54ecfc67a5e5445a6803ad89a600",
+  "prompts": {},
+  "sessions": {
+    "s_55d256654aa195": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7a8abee9-5f05-4223-96f8-878d40e658e3",
+        "model": "gpt-5.5-medium"
+      },
+      "human_author": "Abeer Das <abeer.das@spellbook.legal>"
+    }
+  }
+}
