@@ -8,8 +8,10 @@ import {
   useState,
 } from "react";
 
+import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
 import { renderCommentMarkdown } from "@/lib/comments/markdown";
+import { savePendingAction } from "@/lib/pending-actions/storage";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/utils/time";
 import type { CommentTree } from "@/types/domain";
@@ -449,6 +451,7 @@ function CommentCard({
   const [reply, setReply] = useState("");
   const [replyOpen, setReplyOpen] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
 
   async function vote(voteType: "up" | "down") {
     setVoteError(null);
@@ -458,7 +461,13 @@ function CommentCard({
       body: JSON.stringify({ voteType }),
     });
     if (res.status === 401) {
-      setVoteError("Sign in to vote (FRD-6 will hook this up to AuthModal).");
+      savePendingAction(
+        "comment.vote",
+        { commentId: comment.id, voteType },
+        window.location.pathname,
+      );
+      setAuthOpen(true);
+      setVoteError("Sign in to vote. Your vote has been saved.");
       return;
     }
     if (!res.ok) {
@@ -564,6 +573,11 @@ function CommentCard({
       {voteError ? (
         <p className="mt-2 text-xs text-destructive">{voteError}</p>
       ) : null}
+      <AuthModal
+        open={authOpen}
+        returnTo={typeof window === "undefined" ? "/" : window.location.pathname}
+        onClose={() => setAuthOpen(false)}
+      />
       {replyOpen ? (
         <div
           className="mt-3 flex gap-2"

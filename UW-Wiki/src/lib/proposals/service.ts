@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { reembedSections } from "@/lib/ai/embeddings";
+import { logAdminActivity } from "@/lib/admin/activity-log";
 import { logServerError } from "@/lib/api/errors";
 import { updateAnchorStatusForPage } from "@/lib/comments/update-anchors";
 import { diffSections } from "@/lib/prosemirror/diff";
@@ -322,6 +323,15 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
       },
     })
     .eq("id", id);
+
+  await logAdminActivity({
+    actorId: reviewer.id,
+    action: "accept_proposal",
+    entityType: "edit_proposal",
+    entityId: id,
+    summary: "Accepted proposal",
+    metadata: { is_reviewer_affiliated: isReviewerAffiliated },
+  });
 
   await admin
     .from("edit_proposals")

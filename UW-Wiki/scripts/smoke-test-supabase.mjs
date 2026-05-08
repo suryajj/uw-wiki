@@ -50,6 +50,9 @@ const tables = [
   "notification_preferences",
   "lifecycle_config",
   "chunks",
+  "cold_start_jobs",
+  "admin_activity_log",
+  "proposal_review_comments",
 ];
 
 const headers = {

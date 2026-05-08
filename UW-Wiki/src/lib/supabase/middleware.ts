@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/config/env";
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
   const supabase = createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,7 +21,9 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );
@@ -28,7 +34,19 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: must call getUser() (not getSession()) immediately —
   // refreshes the JWT and revalidates the session against Supabase auth.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const protectedPath =
+    request.nextUrl.pathname.startsWith("/admin") ||
+    request.nextUrl.pathname.startsWith("/my");
+  if (!user && protectedPath) {
+    const signInUrl = request.nextUrl.clone();
+    signInUrl.pathname = "/auth/sign-in";
+    signInUrl.search = `?returnTo=${encodeURIComponent(request.nextUrl.pathname)}`;
+    return NextResponse.redirect(signInUrl);
+  }
 
   return supabaseResponse;
 }

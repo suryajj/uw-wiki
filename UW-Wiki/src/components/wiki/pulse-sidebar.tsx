@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 
+import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
+import { savePendingAction } from "@/lib/pending-actions/storage";
 import type { LifecycleStatus, PulseAggregate, PulseMetric } from "@/types/domain";
 
 const METRIC_LABELS: Record<PulseMetric, string> = {
@@ -22,9 +24,7 @@ const HEALTH_LABELS: Record<LifecycleStatus, string> = {
 const COLLAPSED_KEY_PREFIX = "uw-wiki-pulse-collapsed:";
 
 type PendingPulseVote = {
-  orgId: string;
-  metric: PulseMetric;
-  value: string;
+  votes: Array<{ orgId: string; metric: PulseMetric; value: string }>;
 };
 
 export function PulseSidebar({
@@ -257,14 +257,14 @@ function PulseVoteForm({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function submitOne(metric: PulseMetric, value: string) {
+  async function submitOne(metric: PulseMetric, value: string, allVotes: PendingPulseVote["votes"]) {
     const res = await fetch("/api/pulse/vote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orgId, metric, value }),
     });
     if (res.status === 401) {
-      onAuthRequired({ orgId, metric, value });
+      onAuthRequired({ votes: allVotes });
       return { ok: false, alreadyHandled: true } as const;
     }
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -284,13 +284,16 @@ function PulseVoteForm({
         .map((tag) => tag.trim())
         .filter(Boolean)
         .join(", ");
-      const calls: Array<Promise<{ ok: boolean; alreadyHandled?: boolean; error?: string }>> = [
-        submitOne("selectivity", selectivity),
-        submitOne("vibe_check", String(vibe)),
-        submitOne("coop_boost", String(coop)),
+      const intendedVotes: PendingPulseVote["votes"] = [
+        { orgId, metric: "selectivity", value: selectivity },
+        { orgId, metric: "vibe_check", value: String(vibe) },
+        { orgId, metric: "coop_boost", value: String(coop) },
+        ...(tags ? [{ orgId, metric: "tech_stack" as PulseMetric, value: tags }] : []),
       ];
-      if (tags) calls.push(submitOne("tech_stack", tags));
-      const results = await Promise.all(calls);
+      const callsWithPayload = intendedVotes.map((vote) =>
+        submitOne(vote.metric, vote.value, intendedVotes),
+      );
+      const results = await Promise.all(callsWithPayload);
       const firstError = results.find((result) => !result.ok && !result.alreadyHandled);
       if (firstError && "error" in firstError && firstError.error) {
         setMessage(firstError.error);
@@ -402,16 +405,9 @@ function PendingActionModal({
   onClose: () => void;
 }) {
   function persistPending() {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      "uw-wiki-pending-action",
-      JSON.stringify({
-        type: "pulse.vote",
-        payload,
-        savedAt: new Date().toISOString(),
-      }),
-    );
+    savePendingAction("pulse.vote", payload, window.location.pathname);
   }
+  const [authOpen, setAuthOpen] = useState(false);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="max-w-sm rounded-lg border border-border bg-card p-5 text-sm">
@@ -429,13 +425,21 @@ function PendingActionModal({
             type="button"
             onClick={() => {
               persistPending();
-              onClose();
+              setAuthOpen(true);
             }}
           >
-            Save and Sign In Later
+            Save and Sign In
           </Button>
         </div>
       </div>
+      <AuthModal
+        open={authOpen}
+        returnTo={typeof window === "undefined" ? "/" : window.location.pathname}
+        onClose={() => {
+          setAuthOpen(false);
+          onClose();
+        }}
+      />
     </div>
   );
 }

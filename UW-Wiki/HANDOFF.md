@@ -23,6 +23,14 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 
 ## Supabase Dashboard — Actions Taken
 
+### 2026-05-08 (FRD-5/6/7 implementation)
+- **FRD-5/6/7 migrations applied** via `npx supabase db query --linked --file ...`: `005_cold_start.sql`, `006_auth_ui.sql`, and `007_admin_dashboard.sql`.
+- **Schema now includes:** `cold_start_jobs`, `users.email_verified_at`, updated `handle_new_user` auth sync trigger, `admin_activity_log`, and `proposal_review_comments`.
+- **FRD-6 auth routes/UI:** `/auth/sign-in`, `/auth/callback`, `/auth/reset`, `POST /api/auth/sign-out`, global header, verify-email banner, `/my/bookmarks`, `/my/contributions`, `/my/profile`, pending-action replay scaffolding, and minimal `POST /api/bookmarks/toggle`.
+- **FRD-5 cold start:** `/admin/cold-start`, `/admin/cold-start/jobs`, identify/generate/status/draft/publish/rerun APIs, Tavily-backed best-effort research with deterministic fallback, cold-start publish creates org/page/page_version, seeds Selectivity/Tech Stack aggregates, and calls `reembedPage`.
+- **FRD-7 admin:** admin layout/sidebar/badges, activity log, lifecycle editor, Official Section seeder, user role/affiliation admin APIs, reports/reviews surfaces, and admin mutation audit logging.
+- **Known auth dashboard state:** Google OAuth is still not configured in Supabase/Google Cloud. Email/password UI exists, but live email verification/reset delivery depends on Supabase Auth email settings and templates.
+
 ### 2026-05-08 (audit hardening pass)
 - **`0042_security_hardening.sql` applied** via `npx supabase db query --linked --file ...`. Effects:
   - Revoked `EXECUTE` on `accept_proposal_commit(...)` and `increment_comment_vote(...)` from `PUBLIC`/`anon`/`authenticated`; only `service_role` can call them now.
@@ -69,6 +77,8 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 8 | **Docker not used.** | Deployment is Vercel + managed Supabase. The optional "Local-full mode" Docker setup in FRD-0 §3 is intentionally skipped. |
 | 9 | **FRD-1 needs RPC SQL despite `chunks` existing.** | Supabase JS cannot directly express `embedding <=> query_vector`, so FRD-1 adds `0011_rag_search_functions.sql` for semantic and keyword search RPCs. This has been applied via `supabase db query --linked --file ...`, not `db push`, because migration history is drifted from the manual FRD-0 apply. |
 | 10 | **OpenRouter chat route must use chat completions.** | `@ai-sdk/openai` v2 defaults `openrouter(model)` to the Responses API, which failed after tool outputs through OpenRouter. `/api/search` must use `openrouter.chat("google/gemini-2.5-flash")`. |
+| 11 | **Cold-start agent has deterministic fallback.** | FRD-5 references Claude/Tavily orchestration. Implementation uses Tavily when `TAVILY_API_KEY` is present, but falls back to deterministic section text so the admin flow remains testable without spending API calls or failing sparse research. |
+| 12 | **No dedicated cold-start system user yet.** | FRD-5 asks for `COLD_START_AGENT_USER_ID` and `pulse_ratings` rows. Current publish path seeds `pulse_aggregates` directly for Selectivity/Tech Stack. Add a real auth-backed system user before production if row-level Pulse provenance is required. |
 
 ---
 
@@ -104,6 +114,12 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 2026-05-08 (audit) | `npm run typecheck`, `npm run lint`, `npm run build` | All clean; build emits 15/15 routes including new audit fixes |
 | 2026-05-08 (audit) | live `POST /api/proposals` with `attrs.official: true` | Returns 422 INVALID_CONTENT — contributor cannot toggle official |
 | 2026-05-08 (audit) | live `POST /api/comments` anonymous + valid `POST /api/proposals` | Both 201; smoke data cleaned up |
+| 2026-05-08 (FRD-5/6/7) | `npm run typecheck` | clean |
+| 2026-05-08 (FRD-5/6/7) | `npm run lint` | no warnings |
+| 2026-05-08 (FRD-5/6/7) | `npm run build` | 26/26 routes generated, including auth, `/my/*`, cold-start, admin users/lifecycle/activity/official sections |
+| 2026-05-08 (FRD-5/6/7) | `node scripts/smoke-test-supabase.mjs` | 21/21 tables present including `cold_start_jobs`, `admin_activity_log`, `proposal_review_comments` |
+| 2026-05-08 (FRD-5/6/7) | `node scripts/smoke-test-frd567.mjs` | FRD-5/6/7 schema smoke passed: tables, `users.email_verified_at`, cold_start job insert, seed org/page |
+| 2026-05-08 (FRD-5/6/7) | live unauth protected route probes | `/my/profile` redirects to sign-in with `returnTo=/my/profile`; admin routes redirect with their own `returnTo` |
 
 ---
 
@@ -111,7 +127,9 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 
 - Add/monitor OpenRouter credits before heavier RAG testing; current balance can run capped MVP responses (`maxOutputTokens: 1200`) but rejected the default 65k output budget.
 - Verify a Resend sending domain (FRD-9).
-- Configure Google OAuth in Google Cloud + Supabase Auth (FRD-6).
+- Configure Google OAuth in Google Cloud + Supabase Auth (FRD-6) before testing Google sign-in end-to-end.
+- Create at least one admin/reviewer user in Supabase Auth and set `public.users.role` to test admin surfaces end-to-end in browser.
+- Decide whether to create a real `COLD_START_AGENT_USER_ID` service user for Pulse provenance; current MVP seeds Pulse aggregates directly.
 - Create or sign in with a reviewer/admin account before live-testing FRD-4 accept/reject/request-changes through authenticated endpoints.
 - Resolve Supabase migration-history drift before relying on `npx supabase db push` for future migrations. Current workaround: apply single SQL files with `npx supabase db query --linked --file ...`.
 - Create a Vercel project, paste env vars, link to GitHub repo.

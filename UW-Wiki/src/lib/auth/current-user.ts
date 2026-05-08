@@ -6,6 +6,8 @@ export type CurrentUser = {
   id: string;
   email: string;
   displayName: string | null;
+  avatarUrl: string | null;
+  emailVerifiedAt: string | null;
   role: "user" | "reviewer" | "admin";
 };
 
@@ -22,7 +24,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("display_name, role, email")
+    .select("display_name, avatar_url, role, email, email_verified_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -30,6 +32,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     id: user.id,
     email: profile?.email ?? user.email ?? "",
     displayName: profile?.display_name ?? null,
+    avatarUrl: profile?.avatar_url ?? null,
+    emailVerifiedAt: profile?.email_verified_at ?? null,
     role: (profile?.role as CurrentUser["role"]) ?? "user",
   };
 }

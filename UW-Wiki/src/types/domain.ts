@@ -272,3 +272,100 @@ export type ProposalSummary = {
   rationale: string | null;
   createdAt: string;
 };
+
+// ---------------------------------------------------------------------
+// FRD-5: cold start jobs
+// ---------------------------------------------------------------------
+
+export const COLD_START_STATUSES = [
+  "draft",
+  "identifying",
+  "awaiting_confirmation",
+  "researching",
+  "synthesizing",
+  "ready_for_preview",
+  "published",
+  "failed",
+  "cancelled",
+] as const;
+
+export type ColdStartStatus = (typeof COLD_START_STATUSES)[number];
+
+export type ColdStartInputType = "name" | "url";
+
+export type ColdStartOrgMetadata = {
+  name: string;
+  slug?: string;
+  oneLiner?: string;
+  website?: string;
+  category: OrgCategory;
+  confidence?: "low" | "medium" | "high";
+  sources?: string[];
+};
+
+export type ColdStartPulseEstimates = {
+  selectivity?: string | null;
+  techStack?: string[] | null;
+  vibeCheck?: null;
+  coopBoost?: null;
+};
+
+export type ColdStartJob = {
+  id: string;
+  createdBy: string | null;
+  supersedesJobId: string | null;
+  inputText: string;
+  inputType: ColdStartInputType;
+  status: ColdStartStatus;
+  categoryHint: OrgCategory | null;
+  orgMetadata: ColdStartOrgMetadata | null;
+  researchData: Record<string, unknown>;
+  draftContentJson: ProseMirrorDoc | null;
+  pulseEstimates: ColdStartPulseEstimates;
+  sectionSources: Record<string, string[]>;
+  sectionProgress: Array<{
+    slug: string;
+    title: string;
+    status: "pending" | "in_progress" | "completed" | "skipped" | "failed";
+    sourceCount?: number;
+    message?: string;
+  }>;
+  tavilyCallCount: number;
+  currentStep: string | null;
+  error: string | null;
+  publishedOrgId: string | null;
+  publishedPageId: string | null;
+  publishedPageVersionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+// ---------------------------------------------------------------------
+// FRD-6 / FRD-7: auth, pending actions, admin
+// ---------------------------------------------------------------------
+
+export type PendingActionType =
+  | "pulse.vote"
+  | "comment.vote"
+  | "bookmark.toggle";
+
+export type PendingActionEnvelope = {
+  id: string;
+  type: PendingActionType;
+  savedAt: string;
+  expiresAt: string;
+  returnTo?: string;
+  payload: unknown;
+};
+
+export type AdminActivity = {
+  id: string;
+  actorId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  summary: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};

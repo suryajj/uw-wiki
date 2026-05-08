@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
+import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { recordDecisionLog, reviewerAffiliationForProposal } from "@/lib/proposals/service";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -51,6 +52,14 @@ export async function POST(req: Request, { params }: RouteCtx) {
     reviewerId: user.id,
     isReviewerAffiliated,
     note: parsed.data.message,
+  });
+  await logAdminActivity({
+    actorId: user.id,
+    action: "request_changes",
+    entityType: "edit_proposal",
+    entityId: id,
+    summary: "Requested changes on proposal",
+    metadata: { is_reviewer_affiliated: isReviewerAffiliated },
   });
   return apiSuccess({ message: "Changes requested.", isReviewerAffiliated });
 }
