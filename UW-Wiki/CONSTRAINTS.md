@@ -169,12 +169,12 @@ FRD-0 says "3.x or 4.x (AI SDK v5-compatible)" — choose 3.x.
 
 ## 4. Migration File Numbering Convention
 
-Each FRD that adds schema gets exactly one migration file. The naming convention is `00N_description.sql` where N is the FRD number.
+Each FRD that adds schema gets a numbered migration file. The naming convention is `00N_description.sql` where N is the FRD number; if an FRD later needs a second DB object migration, suffix the same number with an extra digit (for example `0011_...`) so it sorts after that FRD's baseline work and before later FRDs.
 
 | FRD | Migration File | Notes |
 |---|---|---|
 | FRD-0 | `001_init_foundation.sql` | All baseline tables + FRD 2/3 forward-compat fields |
-| FRD-1 | *(no migration)* | Schema already in FRD-0's `chunks` table |
+| FRD-1 | `0011_rag_search_functions.sql` | `chunks` schema is in FRD-0, but pgvector/FTS search RPCs live here |
 | FRD-2 | `002_wiki_pages.sql` | `ALTER TABLE` additions for affiliation model |
 | FRD-3 | `003_comments.sql` | `ALTER TABLE comments` for votes, hidden, etc. |
 | FRD-4 | `004_pr_edit_system.sql` | `ALTER TABLE edit_proposals` additions |
