@@ -1,0 +1,232 @@
+UW-Wiki/src/components/wiki/lifecycle-banner.tsx
+  s_55d256654aa195::t_9c56aa6632a20f 2,4,8,12,15,17
+  s_55d256654aa195::t_58aa48dc1a80dc 1,3,5-7,9-11,13-14,16,18-36
+UW-Wiki/src/app/admin/reports/report-actions.tsx
+  s_55d256654aa195::t_d4c857b91654fe 1-91
+UW-Wiki/src/lib/rate-limit.ts
+  s_55d256654aa195::t_c7b6956150fb38 3-4,19-26,31-36,46-50,52-90
+UW-Wiki/src/app/wiki/[slug]/history/page.tsx
+  s_55d256654aa195::t_8bc72982662cfe 1-45,47-61
+  s_55d256654aa195::t_fe4365fafe8056 46
+  s_55d256654aa195::t_cc5a424fa40a1f 62-67
+UW-Wiki/src/app/api/admin/reports/[id]/dismiss/route.ts
+  s_55d256654aa195::t_7185206d91d87f 1-24
+UW-Wiki/src/lib/wiki/template.ts
+  s_55d256654aa195::t_6acaa6bae252e3 2,13,16-21,24
+  s_55d256654aa195::t_df0a493c20d0b6 1,3-12,14-15,22-23,25-28
+UW-Wiki/src/app/api/admin/comments/[id]/hide/route.ts
+  s_55d256654aa195::t_8cb37559eafab7 1-28
+UW-Wiki/src/app/api/comments/route.ts
+  s_55d256654aa195::t_f57699b40bdbce 1-2,4,6,8-27,30-31,34-50,52-54,57-60
+  s_55d256654aa195::t_d6b4ef7b45168e 3,5,7,28-29,32-33,51,55-56
+UW-Wiki/src/app/api/comments/[id]/route.ts
+  s_55d256654aa195::t_2f64383e2a2d01 3,20-21,42-48,68-71
+  s_55d256654aa195::t_7a76990702e251 1-2,4-19,22-41,49-67,72-73
+UW-Wiki/src/components/comments/comments-widget.tsx
+  s_55d256654aa195::t_4989f58bc425d3 43-44,46-47,49-50,53
+  s_55d256654aa195::t_3ce54b75584758 3-9,20,23-29,35-41,45,48,57-59,63-65,73-78,84-198,203-205,213,215,221,224,233,237,243-245,250,264-265,269,297-306,312-315,318-326,334-336,339-340,345-383,385-389,392-418,421,423-429,437-438,440,444-445,447,451,454-455,460-468,473,488-489,493-494,511-517,525-532,534-541,544-550,554-562,564-566,568-572,575-576,591,598-729,731-739,749-751,754-755
+  s_55d256654aa195::t_378ed884af698d 1-2,10-19,21-22,30-34,42,51-52,54-56,60-62,66-72,79-83,199-202,206-212,214,216-220,222-223,225-232,234-236,238-242,246-249,251-263,266-268,270-296,307-311,316-317,327-333,337-338,341-344,384,390-391,419-420,422,430-436,439,441-443,446,448-450,452-453,456-459,469-472,474-487,490-492,495-510,518-524,533,542-543,551-553,563,567,573-574,577-590,592-597,730,740-748,752-753,756-762
+UW-Wiki/src/app/api/proposals/[id]/mergeability/route.ts
+  s_55d256654aa195::t_7850b0576122e7 1-20
+UW-Wiki/src/app/api/proposals/[id]/patchsets/route.ts
+  s_55d256654aa195::t_61e49c6d63e2c5 28
+  s_55d256654aa195::t_5505eab57bff86 1,3,16-19,25
+  s_55d256654aa195::t_3eea74a0593aa6 2,4-15,20-24,26-27
+UW-Wiki/src/lib/editor/autosave.ts
+  s_55d256654aa195::t_ff37449daa3a80 1-47
+UW-Wiki/src/app/search/page.tsx
+  s_55d256654aa195::t_80a936ccb665cb 4-26,29-33,59-93,95-96,124-135
+UW-Wiki/src/lib/comments/rate-limits.ts
+  s_55d256654aa195::t_b349839a34cff9 1-41
+UW-Wiki/src/lib/comments/update-anchors.ts
+  s_55d256654aa195::t_bf713556225d9b 1-6,12-17,19-20,22-24,30,36-38,54-56
+  s_55d256654aa195::t_33a83c349c1b45 7-11,18,21,25-29,31-35,39-53
+UW-Wiki/src/lib/proposals/service.ts
+  s_55d256654aa195::t_cfc76173ac9abc 461-501
+  s_55d256654aa195::t_cda33088d75e3a 9
+  s_55d256654aa195::t_464a26dd9673e0 6,19
+  s_55d256654aa195::t_81668ee2c2ef68 106-168
+  s_55d256654aa195::t_5dd9be9d180787 268-270,273-282,284-289,298-299,308-311,313-324,346-349,351-355
+  s_55d256654aa195::t_2bfa8925cfb61e 1-5,7-8,10-18,20-105,169-197,199-200,202-203,205-267,271-272,283,290-297,300-307,312,325-345,350,356-460,502-534,574-576
+  s_55d256654aa195::t_32cba54f51c877 198,201,204,535-573
+UW-Wiki/package-lock.json
+  ai_agent 15-26,32,35,3061-3580,3640-3645,4841-4850,5623-5631,6939-6944,7355-7360,7531-7659,7964-7969,8864-8868
+UW-Wiki/src/app/admin/reviews/[id]/page.tsx
+  s_55d256654aa195::t_ca2e41e128798c 4-7,9-10,12-13,16,29-32,39-68,74-77,80,103-118
+  s_55d256654aa195::t_37aad426b6d8cf 1-3,8,11,14-15,17-28,33-38,69-73,78-79,81-102,119-120
+UW-Wiki/src/lib/comments/markdown.ts
+  s_55d256654aa195::t_d0591970a9a5cd 28
+  s_55d256654aa195::t_e630e47a75a4ab 16-19,27,29-38
+  s_55d256654aa195::t_aa00e24823dd37 1-15,20-26
+UW-Wiki/src/app/admin/reviews/[id]/reviewer-actions.tsx
+  s_55d256654aa195::t_8549c350b0f616 1-110
+UW-Wiki/src/lib/api/errors.ts
+  s_55d256654aa195::t_bb215eda741d3e 39-43,54-58,60,66-78,80-81,87-101
+  s_55d256654aa195::t_40681d66d792f9 1-38,44-53,82-86,102
+  s_55d256654aa195::t_401157d5d380fe 59,61-65,79
+UW-Wiki/src/app/api/proposals/[id]/withdraw/route.ts
+  s_55d256654aa195::t_e1f2f4d87f687b 1-29
+UW-Wiki/supabase/migrations/0042_security_hardening.sql
+  s_55d256654aa195::t_c314eba262b23e 1-60
+UW-Wiki/src/app/api/pulse/vote/route.ts
+  s_55d256654aa195::t_fa55c424360f49 3-8,24-25,35-39,41,70,74-78,89-90,115-129,137-143,154-155
+  s_55d256654aa195::t_abf89984e1fa13 1-2,9-23,26-34,40,42-69,71-73,79-88,91-114,130-136,144-153,156
+UW-Wiki/src/types/domain.ts
+  s_55d256654aa195::t_ddcc9c57c82701 30-34,39
+  s_55d256654aa195::t_9e5a14ad3d21d7 84-141,143-274
+  s_55d256654aa195::t_cb2ce923dc92df 142
+UW-Wiki/src/components/directory/directory-view.tsx
+  s_55d256654aa195::t_f3d26fde9d3a22 1-12,15-17,19-40,50,58,90-93,98-132,140-174
+  s_55d256654aa195::t_e592b8025bb509 13-14,18,41-49,51-57,59-89,94-97,133-139,175
+UW-Wiki/src/app/api/proposals/route.ts
+  s_55d256654aa195::t_d009a407b752b7 2,4-12,15,18-24,26-27
+  s_55d256654aa195::t_bb91d178078e91 1,3,13-14,16-17,25
+UW-Wiki/src/app/admin/reviews/page.tsx
+  s_55d256654aa195::t_913faecf0541dc 1-51
+UW-Wiki/scripts/smoke-test-frd234.mjs
+  s_55d256654aa195::t_99d9d6fadb49fe 1-39
+UW-Wiki/src/lib/utils/slug.ts
+  s_55d256654aa195::t_68618158461905 1-14
+UW-Wiki/src/app/admin/reports/page.tsx
+  s_55d256654aa195::t_a1002091b02d94 5-6,15-16,40-41,65-70
+  s_55d256654aa195::t_054ba1bac576db 1-4,7-14,17-24,35-39,42-64,71-77
+  s_55d256654aa195::t_79ed1ee703f97b 25-34
+UW-Wiki/src/app/api/search/route.ts
+  s_55d256654aa195::t_995f1833358c85 12,17
+  s_55d256654aa195::t_13cb1b1f1de701 16,24,28-43,45,49-50,53-56,59,63-65,68,81,95-99,101-135
+UW-Wiki/src/lib/proposals/rate-limits.ts
+  s_55d256654aa195::t_885c1c3ae4a54f 1-47
+UW-Wiki/package.json
+  s_55d256654aa195::t_6e8a3a6280ea23 18-29,35,38
+UW-Wiki/src/lib/editor/extensions.ts
+  s_55d256654aa195::t_9ced691563afdb 5
+  s_55d256654aa195::t_24777446a4f371 1-4,6-36
+UW-Wiki/src/lib/prosemirror/hash.ts
+  s_55d256654aa195::t_ae75c81cc8ed27 1-37
+UW-Wiki/scripts/smoke-test-audit-fixes.mjs
+  s_55d256654aa195::t_f85b3d9310c676 51,54-55
+  s_55d256654aa195::t_76a1f58806a33d 1-4,6-7,14-50,52-53,56-187
+  s_55d256654aa195::t_3117af10ff3065 5,8-13
+UW-Wiki/src/app/api/proposals/[id]/route.ts
+  s_55d256654aa195::t_1b50a4ac1fcced 1-14
+UW-Wiki/HANDOFF.md
+  s_55d256654aa195::t_261ad556acbb5c 103-106
+  s_55d256654aa195::t_0a3c0dee8ece79 26-32
+  s_55d256654aa195::t_7e57087fd4821f 33-37,65,95-102,115
+  s_55d256654aa195::t_ede728b78f9d4a 66-67
+UW-Wiki/src/lib/comments/service.ts
+  s_55d256654aa195::t_b7355f4e8f2cea 4,6,23,29-39,42-79
+  s_55d256654aa195::t_1b6e8f5c9e6334 164,167-173
+  s_55d256654aa195::t_d00c461cf0e204 1-3,5,7-22,24-28,40-41,80-163,166,174
+  s_55d256654aa195::t_7d2a182ae0d9cd 165
+UW-Wiki/src/components/wiki/pulse-sidebar.tsx
+  s_55d256654aa195::t_0199a753d5bc14 1-2,4-21,30-40,44-47,65-72,87-97,100-102,109-133,141,235-237,257,259,261-265,270-271,273,275-276,307,314,438-441
+  s_55d256654aa195::t_cf1a9e23e1469c 3,22-29,41-43,48-64,73-86,98-99,103-108,134-140,142-234,238-256,258,260,266-269,272,274,277-306,308-313,315-437
+UW-Wiki/src/lib/prosemirror/diff.ts
+  s_55d256654aa195::t_48eeae27500524 1-106
+UW-Wiki/src/app/api/admin/comments/[id]/unhide/route.ts
+  s_55d256654aa195::t_1b8f3027c6dba4 1-19
+UW-Wiki/src/components/directory/directory-search.tsx
+  s_55d256654aa195::t_54dbc8f63165d9 1-37
+UW-Wiki/src/components/wiki/table-of-contents.tsx
+  s_55d256654aa195::t_d948a405544e8b 1-14,16-37,107-108
+  s_55d256654aa195::t_756aa137fb640a 15,38-106
+UW-Wiki/src/app/wiki/[slug]/page.tsx
+  s_55d256654aa195::t_ecfb136e325d5e 1-8,10-13,18,20-22,24-25,27,29-48,67,69-105,108-110,115,120,129
+  s_55d256654aa195::t_f31db14d0345be 9,14-17,26,28,49-66,106-107,111-114,116-119,121-128
+UW-Wiki/supabase/migrations/004_pr_edit_system.sql
+  s_55d256654aa195::t_7459d49bb63094 1-149
+UW-Wiki/src/lib/ai/rag.ts
+  s_55d256654aa195::t_878f24c07763a6 41-46,49,54-55,59-64,67
+  s_55d256654aa195::t_68634582acc619 88-89,95
+  s_55d256654aa195::t_60206cb4cc8ade 6-11
+  s_55d256654aa195::t_1961e8bd9de984 163-167
+UW-Wiki/src/lib/ai/tools.ts
+  s_55d256654aa195::t_4955c6cfad332b 119,126-127,129,139-140,145,182-214
+UW-Wiki/src/lib/auth/current-user.ts
+  s_55d256654aa195::t_11bbd88a319230 1-50
+UW-Wiki/src/components/wiki/wiki-article-shell.tsx
+  s_55d256654aa195::t_54492f34b13793 1-2,4-234,236-294,296-425
+  s_55d256654aa195::t_f08cdc14e1d749 295
+  s_55d256654aa195::t_78389c089c9071 3
+  s_55d256654aa195::t_e1810cf2daaaed 235
+UW-Wiki/src/lib/prosemirror/validate.ts
+  s_55d256654aa195::t_b4492bce0e5b57 1-32,35-40,44-96,100-133,139-142,153-164
+  s_55d256654aa195::t_561c12d07d0307 33-34,41-43,97-99,134-138,143-152
+UW-Wiki/src/app/api/comments/[id]/report/route.ts
+  s_55d256654aa195::t_8d46f525659c44 1-2,4-18,21-29,34-35
+  s_55d256654aa195::t_1336c2568d4689 3,19-20,30-33
+UW-Wiki/src/lib/prosemirror/render.tsx
+  s_55d256654aa195::t_a286e640849916 200-203
+  s_55d256654aa195::t_701477aca30be3 115
+  s_55d256654aa195::t_eb7dfe2bd4614b 1-14,19-114,116,118-199,204-219
+  s_55d256654aa195::t_9e7d21dd86db40 15-18
+  s_55d256654aa195::t_aaffb2c2ac122a 117
+UW-Wiki/src/lib/lifecycle.ts
+  s_55d256654aa195::t_c9baa0cb186c51 1-18,23
+  s_55d256654aa195::t_6dd0b9c69345a5 19-22,24-57
+UW-Wiki/src/lib/comments/anchoring.ts
+  s_55d256654aa195::t_cbf2a3a6193873 1-24
+UW-Wiki/src/lib/wiki/data.ts
+  s_55d256654aa195::t_42a79b903305a0 17-28
+  s_55d256654aa195::t_283d78ecbc72e8 41-42,46-49
+  s_55d256654aa195::t_6e3071fab086d8 148-153
+  s_55d256654aa195::t_812a935a9a89ef 84,104-106
+  s_55d256654aa195::t_c15a24f52b75a3 1-16,29-40,43-45,50-83,85-103,107-109,111-114,116-119,123-147,154-171,173-208,214-234
+  s_55d256654aa195::t_e1f215792bffb9 172
+  s_55d256654aa195::t_3c6580225d2017 209-213
+  s_55d256654aa195::t_43ea567c86a006 110,115,120-122
+UW-Wiki/src/app/api/admin/proposals/route.ts
+  s_55d256654aa195::t_49261d15dd9136 1-12
+UW-Wiki/src/app/api/comments/[id]/replies/route.ts
+  s_55d256654aa195::t_ba06a6a505ebe1 3,5,7,20-22,24-25,30,34-36,38-41,57-63
+  s_55d256654aa195::t_a1f1b164b39fdc 1-2,4,6,8-19,23,26-29,31-33,37,42-56,64-66
+UW-Wiki/src/lib/ai/embeddings.ts
+  s_55d256654aa195::t_27df8bde910e16 1-2,4-8,10-11,19
+  s_55d256654aa195::t_f1a7d126e866e5 69-84,86,91
+  s_55d256654aa195::t_61421e92f0f216 253-256
+UW-Wiki/src/app/api/proposals/[id]/request-changes/route.ts
+  s_55d256654aa195::t_1bbaebf633585e 1-2,4,6-18,21-34,37-44,56
+  s_55d256654aa195::t_529bd5b67fac2b 3,5,19-20,35-36,45-55
+UW-Wiki/src/lib/editor/upload.ts
+  s_55d256654aa195::t_b009059b0d9ee4 3-18,20-26,34
+  s_55d256654aa195::t_b957fe33e97276 1-2,19,27-33,35-40
+UW-Wiki/src/app/api/comments/[id]/vote/route.ts
+  s_55d256654aa195::t_50d2efbccef401 3,19-20,23-26,28,32-35,37-40,47,49,52-55,57-71,76-86
+  s_55d256654aa195::t_90f91454306584 1-2,4-18,21-22,27,29-31,36,41-46,48,50-51,56,72-75,87-89
+UW-Wiki/scripts/smoke-ingest-seed-page.mjs
+  s_55d256654aa195::t_e00fb89bad0184 72,79-82,96
+UW-Wiki/src/lib/prosemirror/sections.ts
+  s_55d256654aa195::t_edeaf170628767 124
+  s_55d256654aa195::t_db164bc750ae9b 1,3-123,125-176
+  s_55d256654aa195::t_359d68f1499fba 2
+UW-Wiki/src/app/api/proposals/[id]/reject/route.ts
+  s_55d256654aa195::t_5a2ef9ed660d00 1-2,4,6-18,21-34,37-45,57
+  s_55d256654aa195::t_d5442e2056cc4b 3,5,19-20,35-36,46-56
+UW-Wiki/src/app/api/proposals/[id]/accept/route.ts
+  s_55d256654aa195::t_09223a8ea1ffcf 1-21
+UW-Wiki/supabase/migrations/003_comments.sql
+  s_55d256654aa195::t_110f849ddc79cd 1-81
+UW-Wiki/src/lib/utils/time.ts
+  s_55d256654aa195::t_1966ba822640b0 1-24
+UW-Wiki/src/app/page.tsx
+  s_55d256654aa195::t_ff4a5193b4c2a0 1-7,9-21
+UW-Wiki/supabase/migrations/002_wiki_pages.sql
+  s_55d256654aa195::t_0e21b6344bbaa1 1-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "e780af600aa8a19afad7ef5e6cec50dede9da3eb",
+  "prompts": {},
+  "sessions": {
+    "s_55d256654aa195": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7a8abee9-5f05-4223-96f8-878d40e658e3",
+        "model": "claude-opus-4-7-thinking-xhigh"
+      },
+      "human_author": "Abeer Das <abeer.das@spellbook.legal>"
+    }
+  }
+}
