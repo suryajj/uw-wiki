@@ -1,13 +1,22 @@
+import "server-only";
+
 import { env } from "@/lib/config/env";
+import {
+  extractPlainText,
+  extractSections,
+  sectionToProseMirrorDoc,
+} from "@/lib/prosemirror/sections";
 import { eq, inList, supabaseRest } from "@/lib/supabase/rest";
+import { logServerError } from "@/lib/api/errors";
+import { slugify } from "@/lib/utils/slug";
 import type {
   CommentData,
   OrgMeta,
   ProseMirrorDoc,
-  ProseMirrorNode,
 } from "@/types/domain";
 
 export type { CommentData, OrgMeta, ProseMirrorDoc };
+export { slugify };
 
 const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 512;
@@ -44,7 +53,6 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
 
   const vectors: number[][] = [];
   for (const batch of createEmbeddingBatches(texts)) {
-    console.info(`[rag] embedding ${batch.length} text(s)`);
     vectors.push(...(await embedBatchOnceWithRetry(batch)));
   }
   return vectors;
@@ -58,17 +66,29 @@ export function chunkProseMirrorDoc(
   const chunks: EmbeddedChunk[] = [];
 
   for (const section of sections) {
-    const sectionSlug = slugify(section.title);
-    const parts = splitLongText(section.body);
+    // Use the canonical slug from `attrs.slug` (or its computed fallback) so
+    // FRD-4 §6.1 post-accept `reembedSections(pageId, sectionSlugs, ...)`
+    // filtering by slug actually targets the matching chunks.
+    const sectionSlug = section.slug || slugify(section.title) || "section";
+    const sectionDoc = sectionToProseMirrorDoc(section);
+    const bodyText = extractPlainText({ type: "doc", content: section.body })
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    // Empty sections still get a chunk so keyword search can match the
+    // heading text — FRD-1 §2.2 #7 explicitly forbids dropping short
+    // sections.
+    const bodyParts = bodyText ? splitLongText(bodyText) : [""];
 
-    for (const [partIndex, part] of parts.entries()) {
-      const partSuffix = parts.length > 1 ? ` [Part ${partIndex + 1}/${parts.length}]` : "";
+    for (const [partIndex, part] of bodyParts.entries()) {
+      const partSuffix =
+        bodyParts.length > 1 ? ` [Part ${partIndex + 1}/${bodyParts.length}]` : "";
       const header = `[${orgMeta.orgName} > ${section.title}${partSuffix}]`;
+      const body = part || extractPlainText(sectionDoc).trim() || section.title;
       chunks.push({
         sectionTitle: section.title,
         sectionSlug,
         chunkIndex: partIndex,
-        contentWithHeader: `${header}\n${part}`,
+        contentWithHeader: `${header}\n${body}`,
       });
     }
   }
@@ -197,16 +217,6 @@ export async function reembedComment(
   });
 }
 
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHUNKING_CONFIG.CHARS_PER_TOKEN);
 }
@@ -240,7 +250,10 @@ async function embedBatchOnceWithRetry(texts: string[]): Promise<number[][]> {
   try {
     return await embedBatchOnce(texts);
   } catch (error) {
-    if (!isTransientEmbeddingError(error)) throw error;
+    if (!isTransientEmbeddingError(error)) {
+      logServerError("ai.embeddings.batch", error);
+      throw error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 1000));
     return embedBatchOnce(texts);
   }
@@ -302,54 +315,6 @@ function isTransientEmbeddingError(error: unknown): boolean {
     TRANSIENT_STATUS_CODES.has(error.status)
   );
 }
-
-function extractSections(doc: ProseMirrorDoc): Array<{ title: string; body: string }> {
-  const sections: Array<{ title: string; nodes: ProseMirrorNode[] }> = [];
-  let current: { title: string; nodes: ProseMirrorNode[] } | null = null;
-
-  for (const node of doc.content ?? []) {
-    if (node.type === "heading" && typeof node.attrs?.level === "number") {
-      if (current) sections.push(current);
-      current = {
-        title: extractText(node).trim() || "Untitled Section",
-        nodes: [],
-      };
-      continue;
-    }
-
-    if (!current) {
-      current = { title: "Overview", nodes: [] };
-    }
-    current.nodes.push(node);
-  }
-
-  if (current) sections.push(current);
-
-  return sections
-    .map((section) => ({
-      title: section.title,
-      body: section.nodes.map(extractText).join("\n").replace(/\n{3,}/g, "\n\n").trim(),
-    }))
-    .filter((section) => section.body.length > 0);
-}
-
-function extractText(node: ProseMirrorNode): string {
-  if (node.type === "text") return node.text ?? "";
-  if (!node.content || node.content.length === 0) return "";
-  const separator = blockNodeTypes.has(node.type) ? "\n" : "";
-  return node.content.map(extractText).join(separator);
-}
-
-const blockNodeTypes = new Set([
-  "paragraph",
-  "heading",
-  "bulletList",
-  "orderedList",
-  "listItem",
-  "blockquote",
-  "table",
-  "tableRow",
-]);
 
 function splitLongText(text: string): string[] {
   if (estimateTokens(text) <= CHUNKING_CONFIG.MAX_TOKENS) return [text];

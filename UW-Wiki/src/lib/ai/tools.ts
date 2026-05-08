@@ -116,15 +116,17 @@ export const listOrgsTool = tool({
     limit: z.number().int().min(1).max(10).default(5),
   }),
   execute: async ({ metric, order, category, limit }) => {
-    if (metric && metric !== "selectivity" && metric !== "tech_stack") {
+    if (metric && metric !== "tech_stack") {
       const select = encodeURIComponent(
         "aggregate_value,aggregate_label,total_votes,organizations!inner(org_name,org_slug,category)",
       );
       const categoryFilter = category
         ? `&organizations.category=${eq(category)}`
         : "";
+      // Pull all candidates (the table is small) and sort in app code so
+      // numeric metrics aren't compared lexicographically — FRD-1 §13 #25.
       const rows = await supabaseRest<RankedPulseRow[]>(
-        `/pulse_aggregates?select=${select}&metric=${eq(metric)}&total_votes=gte.3${categoryFilter}&order=aggregate_value.${order}&limit=${limit}`,
+        `/pulse_aggregates?select=${select}&metric=${eq(metric)}&total_votes=gte.3${categoryFilter}`,
       );
 
       if (rows.length === 0) {
@@ -134,11 +136,13 @@ export const listOrgsTool = tool({
         };
       }
 
+      const sorted = sortRankedRows(rows, metric, order).slice(0, limit);
+
       return {
         found: true,
         metric,
         order,
-        orgs: rows.map((row) => ({
+        orgs: sorted.map((row) => ({
           orgName: row.organizations.org_name,
           orgSlug: row.organizations.org_slug,
           category: row.organizations.category,
@@ -174,6 +178,40 @@ export const listOrgsTool = tool({
     };
   },
 });
+
+const SELECTIVITY_RANK: Record<string, number> = {
+  // Higher rank = "more selective". Used so `order: desc` (most selective
+  // first) and `order: asc` (most open first) both behave per FRD-1 §5.2c.
+  "Invite-Only": 3,
+  "Application-Based": 2,
+  "Open Membership": 1,
+};
+
+function sortRankedRows(
+  rows: RankedPulseRow[],
+  metric: PulseMetric,
+  order: "asc" | "desc",
+): RankedPulseRow[] {
+  const direction = order === "asc" ? 1 : -1;
+  const cloned = [...rows];
+  if (metric === "selectivity") {
+    cloned.sort((a, b) => {
+      const left = SELECTIVITY_RANK[a.aggregate_value] ?? 0;
+      const right = SELECTIVITY_RANK[b.aggregate_value] ?? 0;
+      return (left - right) * direction;
+    });
+    return cloned;
+  }
+  cloned.sort((a, b) => {
+    const left = Number.parseFloat(a.aggregate_value);
+    const right = Number.parseFloat(b.aggregate_value);
+    if (Number.isNaN(left) && Number.isNaN(right)) return 0;
+    if (Number.isNaN(left)) return 1;
+    if (Number.isNaN(right)) return -1;
+    return (left - right) * direction;
+  });
+  return cloned;
+}
 
 export const ragTools = {
   search_wiki: searchWikiTool,

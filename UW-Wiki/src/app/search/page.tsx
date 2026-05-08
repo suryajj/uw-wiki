@@ -1,10 +1,36 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useState, type FormEvent } from "react";
+import { DefaultChatTransport } from "ai";
+import { useMemo, useState, type FormEvent } from "react";
+
+type ToolPart = {
+  type: string;
+  toolName?: string;
+  output?: unknown;
+};
+
+type SearchChunk = {
+  citationIndex: number;
+  orgName: string;
+  orgSlug: string;
+  sectionTitle: string | null;
+  sectionSlug: string | null;
+  sourceUrl: string;
+};
+
+type SearchToolOutput = {
+  found?: boolean;
+  chunks?: SearchChunk[];
+  suggestedPages?: Array<{ orgName: string; orgSlug: string }>;
+};
 
 export default function SearchPage() {
-  const { messages, status, sendMessage, error } = useChat();
+  const transport = useMemo(
+    () => new DefaultChatTransport({ api: "/api/search" }),
+    [],
+  );
+  const { messages, status, sendMessage, error } = useChat({ transport });
   const [input, setInput] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -30,28 +56,44 @@ export default function SearchPage() {
             Try: What is WATonomous like? or Which design teams use ROS2?
           </p>
         ) : (
-          messages.map((message) => (
-            <div key={message.id} className="rounded-md border p-3">
-              <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
-                {message.role}
+          messages.map((message) => {
+            const citations = collectCitations(message.parts as ToolPart[]);
+            return (
+              <div key={message.id} className="rounded-md border p-3">
+                <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  {message.role}
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-6">
+                  {message.parts.map((part, index) => {
+                    if (part.type === "text") {
+                      return <span key={index}>{part.text}</span>;
+                    }
+                    if (part.type.startsWith("tool-")) {
+                      return (
+                        <span key={index} className="block text-muted-foreground">
+                          [{part.type.replace("tool-", "")} tool call]
+                        </span>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+                {citations.length > 0 ? (
+                  <ol className="mt-3 space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
+                    {citations.map((citation) => (
+                      <li key={`${citation.citationIndex}-${citation.sourceUrl}`}>
+                        <span className="text-primary">[{citation.citationIndex}]</span>{" "}
+                        <a className="underline" href={citation.sourceUrl}>
+                          {citation.orgName}
+                          {citation.sectionTitle ? ` — ${citation.sectionTitle}` : ""}
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
               </div>
-              <div className="whitespace-pre-wrap text-sm leading-6">
-                {message.parts.map((part, index) => {
-                  if (part.type === "text") {
-                    return <span key={index}>{part.text}</span>;
-                  }
-                  if (part.type.startsWith("tool-")) {
-                    return (
-                      <span key={index} className="block text-muted-foreground">
-                        [{part.type.replace("tool-", "")} tool call]
-                      </span>
-                    );
-                  }
-                  return null;
-                })}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </section>
 
@@ -78,4 +120,17 @@ export default function SearchPage() {
       </form>
     </main>
   );
+}
+
+function collectCitations(parts: ToolPart[]): SearchChunk[] {
+  const seen = new Map<string, SearchChunk>();
+  for (const part of parts) {
+    if (!part.type.startsWith("tool-")) continue;
+    const output = part.output as SearchToolOutput | undefined;
+    if (!output?.found || !output.chunks) continue;
+    for (const chunk of output.chunks) {
+      if (!seen.has(chunk.sourceUrl)) seen.set(chunk.sourceUrl, chunk);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.citationIndex - b.citationIndex);
 }

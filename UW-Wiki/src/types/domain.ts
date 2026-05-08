@@ -27,10 +27,16 @@ export type ProseMirrorTextNode = {
   text?: string;
 };
 
+export type ProseMirrorMark = {
+  type: string;
+  attrs?: Record<string, unknown>;
+};
+
 export type ProseMirrorNode = {
   type: string;
   attrs?: Record<string, unknown>;
   content?: ProseMirrorNode[];
+  marks?: ProseMirrorMark[];
   text?: string;
 };
 
@@ -74,4 +80,195 @@ export type ChunkResult = {
 export type FallbackPage = {
   orgName: string;
   orgSlug: string;
+};
+
+// ---------------------------------------------------------------------
+// FRD-2: pages, lifecycle, pulse, external links, affiliations
+// ---------------------------------------------------------------------
+
+export type LifecycleStatus =
+  | "active"
+  | "needs_update"
+  | "stale"
+  | "potentially_defunct";
+
+export type LifecycleConfig = {
+  category: string;
+  needsUpdateDays: number;
+  staleDays: number;
+  defunctDays: number;
+};
+
+export type PulseAggregate = {
+  metric: PulseMetric;
+  aggregateValue: string;
+  aggregateLabel: string;
+  totalVotes: number;
+};
+
+export type ExternalLink = {
+  id: string;
+  label: string;
+  url: string;
+  displayOrder: number;
+};
+
+export type DirectoryOrg = {
+  id: string;
+  orgSlug: string;
+  orgName: string;
+  category: OrgCategory;
+  tagline: string | null;
+  pageSlug: string | null;
+};
+
+export type WikiPageData = {
+  pageId: string;
+  pageSlug: string;
+  orgId: string;
+  universityId: string;
+  orgName: string;
+  orgSlug: string;
+  category: OrgCategory;
+  tagline: string | null;
+  contentJson: ProseMirrorDoc;
+  currentVersionId: string | null;
+  lastModifiedAt: string;
+  isColdStart: boolean;
+  isAdminSeeded: boolean;
+  pulseAggregates: PulseAggregate[];
+  externalLinks: ExternalLink[];
+  lifecycleStatus: LifecycleStatus;
+  lifecycleConfig: LifecycleConfig | null;
+};
+
+export type PageVersionSummary = {
+  id: string;
+  versionNumber: number;
+  summary: string | null;
+  createdAt: string;
+  isAnonymous: boolean;
+  contributorDisplayName: string | null;
+  isAdminSeeded: boolean;
+  isColdStart: boolean;
+};
+
+// ---------------------------------------------------------------------
+// FRD-3: comments
+// ---------------------------------------------------------------------
+
+export type CommentRow = {
+  id: string;
+  pageId: string;
+  parentCommentId: string | null;
+  authorId: string | null;
+  isAnonymous: boolean;
+  isEdited: boolean;
+  isHidden: boolean;
+  sectionSlug: string;
+  anchorText: string;
+  body: string;
+  upvotes: number;
+  downvotes: number;
+  createdAt: string;
+  updatedAt: string;
+  authorDisplayName: string | null;
+  isAnchored: boolean;
+};
+
+export type CommentTree = CommentRow & {
+  replies: CommentRow[];
+};
+
+export type CommentReportReason =
+  | "spam"
+  | "harassment"
+  | "misinformation"
+  | "other";
+
+export type CommentReportRow = {
+  id: string;
+  commentId: string;
+  reporterId: string | null;
+  reason: CommentReportReason;
+  details: string | null;
+  status: "pending" | "resolved" | "dismissed";
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------
+// FRD-4: section-scoped proposals
+// ---------------------------------------------------------------------
+
+export type ProposalStatus =
+  | "pending"
+  | "changes_requested"
+  | "needs_rebase"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
+
+export type MergeabilityStatus =
+  | "unknown"
+  | "mergeable"
+  | "needs_rebase"
+  | "conflict";
+
+export type SectionDiffEntry = {
+  sectionSlug: string;
+  baseSectionHash: string;
+  originalSectionJson: ProseMirrorDoc | null;
+  proposedSectionJson: ProseMirrorDoc;
+  diffJson: unknown;
+  mergeabilityStatus: MergeabilityStatus;
+};
+
+export type EditProposalRow = {
+  id: string;
+  pageId: string;
+  baseVersionId: string;
+  basePageVersionId: string | null;
+  contributorId: string | null;
+  isAnonymous: boolean;
+  isFromAffiliatedContributor: boolean;
+  sectionSlugs: string[];
+  status: ProposalStatus;
+  mergeabilityStatus: MergeabilityStatus;
+  currentPatchsetNumber: number;
+  rationale: string | null;
+  reviewerId: string | null;
+  reviewerComment: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+};
+
+export type EditProposalPatchsetRow = {
+  id: string;
+  proposalId: string;
+  patchsetNumber: number;
+  basePageVersionId: string;
+  sectionDiffs: SectionDiffEntry[];
+  rationale: string;
+  isCurrent: boolean;
+  contributorId: string | null;
+  createdAt: string;
+};
+
+export type ProposalSummary = {
+  id: string;
+  pageId: string;
+  pageSlug: string;
+  orgName: string;
+  orgSlug: string;
+  category: OrgCategory;
+  sectionSlugs: string[];
+  status: ProposalStatus;
+  mergeabilityStatus: MergeabilityStatus;
+  isAnonymous: boolean;
+  isFromAffiliatedContributor: boolean;
+  contributorDisplayName: string | null;
+  rationale: string | null;
+  createdAt: string;
 };

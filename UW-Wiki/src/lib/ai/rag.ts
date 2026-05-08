@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { embedText, toPgVector } from "@/lib/ai/embeddings";
 import { supabaseRest } from "@/lib/supabase/rest";
-import type { ChunkResult, ChunkType, FallbackPage } from "@/types/domain";
+import {
+  ORG_CATEGORIES,
+  type ChunkResult,
+  type ChunkType,
+  type FallbackPage,
+} from "@/types/domain";
 
 const RRF_K = 60;
 const SIMILARITY_THRESHOLD = 0.35;
@@ -33,22 +38,33 @@ type RankedResult = ChunkResult & {
   rankSource: "semantic" | "keyword";
 };
 
+export type HybridSearchFilters = {
+  universityId?: string;
+  category?: string;
+  orgSlug?: string;
+};
+
 export async function hybridSearch(
   query: string,
-  universityId?: string,
+  filters: HybridSearchFilters = {},
 ): Promise<{ results: ChunkResult[]; fallbackPages: FallbackPage[] }> {
   const queryVector = await embedText(query);
 
   const [semanticResults, keywordResults] = await Promise.all([
-    semanticSearch(queryVector, universityId),
-    keywordSearch(query, universityId),
+    semanticSearch(queryVector, filters.universityId),
+    keywordSearch(query, filters.universityId),
   ]);
 
   const merged = mergeWithRRF(semanticResults, keywordResults);
-  const aboveThreshold = merged.filter(
+  const filtered = merged.filter((result) => {
+    if (filters.category && result.category !== filters.category) return false;
+    if (filters.orgSlug && result.orgSlug !== filters.orgSlug) return false;
+    return true;
+  });
+  const aboveThreshold = filtered.filter(
     (result) => result.similarityScore >= SIMILARITY_THRESHOLD,
   );
-  const belowThreshold = merged.filter(
+  const belowThreshold = filtered.filter(
     (result) => result.similarityScore < SIMILARITY_THRESHOLD,
   );
 
@@ -69,15 +85,14 @@ export const searchWikiTool = tool({
     filters: z
       .object({
         universityId: z.string().uuid().optional(),
+        category: z.enum(ORG_CATEGORIES).optional(),
+        orgSlug: z.string().optional(),
       })
       .optional()
       .describe("Optional filters to narrow search scope"),
   }),
   execute: async ({ query, filters }) => {
-    const { results, fallbackPages } = await hybridSearch(
-      query,
-      filters?.universityId,
-    );
+    const { results, fallbackPages } = await hybridSearch(query, filters ?? {});
 
     if (results.length === 0) {
       return {
@@ -145,9 +160,11 @@ async function keywordSearch(
 
   return rows.map((row) => ({
     ...mapChunkRow(row),
-    // Exact keyword-only hits are still valuable; treat them as threshold-passing
-    // unless a semantic result later replaces this with an actual cosine score.
-    similarityScore: SIMILARITY_THRESHOLD,
+    // Keyword hits start at 0 cosine. The merge step lifts a keyword hit to
+    // a semantic score whenever the same chunk also appears in semantic
+    // results; otherwise it stays below FRD-1 §4.4 threshold and falls into
+    // the fallback bucket.
+    similarityScore: 0,
     rrfScore: 0,
     rankSource: "keyword",
   }));

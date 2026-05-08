@@ -23,6 +23,18 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 
 ## Supabase Dashboard — Actions Taken
 
+### 2026-05-08 (audit hardening pass)
+- **`0042_security_hardening.sql` applied** via `npx supabase db query --linked --file ...`. Effects:
+  - Revoked `EXECUTE` on `accept_proposal_commit(...)` and `increment_comment_vote(...)` from `PUBLIC`/`anon`/`authenticated`; only `service_role` can call them now.
+  - Tightened anonymous RLS: `comments`, `edit_proposals`, and `comment_reports` inserts now require `auth.uid() IS NOT NULL`. Anonymous writes still work because all API routes go through the service role; a leaked anon JWT can no longer post directly to PostgREST.
+  - Dropped the dead `is_anonymous_report()` helper.
+  - Added `comments.is_anchored boolean` (default `true`) so the API can persist re-anchor results, and `edit_proposals.last_decision_log jsonb` so reviewer-affiliation snapshots can be captured per FRD-4 §5.4 until FRD-7 ships `admin_activity_log`.
+
+### 2026-05-08
+- **FRD-2/3/4 migrations:** `002_wiki_pages.sql`, `003_comments.sql`, `004_pr_edit_system.sql`, and `0041_seed_extend.sql` were applied directly with `npx supabase db query --linked --file ...` because `supabase db push` is still blocked by migration-history drift.
+- **Schema now includes:** `pages.slug`, `page_versions.version_number`, lifecycle `stale_days`/`defunct_days`, `comment_votes.vote_type`, `edit_proposal_patchsets`, and FRD-4 mergeability/base-version fields on `edit_proposals`.
+- **Seed state updated:** WATonomous now has a richer multi-section page and current `page_versions` row; Midnight Sun was added as a second directory org for browse/filter testing.
+
 ### 2026-05-07
 - **Supabase CLI:** `npx supabase db push` was attempted after linking but blocked by migration-history drift because `001_init_foundation.sql` had already been applied manually in SQL Editor. `supabase migration repair --status applied 001` was run, but the CLI still reports history mismatch for the non-timestamp `001` migration. For FRD-1, the RPC SQL was applied directly with `npx supabase db query --linked --file supabase/migrations/0011_rag_search_functions.sql`.
 - **Supabase RPCs:** `match_chunks_semantic` and `match_chunks_keyword` are now installed. The migration needed `extensions.vector(512)` and `set search_path = public, extensions` because pgvector lives in Supabase's `extensions` schema.
@@ -50,8 +62,9 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 2 | **Resend has no verified domain.** | Before FRD-9 launches, verify the sending domain (e.g. `uw-wiki.ca`) and update `EMAIL_FROM`. Until then, only `onboarding@resend.dev` will deliver. |
 | 3 | **Google OAuth not wired.** | FRD-6 will need a Google Cloud project + OAuth 2.0 client. Steps documented in the prior chat summary; not done yet. |
 | 4 | **Migration ordering bug fixed.** | `001_init_foundation.sql` originally declared `is_anonymous_report()` *after* a policy that referenced it — Postgres rejects this. Fixed in commit before first apply. |
-| 5 | **`organizations.claimed_status` is dead-weight.** | The Round 2 reconciliation dropped the page-claim flow, but the migration still creates this column with default `'unclaimed'`. FRD-2's migration (`002_wiki_pages.sql`) should drop it. |
-| 6 | **`lifecycle_config` schema mismatch with FRD-2.** | Migration creates 2 thresholds (`needs_update_days`, `outdated_days`); FRD-2 §9.2 specifies 3 (Needs Update / Stale / Potentially Defunct). Reconcile in `002_wiki_pages.sql`. |
+| 5 | **`organizations.claimed_status` is dead-weight.** | The Round 2 reconciliation dropped the page-claim flow. App code ignores this column; it can be dropped in a later cleanup migration after no seed scripts reference it. |
+| 6 | **Reviewer-auth live browser flow not fully exercised.** | FRD-4 reviewer APIs compile, build, and now expose inline accept/reject/request-changes UI at `/admin/reviews/[id]`. Live exercise still requires a reviewer-role session — seed a reviewer user via Supabase Auth or wait for FRD-6 sign-in. |
+| 6b | **Markdown sanitizer downgrade.** | `isomorphic-dompurify` was removed in the FRD-2/3/4 round because its CSS calc dependency broke Next.js dev SSR. `renderCommentMarkdown` now relies on `escapeHtml` + a regex pipeline that only emits `<strong>/<em>/<a>/<br>`, with link `href` restricted to `^https?://`. Re-add a sanitizer (or migrate to a JSX-tree renderer) before launch if FRD-3 §16.1 wording is binding. |
 | 7 | **Node.js 20 + Supabase JS in standalone scripts.** | The realtime client needs `ws` on Node < 22. Standalone scripts in `scripts/` should use raw `fetch` against PostgREST instead of `createClient` (see `scripts/smoke-test-supabase.mjs`). Next.js itself is fine — Node ≥ 22 isn't required. |
 | 8 | **Docker not used.** | Deployment is Vercel + managed Supabase. The optional "Local-full mode" Docker setup in FRD-0 §3 is intentionally skipped. |
 | 9 | **FRD-1 needs RPC SQL despite `chunks` existing.** | Supabase JS cannot directly express `embedding <=> query_vector`, so FRD-1 adds `0011_rag_search_functions.sql` for semantic and keyword search RPCs. This has been applied via `supabase db query --linked --file ...`, not `db push`, because migration history is drifted from the manual FRD-0 apply. |
@@ -79,6 +92,18 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 2026-05-07 | `npx supabase db push` | Blocked by migration-history drift after manual FRD-0 SQL apply; used `db query --linked --file` for FRD-1 SQL instead |
 | 2026-05-07 | `POST /api/search` with `What is WATonomous like?` | Passed: streamed, called `search_wiki` + `get_org_data`, returned cited text and `/wiki/watonomous#overview` source |
 | 2026-05-07 | `POST /api/search` with off-topic weather query | Passed: did not call tools; redirected to UW Wiki scope |
+| 2026-05-08 | `npm run typecheck` | clean after FRD-2/3/4 |
+| 2026-05-08 | `npm run lint` | no warnings |
+| 2026-05-08 | `npm run build` | 16/16 routes generated, including wiki/history/comments/proposals/admin review routes |
+| 2026-05-08 | `node scripts/smoke-test-frd234.mjs` | FRD-2/3/4 schema and seed checks passed |
+| 2026-05-08 | `GET /`, `/wiki/watonomous`, `/wiki/watonomous/history` | 200 OK |
+| 2026-05-08 | `POST /api/pulse/vote` unsigned | 401 as expected |
+| 2026-05-08 | `GET /api/comments` + unsigned `POST /api/comments` | Passed; comment row and RAG chunk were created, then smoke data cleaned up |
+| 2026-05-08 | unsigned `POST /api/proposals` | Passed; proposal and patchset rows were created, then smoke data cleaned up |
+| 2026-05-08 (audit) | `node scripts/smoke-test-audit-fixes.mjs` | Passed: schema columns, anonymous insert RLS, RPC revokes, hidden-comment RAG filter all verified |
+| 2026-05-08 (audit) | `npm run typecheck`, `npm run lint`, `npm run build` | All clean; build emits 15/15 routes including new audit fixes |
+| 2026-05-08 (audit) | live `POST /api/proposals` with `attrs.official: true` | Returns 422 INVALID_CONTENT — contributor cannot toggle official |
+| 2026-05-08 (audit) | live `POST /api/comments` anonymous + valid `POST /api/proposals` | Both 201; smoke data cleaned up |
 
 ---
 
@@ -87,6 +112,7 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 - Add/monitor OpenRouter credits before heavier RAG testing; current balance can run capped MVP responses (`maxOutputTokens: 1200`) but rejected the default 65k output budget.
 - Verify a Resend sending domain (FRD-9).
 - Configure Google OAuth in Google Cloud + Supabase Auth (FRD-6).
+- Create or sign in with a reviewer/admin account before live-testing FRD-4 accept/reject/request-changes through authenticated endpoints.
 - Resolve Supabase migration-history drift before relying on `npx supabase db push` for future migrations. Current workaround: apply single SQL files with `npx supabase db query --linked --file ...`.
 - Create a Vercel project, paste env vars, link to GitHub repo.
 - Decide on a production sender domain for `EMAIL_FROM`.

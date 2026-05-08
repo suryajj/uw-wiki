@@ -69,12 +69,17 @@ console.log(`  First chunk: ${inserted[0]?.section_slug ?? "(none)"}`);
 function chunkDoc(doc, orgName) {
   const output = [];
   let title = "Overview";
+  let slug = "overview";
   let body = [];
 
   for (const node of doc.content ?? []) {
     if (node.type === "heading") {
       flush();
       title = textOf(node).trim() || "Untitled Section";
+      slug =
+        typeof node.attrs?.slug === "string" && node.attrs.slug
+          ? node.attrs.slug
+          : slugify(title);
       body = [];
     } else {
       body.push(textOf(node));
@@ -88,7 +93,7 @@ function chunkDoc(doc, orgName) {
     if (!content) return;
     output.push({
       sectionTitle: title,
-      sectionSlug: slugify(title),
+      sectionSlug: slug,
       content: `[${orgName} > ${title}]\n${content}`,
     });
   }
