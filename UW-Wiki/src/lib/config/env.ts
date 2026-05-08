@@ -22,6 +22,7 @@ const schema = z.object({
   TAVILY_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
+  CRON_SECRET: z.string().optional(),
   POSTHOG_KEY: z.string().optional(),
   POSTHOG_HOST: z.string().optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),

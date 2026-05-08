@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import type { NotificationPreferences } from "@/types/domain";
 
 type Org = {
   id: string;
@@ -137,4 +138,112 @@ export function AffiliationManager({
 function normalizeOrg(org: Org | Org[] | null): Org | null {
   if (!org) return null;
   return Array.isArray(org) ? org[0] ?? null : org;
+}
+
+export function NotificationPreferencesForm({
+  initialPreferences,
+}: {
+  initialPreferences: NotificationPreferences;
+}) {
+  const [prefs, setPrefs] = useState(initialPreferences);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function save(next: NotificationPreferences) {
+    setPrefs(next);
+    const res = await fetch("/api/me/notification-preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inAppPrStatus: next.inAppPrStatus,
+        emailPrStatus: next.emailPrStatus,
+        inAppCommentReply: next.inAppCommentReply,
+        emailCommentReply: next.emailCommentReply,
+        inAppPageUpdate: next.inAppPageUpdate,
+        emailPageUpdateDigest: next.emailPageUpdateDigest,
+        pageUpdateDigestFrequency: next.pageUpdateDigestFrequency,
+      }),
+    });
+    setMessage(res.ok ? "Notification preferences saved." : "Could not save preferences.");
+  }
+
+  return (
+    <section className="mt-6 rounded-lg border border-border bg-card p-4">
+      <h2 className="font-semibold">Notifications</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Choose which updates should appear in-app or by email.
+      </p>
+      <div className="mt-4 grid gap-3">
+        <PreferenceToggle
+          label="In-app proposal status updates"
+          checked={prefs.inAppPrStatus}
+          onChange={(checked) => void save({ ...prefs, inAppPrStatus: checked })}
+        />
+        <PreferenceToggle
+          label="Email proposal status updates"
+          checked={prefs.emailPrStatus}
+          onChange={(checked) => void save({ ...prefs, emailPrStatus: checked })}
+        />
+        <PreferenceToggle
+          label="In-app comment replies"
+          checked={prefs.inAppCommentReply}
+          onChange={(checked) => void save({ ...prefs, inAppCommentReply: checked })}
+        />
+        <PreferenceToggle
+          label="Email comment replies"
+          checked={prefs.emailCommentReply}
+          onChange={(checked) => void save({ ...prefs, emailCommentReply: checked })}
+        />
+        <PreferenceToggle
+          label="In-app bookmarked page updates"
+          checked={prefs.inAppPageUpdate}
+          onChange={(checked) => void save({ ...prefs, inAppPageUpdate: checked })}
+        />
+        <PreferenceToggle
+          label="Bookmarked page update digest email"
+          checked={prefs.emailPageUpdateDigest}
+          onChange={(checked) => void save({ ...prefs, emailPageUpdateDigest: checked })}
+        />
+        <label className="text-sm">
+          Page update digest frequency
+          <select
+            value={prefs.pageUpdateDigestFrequency}
+            onChange={(event) =>
+              void save({
+                ...prefs,
+                pageUpdateDigestFrequency: event.target.value as "daily" | "weekly" | "never",
+              })
+            }
+            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="never">Never</option>
+          </select>
+        </label>
+      </div>
+      {message ? <p className="mt-3 text-sm text-muted-foreground">{message}</p> : null}
+    </section>
+  );
+}
+
+function PreferenceToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+      <span>{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4"
+      />
+    </label>
+  );
 }

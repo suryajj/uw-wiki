@@ -1,4 +1,5 @@
 import { apiError, apiSuccess } from "@/lib/api/errors";
+import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -20,5 +21,12 @@ export async function POST(_req: Request, { params }: RouteCtx) {
     })
     .eq("id", id);
   if (error) return apiError("UNEXPECTED", "Could not dismiss report.");
+  await logAdminActivity({
+    actorId: user.id,
+    action: "dismiss_report",
+    entityType: "comment_report",
+    entityId: id,
+    summary: "Dismissed comment report",
+  });
   return apiSuccess({ message: "Report dismissed." });
 }

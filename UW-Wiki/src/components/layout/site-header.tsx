@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
 export async function SiteHeader() {
@@ -21,6 +22,13 @@ export async function SiteHeader() {
           ) : null}
           {user ? (
             <div className="flex items-center gap-2">
+              <NotificationBell />
+              <Link className="text-muted-foreground hover:text-foreground" href="/my/bookmarks">
+                Bookmarks
+              </Link>
+              <Link className="text-muted-foreground hover:text-foreground" href="/my/contributions">
+                Contributions
+              </Link>
               <Link className="text-muted-foreground hover:text-foreground" href="/my/profile">
                 {user.displayName ?? user.email}
               </Link>

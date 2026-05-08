@@ -23,6 +23,14 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 
 ## Supabase Dashboard — Actions Taken
 
+### 2026-05-08 (FRD-8/9 + final audit fixes)
+- **`008_audit_fixes.sql`, `009_notifications.sql`, and `010_notification_page_update_prefs.sql` applied** via `npx supabase db query --linked --file ...`.
+- **Audit fixes now in cloud DB/code:** `proposal_review_comments` is no longer publicly readable; reviewer/contributor/admin visibility is enforced by RLS. Request-changes writes `proposal_review_comments`. Cold-start publish/rerun and comment moderation actions now write `admin_activity_log`.
+- **FRD-8 account surfaces:** wiki pages now have an idempotent bookmark button with pending auth replay, `/my/bookmarks` lists/removes saved pages, `/my/contributions` lists attributed proposals, and contributor proposal details are available at `/wiki/[slug]/proposals/[id]`.
+- **FRD-9 notifications:** schema now includes typed notifications, `delivered_email`, explicit notification preference columns (including separate in-app page updates and email digest settings), unread indexes, notification APIs, header bell/dropdown, `/my/notifications`, profile notification preferences, PR/comment notification emits, and Vercel daily digest cron at `/api/cron/notifications-digest`.
+- **New operator docs:** `docs/HANDOFF-LAUNCH.md`, `docs/TESTING-GUIDE.md`, `docs/SEEDING-AND-ROLES.md`, and `docs/SETUP-AND-DEPLOY-CHECKLIST.md`.
+- **New helper scripts:** `ensure-dev-role.mjs`, `list-users-roles.mjs`, `smoke-auth-probes.mjs`, and `smoke-test-frd89.mjs`.
+
 ### 2026-05-08 (FRD-5/6/7 implementation)
 - **FRD-5/6/7 migrations applied** via `npx supabase db query --linked --file ...`: `005_cold_start.sql`, `006_auth_ui.sql`, and `007_admin_dashboard.sql`.
 - **Schema now includes:** `cold_start_jobs`, `users.email_verified_at`, updated `handle_new_user` auth sync trigger, `admin_activity_log`, and `proposal_review_comments`.
@@ -79,6 +87,8 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 10 | **OpenRouter chat route must use chat completions.** | `@ai-sdk/openai` v2 defaults `openrouter(model)` to the Responses API, which failed after tool outputs through OpenRouter. `/api/search` must use `openrouter.chat("google/gemini-2.5-flash")`. |
 | 11 | **Cold-start agent has deterministic fallback.** | FRD-5 references Claude/Tavily orchestration. Implementation uses Tavily when `TAVILY_API_KEY` is present, but falls back to deterministic section text so the admin flow remains testable without spending API calls or failing sparse research. |
 | 12 | **No dedicated cold-start system user yet.** | FRD-5 asks for `COLD_START_AGENT_USER_ID` and `pulse_ratings` rows. Current publish path seeds `pulse_aggregates` directly for Selectivity/Tech Stack. Add a real auth-backed system user before production if row-level Pulse provenance is required. |
+| 13 | **FRD-9 email depends on Resend domain.** | In-app notifications work without Resend. Email delivery is skipped unless `RESEND_API_KEY` and `EMAIL_FROM` are valid and the sender is verified. |
+| 14 | **Notification digest cron is Vercel-only.** | `vercel.json` schedules `/api/cron/notifications-digest` at 06:00 UTC. Local testing should call the route manually with `Authorization: Bearer $CRON_SECRET` when set. |
 
 ---
 
@@ -120,6 +130,11 @@ Single source of truth for everything that lives **outside** the codebase: dashb
 | 2026-05-08 (FRD-5/6/7) | `node scripts/smoke-test-supabase.mjs` | 21/21 tables present including `cold_start_jobs`, `admin_activity_log`, `proposal_review_comments` |
 | 2026-05-08 (FRD-5/6/7) | `node scripts/smoke-test-frd567.mjs` | FRD-5/6/7 schema smoke passed: tables, `users.email_verified_at`, cold_start job insert, seed org/page |
 | 2026-05-08 (FRD-5/6/7) | live unauth protected route probes | `/my/profile` redirects to sign-in with `returnTo=/my/profile`; admin routes redirect with their own `returnTo` |
+| 2026-05-08 (FRD-8/9) | `npm run typecheck` | clean after bookmarks/contributions/notifications implementation |
+| 2026-05-08 (FRD-8/9) | `008_audit_fixes.sql`, `009_notifications.sql`, `010_notification_page_update_prefs.sql` | applied to linked Supabase project via direct `db query --linked --file` |
+| 2026-05-08 (final FRD-0/9 audit) | `npm run typecheck`, `npm run lint`, `npm run build` | clean; build generated 31/31 routes |
+| 2026-05-08 (final FRD-0/9 audit) | `node scripts/smoke-test-supabase.mjs`, `smoke-test-frd234.mjs`, `smoke-test-audit-fixes.mjs`, `smoke-test-frd567.mjs`, `smoke-test-frd89.mjs` | all passed against linked Supabase |
+| 2026-05-08 (final FRD-0/9 audit) | `NEXT_PUBLIC_APP_URL=http://localhost:3002 node scripts/smoke-auth-probes.mjs` | passed after starting a fresh isolated dev server; do not run this against a dev server while `next build` is mutating `.next` |
 
 ---
 

@@ -45,11 +45,17 @@ export function PendingActionResumer({ isSignedIn }: { isSignedIn: boolean }) {
           body: JSON.stringify({ voteType: payload.voteType }),
         });
       } else if (pending.type === "bookmark.toggle") {
-        const payload = pending.payload as { pageId: string };
+        const payload = pending.payload as {
+          pageId: string;
+          desiredState?: "bookmarked" | "unbookmarked";
+        };
         res = await fetch("/api/bookmarks/toggle", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageId: payload.pageId }),
+          body: JSON.stringify({
+            page_id: payload.pageId,
+            desired_state: payload.desiredState ?? "bookmarked",
+          }),
         });
       }
 

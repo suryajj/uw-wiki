@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,17 @@ export default function ResetPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data }) => {
+      setSessionReady(!!data.session);
+      if (!data.session) {
+        setError("This reset link is invalid or expired. Request a new password reset email.");
+      }
+    });
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,8 +53,8 @@ export default function ResetPasswordPage() {
               required
             />
           </label>
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Saving..." : "Save password"}
+          <Button type="submit" disabled={loading || sessionReady !== true} className="w-full">
+            {loading ? "Saving..." : sessionReady === null ? "Checking link..." : "Save password"}
           </Button>
         </form>
         {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}

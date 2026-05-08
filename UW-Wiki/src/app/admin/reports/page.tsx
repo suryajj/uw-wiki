@@ -16,7 +16,7 @@ type ReportRow = {
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  await requireReviewer();
+  await requireReviewer({ returnTo: "/admin/reports" });
   const admin = createAdminClient();
   const { data } = await admin
     .from("comment_reports")

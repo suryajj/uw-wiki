@@ -181,8 +181,9 @@ Each FRD that adds schema gets a numbered migration file. The naming convention 
 | FRD-5 | `005_cold_start.sql` | `cold_start_jobs` table |
 | FRD-6 | `006_auth_ui.sql` | Display name constraints, `user_affiliations` table |
 | FRD-7 | `007_admin_dashboard.sql` | `admin_activity_log` table |
+| FRD-7 audit | `008_audit_fixes.sql` | Tightens `proposal_review_comments` RLS after audit |
 | FRD-8 | *(no migration)* | `bookmarks` table already in FRD-0 baseline |
-| FRD-9 | `009_notifications.sql` | `notifications` schema update, `notification_preferences` table |
+| FRD-9 | `009_notifications.sql`, `010_notification_page_update_prefs.sql` | `notifications` schema update, `notification_preferences` table |
 
 **Rule:** Never modify `001_init_foundation.sql` after FRD-0 is done. All subsequent schema changes go in their FRD's numbered migration.
 

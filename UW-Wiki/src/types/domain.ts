@@ -369,3 +369,34 @@ export type AdminActivity = {
   metadata: Record<string, unknown>;
   createdAt: string;
 };
+
+export type NotificationType =
+  | "pr.accepted"
+  | "pr.rejected"
+  | "pr.changes_requested"
+  | "pr.needs_rebase"
+  | "comment.reply"
+  | "page.updated";
+
+export type NotificationRow = {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  payload: Record<string, unknown>;
+  readAt: string | null;
+  deliveredEmail: boolean;
+  createdAt: string;
+};
+
+export type NotificationPreferences = {
+  userId: string;
+  inAppPrStatus: boolean;
+  emailPrStatus: boolean;
+  inAppCommentReply: boolean;
+  emailCommentReply: boolean;
+  inAppPageUpdate: boolean;
+  emailPageUpdateDigest: boolean;
+  pageUpdateDigestFrequency: "daily" | "weekly" | "never";
+  lastDigestSentAt: string | null;
+  updatedAt: string;
+};

@@ -1,13 +1,16 @@
 import { z } from "zod";
 
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
+import { setBookmarkState } from "@/lib/actions/bookmarks";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
 const toggleSchema = z.object({
-  pageId: z.string().uuid(),
+  pageId: z.string().uuid().optional(),
+  page_id: z.string().uuid().optional(),
+  desiredState: z.enum(["bookmarked", "unbookmarked"]).optional(),
+  desired_state: z.enum(["bookmarked", "unbookmarked"]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -16,41 +19,18 @@ export async function POST(req: Request) {
 
   const parsed = await parseJson(req, toggleSchema);
   if (!parsed.ok) return parsed.response;
-
-  const admin = createAdminClient();
-  const { data: existing, error: readError } = await admin
-    .from("bookmarks")
-    .select("page_id")
-    .eq("user_id", user.id)
-    .eq("page_id", parsed.data.pageId)
-    .maybeSingle();
-
-  if (readError) {
-    logServerError("bookmarks.toggle.read", readError);
-    return apiError("UNEXPECTED", "Could not read bookmark.");
+  const pageId = parsed.data.page_id ?? parsed.data.pageId;
+  const desiredState = parsed.data.desired_state ?? parsed.data.desiredState ?? "bookmarked";
+  if (!pageId) {
+    return apiError("VALIDATION_FAILED", "page_id is required.");
   }
 
-  if (existing) {
-    const { error } = await admin
-      .from("bookmarks")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("page_id", parsed.data.pageId);
-    if (error) {
-      logServerError("bookmarks.toggle.delete", error);
-      return apiError("UNEXPECTED", "Could not remove bookmark.");
-    }
-    return apiSuccess({ bookmarked: false });
+  try {
+    const result = await setBookmarkState({ userId: user.id, pageId, desiredState });
+    if (!result.ok) return apiError("NOT_FOUND", "Page not found.");
+    return apiSuccess({ state: result.state, bookmarked: result.state === "bookmarked" });
+  } catch (error) {
+    logServerError("bookmarks.toggle", error);
+    return apiError("UNEXPECTED", "Could not update bookmark.");
   }
-
-  const { error } = await admin.from("bookmarks").insert({
-    user_id: user.id,
-    page_id: parsed.data.pageId,
-  });
-  if (error) {
-    logServerError("bookmarks.toggle.insert", error);
-    return apiError("UNEXPECTED", "Could not save bookmark.");
-  }
-
-  return apiSuccess({ bookmarked: true });
 }

@@ -1,11 +1,12 @@
 import { requireUser } from "@/lib/auth/guards";
+import { ensureNotificationPreferences } from "@/lib/notifications/service";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { AffiliationManager } from "./profile-ui";
+import { AffiliationManager, NotificationPreferencesForm } from "./profile-ui";
 
 export default async function ProfilePage() {
   const user = await requireUser({ returnTo: "/my/profile" });
   const admin = createAdminClient();
-  const [{ data: orgs }, { data: affiliations }] = await Promise.all([
+  const [{ data: orgs }, { data: affiliations }, notificationPreferences] = await Promise.all([
     admin
       .from("organizations")
       .select("id,org_name,org_slug,category")
@@ -15,6 +16,7 @@ export default async function ProfilePage() {
       .select("id,role_label,is_active,organizations(id,org_name,org_slug,category)")
       .eq("user_id", user.id)
       .eq("is_active", true),
+    ensureNotificationPreferences(user.id),
   ]);
   return (
     <main className="mx-auto min-h-screen max-w-3xl p-6 md:p-10">
@@ -24,6 +26,7 @@ export default async function ProfilePage() {
         affiliations from the admin dashboard.
       </p>
       <AffiliationManager orgs={orgs ?? []} initialAffiliations={affiliations ?? []} />
+      <NotificationPreferencesForm initialPreferences={notificationPreferences} />
     </main>
   );
 }

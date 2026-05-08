@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { emitNotification } from "@/lib/notifications/service";
 import { recordDecisionLog, reviewerAffiliationForProposal } from "@/lib/proposals/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -23,7 +24,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const admin = createAdminClient();
   const { data: proposal } = await admin
     .from("edit_proposals")
-    .select("contributor_id,status")
+    .select("contributor_id,status,page_id,pages(slug,organizations(org_slug))")
     .eq("id", id)
     .maybeSingle();
   if (!proposal) return apiError("NOT_FOUND", "Proposal not found.");
@@ -34,6 +35,25 @@ export async function POST(req: Request, { params }: RouteCtx) {
     return apiError("INVALID_STATE", "Only pending proposals can request changes.");
   }
   const isReviewerAffiliated = await reviewerAffiliationForProposal(id, user.id);
+  const { data: patchset } = await admin
+    .from("edit_proposal_patchsets")
+    .select("id")
+    .eq("proposal_id", id)
+    .eq("is_current", true)
+    .maybeSingle();
+  const { error: reviewCommentError } = await admin
+    .from("proposal_review_comments")
+    .insert({
+      proposal_id: id,
+      patchset_id: patchset?.id ?? null,
+      reviewer_id: user.id,
+      message: parsed.data.message,
+      section_suggestions: [],
+    });
+  if (reviewCommentError) {
+    logServerError("proposals.request-changes.review-comment", reviewCommentError);
+    return apiError("UNEXPECTED", "Could not save review comment.");
+  }
   const { error } = await admin
     .from("edit_proposals")
     .update({
@@ -61,5 +81,19 @@ export async function POST(req: Request, { params }: RouteCtx) {
     summary: "Requested changes on proposal",
     metadata: { is_reviewer_affiliated: isReviewerAffiliated },
   });
+  const page = Array.isArray(proposal.pages) ? proposal.pages[0] : proposal.pages;
+  const org = Array.isArray(page?.organizations) ? page?.organizations[0] : page?.organizations;
+  await emitNotification({
+    recipientId: proposal.contributor_id,
+    type: "pr.changes_requested",
+    payload: {
+      title: "Changes requested on your proposal",
+      body: parsed.data.message,
+      href: page?.slug ? `/wiki/${page.slug}/proposals/${id}` : "/my/contributions",
+      proposalId: id,
+      pageId: proposal.page_id,
+      orgSlug: org?.org_slug,
+    },
+  }).catch((err) => logServerError("notifications.pr.changes_requested", err));
   return apiSuccess({ message: "Changes requested.", isReviewerAffiliated });
 }

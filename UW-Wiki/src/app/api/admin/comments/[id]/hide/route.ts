@@ -1,4 +1,5 @@
 import { apiError, apiSuccess } from "@/lib/api/errors";
+import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { deleteCommentChunk } from "@/lib/comments/service";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,5 +25,12 @@ export async function POST(_req: Request, { params }: RouteCtx) {
     })
     .eq("comment_id", id)
     .eq("status", "pending");
+  await logAdminActivity({
+    actorId: user.id,
+    action: "hide_comment",
+    entityType: "comment",
+    entityId: id,
+    summary: "Hid reported comment",
+  });
   return apiSuccess({ message: "Comment hidden." });
 }

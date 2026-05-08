@@ -21,8 +21,8 @@ export async function POST(req: Request) {
   const parsed = await parseJson(req, schema);
   if (!parsed.ok) return parsed.response;
   for (const row of parsed.data.rows) {
-    if (row.needsUpdateMonths > row.staleMonths || row.staleMonths > row.defunctMonths) {
-      return apiError("VALIDATION_FAILED", "Thresholds must be needs-update <= stale <= defunct.");
+    if (row.needsUpdateMonths >= row.staleMonths || row.staleMonths >= row.defunctMonths) {
+      return apiError("VALIDATION_FAILED", "Thresholds must be needs-update < stale < defunct.");
     }
   }
   const admin = createAdminClient();

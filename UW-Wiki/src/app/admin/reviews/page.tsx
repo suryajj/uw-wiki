@@ -5,7 +5,7 @@ import { listProposalQueue } from "@/lib/proposals/service";
 import { formatRelativeTime } from "@/lib/utils/time";
 
 export default async function ReviewsPage() {
-  await requireReviewer();
+  await requireReviewer({ returnTo: "/admin/reviews" });
   const proposals = await listProposalQueue();
 
   return (

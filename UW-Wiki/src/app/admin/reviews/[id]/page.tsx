@@ -13,8 +13,8 @@ type PageProps = { params: Promise<{ id: string }> };
 export const dynamic = "force-dynamic";
 
 export default async function ReviewDetailPage({ params }: PageProps) {
-  const reviewer = await requireReviewer();
   const { id } = await params;
+  const reviewer = await requireReviewer({ returnTo: `/admin/reviews/${id}` });
   const detail = await loadProposalDetail(id);
   if (!detail) notFound();
 

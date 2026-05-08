@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { BookmarkButton } from "@/components/bookmarks/bookmark-button";
 import { Button } from "@/components/ui/button";
 import { LifecycleBanner } from "@/components/wiki/lifecycle-banner";
 import { PulseSidebar } from "@/components/wiki/pulse-sidebar";
 import { TableOfContents, type TocEntry } from "@/components/wiki/table-of-contents";
 import { WikiArticleShell } from "@/components/wiki/wiki-article-shell";
+import { getBookmarkState } from "@/lib/actions/bookmarks";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { extractPlainText, extractSections } from "@/lib/prosemirror/sections";
 import { formatRelativeTime } from "@/lib/utils/time";
 import { getWikiPage } from "@/lib/wiki/data";
@@ -44,6 +47,8 @@ export default async function WikiPage({ params }: PageProps) {
   const { slug } = await params;
   const page = await getWikiPage(slug);
   if (!page) notFound();
+  const user = await getCurrentUser();
+  const bookmarkState = await getBookmarkState(user?.id ?? null, page.pageId);
 
   const sections = extractSections(page.contentJson);
   const tocEntries: TocEntry[] = [];
@@ -88,6 +93,12 @@ export default async function WikiPage({ params }: PageProps) {
           </p>
         </div>
         <div className="flex gap-2">
+          <BookmarkButton
+            pageId={page.pageId}
+            initialState={bookmarkState}
+            isSignedIn={!!user}
+            returnTo={`/wiki/${page.pageSlug}`}
+          />
           <Button asChild variant="outline">
             <Link href={`/wiki/${page.pageSlug}/history`}>View History</Link>
           </Button>

@@ -4,6 +4,7 @@ import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/error
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { enforceCommentRateLimits } from "@/lib/comments/rate-limits";
 import { embedVisibleComment, listCommentsForPage } from "@/lib/comments/service";
+import { emitNotification } from "@/lib/notifications/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const replySchema = z.object({
@@ -27,7 +28,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const admin = createAdminClient();
   const { data: parent } = await admin
     .from("comments")
-    .select("id,page_id,parent_comment_id,section_slug,anchor_text,is_hidden")
+    .select("id,page_id,parent_comment_id,section_slug,anchor_text,is_hidden,author_id,pages(slug,organizations(org_name,org_slug))")
     .eq("id", id)
     .maybeSingle();
   if (!parent) return apiError("NOT_FOUND", "Parent comment not found.");
@@ -61,6 +62,24 @@ export async function POST(req: Request, { params }: RouteCtx) {
   await embedVisibleComment(inserted.id).catch((embedError) => {
     logServerError("comments.reply.embed", embedError);
   });
+  if (parent.author_id && parent.author_id !== user?.id) {
+    const page = Array.isArray(parent.pages) ? parent.pages[0] : parent.pages;
+    const org = Array.isArray(page?.organizations) ? page?.organizations[0] : page?.organizations;
+    await emitNotification({
+      recipientId: parent.author_id,
+      type: "comment.reply",
+      payload: {
+        title: "New reply to your comment",
+        body: parsed.data.body.slice(0, 160),
+        href: page?.slug ? `/wiki/${page.slug}#comments` : "/my/notifications",
+        commentId: inserted.id,
+        parentCommentId: parent.id,
+        pageId: parent.page_id,
+        orgName: org?.org_name,
+        orgSlug: org?.org_slug,
+      },
+    }).catch((notifyError) => logServerError("notifications.comment.reply", notifyError));
+  }
   const comments = await listCommentsForPage(parent.page_id);
   return apiSuccess({ commentId: inserted.id, comments }, { status: 201 });
 }

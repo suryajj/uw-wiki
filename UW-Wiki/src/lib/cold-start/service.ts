@@ -250,6 +250,9 @@ export async function publishColdStartJob(jobId: string, contentOverride?: unkno
 export async function rerunColdStartJob(jobId: string, admin: CurrentUser) {
   const job = await getColdStartJob(jobId);
   if (!job) throw new Error("Cold-start job not found.");
+  if (job.status !== "failed") {
+    throw new Error("Only failed cold-start jobs can be rerun.");
+  }
   const result = await createIdentificationJob(
     job.input_text,
     job.category_hint ?? undefined,

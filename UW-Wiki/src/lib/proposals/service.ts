@@ -7,6 +7,7 @@ import { logAdminActivity } from "@/lib/admin/activity-log";
 import { logServerError } from "@/lib/api/errors";
 import { updateAnchorStatusForPage } from "@/lib/comments/update-anchors";
 import { diffSections } from "@/lib/prosemirror/diff";
+import { emitNotification } from "@/lib/notifications/service";
 import { hashSection } from "@/lib/prosemirror/hash";
 import {
   extractSections,
@@ -172,7 +173,7 @@ export async function listProposalQueue(): Promise<ProposalSummary[]> {
   const { data, error } = await admin
     .from("edit_proposals")
     .select(
-      "id,page_id,section_slugs,status,mergeability_status,is_anonymous,is_from_affiliated_contributor,contributor_id,rationale,created_at,pages(slug,organizations(org_name,org_slug,category)),users(display_name)",
+      "id,page_id,section_slugs,status,mergeability_status,is_anonymous,is_from_affiliated_contributor,contributor_id,rationale,created_at,pages(slug,organizations(org_name,org_slug,category)),contributor:users!edit_proposals_contributor_id_fkey(display_name)",
     )
     .in("status", ["pending", "changes_requested", "needs_rebase"])
     .order("created_at", { ascending: true });
@@ -185,7 +186,7 @@ export async function loadProposalDetail(id: string) {
   const { data: proposal, error } = await admin
     .from("edit_proposals")
     .select(
-      "*,pages(id,slug,content_json,current_version_id,organizations(id,university_id,org_name,org_slug,category)),users(display_name)",
+      "*,pages(id,slug,content_json,current_version_id,organizations(id,university_id,org_name,org_slug,category)),contributor:users!edit_proposals_contributor_id_fkey(display_name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -333,6 +334,29 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
     metadata: { is_reviewer_affiliated: isReviewerAffiliated },
   });
 
+  if (detail.proposal.contributor_id) {
+    await emitNotification({
+      recipientId: detail.proposal.contributor_id,
+      type: "pr.accepted",
+      payload: {
+        title: "Your proposal was accepted",
+        body: "A reviewer accepted your UW Wiki edit proposal.",
+        href: `/wiki/${org.org_slug}/proposals/${id}`,
+        proposalId: id,
+        pageId: detail.proposal.page_id,
+        orgSlug: org.org_slug,
+      },
+    }).catch((err) => logServerError("notifications.pr.accepted", err));
+  }
+
+  const { data: rebasedProposals } = await admin
+    .from("edit_proposals")
+    .select("id,contributor_id")
+    .neq("id", id)
+    .eq("page_id", detail.proposal.page_id)
+    .in("status", ["pending", "changes_requested"])
+    .overlaps("section_slugs", sectionSlugs);
+
   await admin
     .from("edit_proposals")
     .update({ status: "needs_rebase", mergeability_status: "needs_rebase" })
@@ -340,6 +364,22 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
     .eq("page_id", detail.proposal.page_id)
     .in("status", ["pending", "changes_requested"])
     .overlaps("section_slugs", sectionSlugs);
+
+  for (const proposal of rebasedProposals ?? []) {
+    if (!proposal.contributor_id) continue;
+    await emitNotification({
+      recipientId: proposal.contributor_id,
+      type: "pr.needs_rebase",
+      payload: {
+        title: "Your proposal needs a rebase",
+        body: "Another accepted edit changed the same section. Refresh your proposal before review.",
+        href: `/wiki/${org.org_slug}/proposals/${proposal.id}`,
+        proposalId: proposal.id,
+        pageId: detail.proposal.page_id,
+        orgSlug: org.org_slug,
+      },
+    }).catch((err) => logServerError("notifications.pr.needs_rebase", err));
+  }
 
   await reembedSections(
     detail.proposal.page_id,
@@ -521,13 +561,13 @@ function mapProposalSummary(row: unknown): ProposalSummary {
     rationale: string | null;
     created_at: string;
     pages: { slug: string; organizations: { org_name: string; org_slug: string; category: ProposalSummary["category"] } | Array<{ org_name: string; org_slug: string; category: ProposalSummary["category"] }> } | Array<{ slug: string; organizations: { org_name: string; org_slug: string; category: ProposalSummary["category"] } | Array<{ org_name: string; org_slug: string; category: ProposalSummary["category"] }> }>;
-    users: { display_name: string | null } | Array<{ display_name: string | null }> | null;
+    contributor: { display_name: string | null } | Array<{ display_name: string | null }> | null;
   };
   const page = Array.isArray(value.pages) ? value.pages[0] : value.pages;
   const org = Array.isArray(page.organizations)
     ? page.organizations[0]
     : page.organizations;
-  const user = Array.isArray(value.users) ? value.users[0] : value.users;
+  const user = Array.isArray(value.contributor) ? value.contributor[0] : value.contributor;
   return {
     id: value.id,
     pageId: value.page_id,

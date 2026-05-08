@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { emitNotification } from "@/lib/notifications/service";
 import { recordDecisionLog, reviewerAffiliationForProposal } from "@/lib/proposals/service";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -23,7 +24,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const admin = createAdminClient();
   const { data: proposal } = await admin
     .from("edit_proposals")
-    .select("contributor_id,status")
+    .select("contributor_id,status,page_id,pages(slug,organizations(org_slug))")
     .eq("id", id)
     .maybeSingle();
   if (!proposal) return apiError("NOT_FOUND", "Proposal not found.");
@@ -62,5 +63,19 @@ export async function POST(req: Request, { params }: RouteCtx) {
     summary: "Rejected proposal",
     metadata: { is_reviewer_affiliated: isReviewerAffiliated },
   });
+  const page = Array.isArray(proposal.pages) ? proposal.pages[0] : proposal.pages;
+  const org = Array.isArray(page?.organizations) ? page?.organizations[0] : page?.organizations;
+  await emitNotification({
+    recipientId: proposal.contributor_id,
+    type: "pr.rejected",
+    payload: {
+      title: "Your proposal was rejected",
+      body: parsed.data.reviewerComment,
+      href: page?.slug ? `/wiki/${page.slug}/proposals/${id}` : "/my/contributions",
+      proposalId: id,
+      pageId: proposal.page_id,
+      orgSlug: org?.org_slug,
+    },
+  }).catch((err) => logServerError("notifications.pr.rejected", err));
   return apiSuccess({ message: "Proposal rejected.", isReviewerAffiliated });
 }

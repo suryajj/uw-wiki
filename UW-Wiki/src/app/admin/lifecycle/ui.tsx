@@ -22,6 +22,15 @@ export function LifecycleEditor({ rows }: { rows: Row[] }) {
   );
   const [message, setMessage] = useState<string | null>(null);
   async function save() {
+    const invalid = items.some(
+      (item) =>
+        item.needsUpdateMonths >= item.staleMonths ||
+        item.staleMonths >= item.defunctMonths,
+    );
+    if (invalid) {
+      setMessage("Thresholds must be needs-update < stale < defunct.");
+      return;
+    }
     const res = await fetch("/api/admin/lifecycle/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
