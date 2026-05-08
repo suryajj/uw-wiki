@@ -1,0 +1,164 @@
+UW-Wiki/.env.example
+  s_55d256654aa195::t_06d0b8b8b318df 29
+UW-Wiki/src/app/my/notifications/page.tsx
+  s_55d256654aa195::t_7f6caf27505b10 1-2,7-28,30-69,71-80
+  s_55d256654aa195::t_989644c5a59e6d 3-6,29,70
+UW-Wiki/src/app/api/auth/sign-out/route.ts
+  s_55d256654aa195::t_930bff16d2c981 5,8
+UW-Wiki/src/app/my/notifications/loading.tsx
+  s_55d256654aa195::t_e9140095f276b0 1-12
+UW-Wiki/supabase/migrations/009_notifications.sql
+  s_55d256654aa195::t_9d179afd366472 1-47
+UW-Wiki/src/app/wiki/[slug]/proposals/[id]/page.tsx
+  s_55d256654aa195::t_1336d2e839e3ba 1-83
+UW-Wiki/src/app/admin/reviews/page.tsx
+  s_55d256654aa195::t_698f6deaf12017 8
+UW-Wiki/src/app/wiki/[slug]/page.tsx
+  s_55d256654aa195::t_a7fc3607fef939 5,11-12,50-51,96-101
+UW-Wiki/src/app/api/admin/comments/[id]/hide/route.ts
+  s_55d256654aa195::t_ffdec90c5d5e54 2,28-34
+UW-Wiki/src/app/auth/callback/route.ts
+  s_55d256654aa195::t_0212204479a7f9 13-17,20-23,25,29-33
+UW-Wiki/src/components/notifications/notification-actions.tsx
+  s_55d256654aa195::t_896cfa6b5babe9 1-47
+UW-Wiki/supabase/migrations/010_notification_page_update_prefs.sql
+  s_55d256654aa195::t_4a1adfa4b4d03b 1-10
+UW-Wiki/docs/HANDOFF-LAUNCH.md
+  s_55d256654aa195::t_b160425c8c9d55 1-15,17-36,38-59
+  s_55d256654aa195::t_abf652f465d10a 16,37
+UW-Wiki/src/components/bookmarks/remove-bookmark-button.tsx
+  s_55d256654aa195::t_86dfc877a9bd0a 1-28
+UW-Wiki/src/components/auth/pending-action-resumer.tsx
+  s_55d256654aa195::t_221044e0f90f48 48-51,55-58
+UW-Wiki/src/app/my/contributions/loading.tsx
+  s_55d256654aa195::t_a59b390fb503f4 1-12
+UW-Wiki/src/app/api/cron/notifications-digest/route.ts
+  s_55d256654aa195::t_a71f806dd38161 1-9,14-71
+  s_55d256654aa195::t_79d5c3ce97c672 10-13
+UW-Wiki/docs/TESTING-GUIDE.md
+  s_55d256654aa195::t_b558b58b4545ae 38-39
+  s_55d256654aa195::t_3add485994ce2b 1-37,40-69
+UW-Wiki/supabase/migrations/008_audit_fixes.sql
+  s_55d256654aa195::t_ffab7430551e4e 1-25
+UW-Wiki/vercel.json
+  s_55d256654aa195::t_c4602135ce1e30 1-8
+UW-Wiki/docs/SEEDING-AND-ROLES.md
+  s_55d256654aa195::t_2193741d13e12b 1-42
+UW-Wiki/src/app/api/proposals/[id]/route.ts
+  s_55d256654aa195::t_b722d2ff2885da 13-18
+UW-Wiki/src/app/api/admin/cold-start/jobs/[jobId]/rerun/route.ts
+  s_55d256654aa195::t_b3cd976160c339 25-27
+  s_55d256654aa195::t_31516d21cb895b 2,14-21
+UW-Wiki/src/components/layout/site-header.tsx
+  s_55d256654aa195::t_e8c0002fc3af0b 3,25
+  s_55d256654aa195::t_b635930247b2e9 26-31
+UW-Wiki/src/app/api/admin/lifecycle/config/route.ts
+  s_55d256654aa195::t_905a19b292a331 24-25
+UW-Wiki/src/lib/proposals/service.ts
+  s_55d256654aa195::t_134d3a1b3386dd 10,337-359,368-382
+  s_55d256654aa195::t_d55f24864df475 176,189,564,570
+UW-Wiki/src/app/my/contributions/page.tsx
+  s_55d256654aa195::t_0b5043a5f2cb8d 1-2,4-6,9-26,28,30-65,69-82
+UW-Wiki/src/app/api/notifications/route.ts
+  s_55d256654aa195::t_b321617120f034 1-17
+UW-Wiki/src/app/my/profile/profile-ui.tsx
+  s_55d256654aa195::t_7278947227f9e7 161,195-199
+  s_55d256654aa195::t_95eb76d24c43b0 6,142-160,162-194,200-248
+UW-Wiki/src/app/api/comments/[id]/replies/route.ts
+  s_55d256654aa195::t_aa6aa35991e81c 7,31,65-82
+UW-Wiki/scripts/smoke-auth-probes.mjs
+  s_55d256654aa195::t_54090d627cfbdc 1-3,5-18,20-21,26-34
+  s_55d256654aa195::t_dbc6e3597d696a 4
+  s_55d256654aa195::t_325a3bc3383d3d 19,22-25
+UW-Wiki/src/app/api/bookmarks/toggle/route.ts
+  s_55d256654aa195::t_09abefe43488e4 4,10-13,22-25,28-34
+UW-Wiki/src/app/admin/reports/page.tsx
+  s_55d256654aa195::t_07296c7bf61d31 19
+UW-Wiki/src/app/my/bookmarks/loading.tsx
+  s_55d256654aa195::t_8fd218af92ca13 1-12
+UW-Wiki/src/app/api/admin/comments/[id]/unhide/route.ts
+  s_55d256654aa195::t_3ad871de54746d 2,19-25
+UW-Wiki/src/app/api/cold-start/[jobId]/publish/route.ts
+  s_55d256654aa195::t_f12c977181bf49 2,17-28
+UW-Wiki/src/types/domain.ts
+  s_55d256654aa195::t_e8af7399d96c32 372-396,398-402
+  s_55d256654aa195::t_0f74520d163b0c 397
+UW-Wiki/src/app/my/profile/page.tsx
+  s_55d256654aa195::t_6c3d538d35b99b 2,4,9,19,29
+UW-Wiki/src/app/api/admin/reports/[id]/dismiss/route.ts
+  s_55d256654aa195::t_12cbea8e9e90f9 2,24-30
+UW-Wiki/scripts/smoke-test-frd89.mjs
+  s_55d256654aa195::t_b1c972e2eeb0da 1-2,9-17,19-21,24-25,27-31,34-64
+  s_55d256654aa195::t_7c96c5522ab873 26
+  s_55d256654aa195::t_f70f59bfa73cb8 3-8,22-23
+  s_55d256654aa195::t_fa427066194407 32-33
+  s_55d256654aa195::t_67f7b49249cc48 18
+UW-Wiki/src/app/api/notifications/[id]/mark-read/route.ts
+  s_55d256654aa195::t_92e8555285b281 1-18
+UW-Wiki/src/components/bookmarks/bookmark-button.tsx
+  s_55d256654aa195::t_e13680be6d3562 1-82
+UW-Wiki/src/lib/notifications/service.ts
+  s_55d256654aa195::t_3df8918c565b9f 26-29,32-33
+  s_55d256654aa195::t_238ddbf02fbc0f 1-18,20,22-25,30-31,34-122,124-136,138-184,186-231,233-238
+  s_55d256654aa195::t_0b19785520d4cd 19,21,123,137,185,232
+UW-Wiki/CONSTRAINTS.md
+  s_55d256654aa195::t_6e13720cac0bd9 184,186
+UW-Wiki/src/app/api/notifications/mark-all-read/route.ts
+  s_55d256654aa195::t_ab50db1598da7d 1-15
+UW-Wiki/scripts/list-users-roles.mjs
+  s_55d256654aa195::t_73928a6c5951df 1-16
+UW-Wiki/src/components/notifications/notification-bell.tsx
+  s_55d256654aa195::t_a8313cbf2ea303 1-21,23-95
+  s_55d256654aa195::t_2891284418a42c 22
+UW-Wiki/HANDOFF.md
+  s_55d256654aa195::t_dacd7589b8e287 135-137
+  s_55d256654aa195::t_f495362d2e3e32 26,28-29,31-33
+  s_55d256654aa195::t_a65f453f05ea1d 90-91,133
+  s_55d256654aa195::t_0fdb18df05a601 27,30,134
+UW-Wiki/src/app/api/me/notification-preferences/route.ts
+  s_55d256654aa195::t_dea1f64589fc32 1-14,16-44
+  s_55d256654aa195::t_224f930c27b4d0 15
+UW-Wiki/docs/SETUP-AND-DEPLOY-CHECKLIST.md
+  s_55d256654aa195::t_3bfeb95c1a711e 1-21,23-24,26,28-65
+  s_55d256654aa195::t_e6f80e575abacb 22,25,27
+UW-Wiki/src/lib/actions/bookmarks.ts
+  s_55d256654aa195::t_863bffe43900b7 1-54
+UW-Wiki/src/lib/config/env.ts
+  s_55d256654aa195::t_f3adc10b26a26c 25
+UW-Wiki/src/app/auth/reset/page.tsx
+  s_55d256654aa195::t_206ca51b77f05e 3,13-23,56-57
+UW-Wiki/src/lib/cold-start/service.ts
+  s_55d256654aa195::t_3b62b9cc27ff6c 253-255
+UW-Wiki/src/app/api/notifications/unread-count/route.ts
+  s_55d256654aa195::t_d6352678dd9347 1-15
+UW-Wiki/src/app/my/bookmarks/page.tsx
+  s_55d256654aa195::t_24c44f73f15fba 1-3,5-6,9-26,28,30-61
+UW-Wiki/scripts/ensure-dev-role.mjs
+  s_55d256654aa195::t_45e758efae6b48 1-29,31-45
+  s_55d256654aa195::t_7db961a7e31919 30
+UW-Wiki/src/app/admin/lifecycle/ui.tsx
+  s_55d256654aa195::t_e403829329a680 25-33
+UW-Wiki/src/app/api/proposals/[id]/request-changes/route.ts
+  s_55d256654aa195::t_9c9a8679a8b75f 6,27,84-97
+  s_55d256654aa195::t_60bbd8916b438f 38-56
+UW-Wiki/src/app/api/proposals/[id]/reject/route.ts
+  s_55d256654aa195::t_0e7a49cfffefe7 6,27,66-79
+UW-Wiki/src/app/admin/reviews/[id]/page.tsx
+  s_55d256654aa195::t_d2dd049909a69b 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "885337e109b5bf158567328061e46e16ef22bf5e",
+  "prompts": {},
+  "sessions": {
+    "s_55d256654aa195": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7a8abee9-5f05-4223-96f8-878d40e658e3",
+        "model": "gpt-5.5-medium"
+      },
+      "human_author": "Abeer Das <abeer.das@spellbook.legal>"
+    }
+  }
+}
