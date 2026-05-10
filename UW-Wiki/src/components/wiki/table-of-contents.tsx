@@ -39,18 +39,14 @@ export function TableOfContents({ entries }: { entries: TocEntry[] }) {
       {/* Desktop: sticky sidebar. */}
       <nav
         aria-label="On this page"
-        className="sticky top-8 hidden max-h-[calc(100vh-4rem)] w-52 overflow-y-auto lg:block"
+        className="sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto pr-4 lg:block"
       >
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          On this page
-        </p>
         <TocList entries={entries} activeId={activeId} />
       </nav>
 
-      {/* Mobile / tablet: collapsible dropdown so users still get section
-          navigation per FRD-2 §2.2. */}
+      {/* Mobile / tablet: collapsible dropdown. */}
       <details
-        className="lg:hidden rounded-md border border-border bg-card"
+        className="lg:hidden border-b border-border"
         open={mobileOpen}
         onToggle={(event) => {
           if (event.currentTarget instanceof HTMLDetailsElement) {
@@ -58,13 +54,11 @@ export function TableOfContents({ entries }: { entries: TocEntry[] }) {
           }
         }}
       >
-        <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm">
-          <span>On this page</span>
-          <span className="text-xs text-muted-foreground">
-            {entries.length} sections
-          </span>
+        <summary className="flex cursor-pointer items-center justify-between py-3 text-sm text-muted-foreground">
+          <span className="uppercase tracking-[0.16em] text-[11px]">On this page</span>
+          <span className="text-xs">{entries.length} sections</span>
         </summary>
-        <div className="border-t border-border p-3">
+        <div className="pb-4">
           <TocList
             entries={entries}
             activeId={activeId}
@@ -86,17 +80,17 @@ function TocList({
   onSelect?: () => void;
 }) {
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-2.5">
       {entries.map((entry) => (
         <a
           key={entry.id}
           href={`#${entry.id}`}
           onClick={onSelect}
           className={cn(
-            "block rounded px-2 py-1 text-sm transition-colors",
-            entry.level === 3 && "pl-5 text-xs",
+            "block text-sm leading-snug transition-colors duration-150",
+            entry.level === 3 && "pl-4 text-[13px]",
             activeId === entry.id
-              ? "bg-primary/10 text-primary"
+              ? "text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

@@ -25,35 +25,37 @@ export default async function MyContributionsPage() {
   }).filter((item) => item.page && item.org);
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl p-6 md:p-10">
-      <h1 className="text-3xl font-bold">My Contributions</h1>
-      <p className="mt-2 text-muted-foreground">Your attributed edit proposals and review status.</p>
-      <div className="mt-6 space-y-3">
+    <main className="flex min-h-screen w-full flex-col gap-8 px-6 py-10 md:px-10 lg:px-16">
+      <header className="flex flex-col gap-2 border-b border-border pb-6">
+        <h1 className="text-4xl font-semibold tracking-tight text-foreground">My Contributions</h1>
+        <p className="text-muted-foreground">Your attributed edit proposals and review status.</p>
+      </header>
+      <div className="flex flex-col">
         {proposals.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-medium">No attributed proposals yet.</p>
+          <div className="border border-dashed border-border p-10 text-center">
+            <p className="font-medium text-foreground">No attributed proposals yet.</p>
             <p className="mt-2 text-sm text-muted-foreground">
               Propose an edit while signed in to track it here.
             </p>
           </div>
         ) : (
           proposals.map(({ row, page, org }) => (
-            <article key={row.id} className="rounded-lg border border-border bg-card p-4">
+            <article key={row.id} className="flex flex-col gap-2 border-b border-border py-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="flex flex-col gap-1">
                   <Link
                     href={`/wiki/${page!.slug}/proposals/${row.id}`}
-                    className="text-lg font-semibold hover:underline"
+                    className="text-lg font-medium text-foreground transition-colors duration-150 hover:underline"
                   >
                     {org!.org_name}
                   </Link>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Sections: {(row.section_slugs ?? []).join(", ") || "General"}
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    Sections · {(row.section_slugs ?? []).join(", ") || "General"}
                   </p>
                   {row.rationale ? (
-                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{row.rationale}</p>
+                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{row.rationale}</p>
                   ) : null}
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Submitted {formatRelativeTime(row.created_at)}
                   </p>
                 </div>
@@ -68,16 +70,8 @@ export default async function MyContributionsPage() {
 }
 
 function StatusBadge({ status }: { status: ProposalStatus }) {
-  const className =
-    status === "accepted"
-      ? "border-green-600 text-green-300"
-      : status === "rejected" || status === "withdrawn"
-        ? "border-red-600 text-red-300"
-        : status === "changes_requested" || status === "needs_rebase"
-          ? "border-yellow-600 text-yellow-300"
-          : "border-blue-600 text-blue-300";
   return (
-    <span className={`rounded-full border px-3 py-1 text-xs font-medium ${className}`}>
+    <span className="rounded-full border border-border px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
       {status.replace("_", " ")}
     </span>
   );

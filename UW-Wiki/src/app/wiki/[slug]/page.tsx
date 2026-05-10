@@ -71,72 +71,84 @@ export default async function WikiPage({ params }: PageProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 p-6 md:p-10">
-      <header className="flex flex-col gap-4 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-primary/40 px-2 py-0.5 text-xs text-primary">
-              {page.category}
-            </span>
-            {page.isAdminSeeded ? (
-              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                Admin seeded
-              </span>
-            ) : null}
-          </div>
-          <h1 className="text-4xl font-bold tracking-tight">{page.orgName}</h1>
-          {page.tagline ? (
-            <p className="mt-2 text-muted-foreground">{page.tagline}</p>
-          ) : null}
-          <p className="mt-2 text-sm text-muted-foreground">
-            Last updated {formatRelativeTime(page.lastModifiedAt)}
+    <main className="flex min-h-screen w-full flex-col px-6 py-8 md:px-10 lg:px-16">
+      <div className="grid w-full gap-12 lg:grid-cols-[200px_minmax(0,1fr)_320px]">
+        {/* Left section nav (Grokipedia style) */}
+        <aside className="lg:order-1">
+          <TableOfContents entries={tocEntries} />
+        </aside>
+
+        {/* Center: naked article */}
+        <article className="min-w-0 lg:order-2">
+          <p className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="4.93" y1="19.07" x2="19.07" y2="4.93" />
+            </svg>
+            <span>Last updated {formatRelativeTime(page.lastModifiedAt)}</span>
           </p>
-        </div>
-        <div className="flex gap-2">
-          <BookmarkButton
-            pageId={page.pageId}
-            initialState={bookmarkState}
-            isSignedIn={!!user}
-            returnTo={`/wiki/${page.pageSlug}`}
+
+          <header className="mb-8 flex flex-col gap-4 border-b border-border pb-6">
+            <div className="flex items-baseline gap-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <span>{page.category}</span>
+              {page.isAdminSeeded ? <span>· Admin seeded</span> : null}
+            </div>
+            <h1 className="text-5xl font-semibold tracking-tight text-foreground">
+              {page.orgName}
+            </h1>
+            {page.tagline ? (
+              <p className="text-lg text-muted-foreground">{page.tagline}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <BookmarkButton
+                pageId={page.pageId}
+                initialState={bookmarkState}
+                isSignedIn={!!user}
+                returnTo={`/wiki/${page.pageSlug}`}
+              />
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/wiki/${page.pageSlug}/history`}>View History</Link>
+              </Button>
+            </div>
+          </header>
+
+          {page.isColdStart ? (
+            <div className="mb-6 border-y border-border bg-[color:var(--surface-2)] px-4 py-3 text-sm text-muted-foreground">
+              This content was AI-generated and is pending human review. Propose
+              an edit to improve it.
+            </div>
+          ) : null}
+
+          <LifecycleBanner
+            status={page.lifecycleStatus}
+            config={page.lifecycleConfig}
+            onProposeHref="#wiki-content"
           />
-          <Button asChild variant="outline">
-            <Link href={`/wiki/${page.pageSlug}/history`}>View History</Link>
-          </Button>
-        </div>
-      </header>
 
-      {page.isColdStart ? (
-        <div className="rounded-lg border border-yellow-600 bg-yellow-950/30 p-4 text-sm">
-          This content was AI-generated and is pending human review. Propose an
-          edit to improve it.
-        </div>
-      ) : null}
+          <WikiArticleShell
+            pageId={page.pageId}
+            pageVersionId={page.currentVersionId}
+            initialContent={page.contentJson}
+          />
+        </article>
 
-      <LifecycleBanner
-        status={page.lifecycleStatus}
-        config={page.lifecycleConfig}
-        onProposeHref="#wiki-content"
-      />
-
-      <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-        {/* Mobile-first ordering: Pulse sidebar appears below the content
-            on screens <1024px (FRD-2 §2.2 collapsed layout) and the TOC
-            collapses to a dropdown rendered inside the table-of-contents
-            component itself. */}
-        <TableOfContents entries={tocEntries} />
-        <WikiArticleShell
-          pageId={page.pageId}
-          pageVersionId={page.currentVersionId}
-          initialContent={page.contentJson}
-        />
-        <div className="lg:order-none order-first">
+        {/* Right Pulse infobox */}
+        <aside className="lg:order-3 lg:sticky lg:top-24 lg:self-start">
           <PulseSidebar
             orgId={page.orgId}
             aggregates={page.pulseAggregates}
             healthStatus={page.lifecycleStatus}
             externalLinks={page.externalLinks}
           />
-        </div>
+        </aside>
       </div>
     </main>
   );

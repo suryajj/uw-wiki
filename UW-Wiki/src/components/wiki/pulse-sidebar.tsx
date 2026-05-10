@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function PulseSidebar({
   healthStatus: LifecycleStatus;
   externalLinks: Array<{ label: string; url: string }>;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [authPrompt, setAuthPrompt] = useState<PendingPulseVote | null>(null);
 
   const aggregateByMetric = useMemo(
@@ -46,12 +46,11 @@ export function PulseSidebar({
     [aggregates],
   );
 
-  // First-visit-expanded behaviour per FRD-2 §3.3: the localStorage flag is
-  // set after the first close, so subsequent visits start collapsed.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(`${COLLAPSED_KEY_PREFIX}${orgId}`);
     if (stored === "1") setExpanded(false);
+    else setExpanded(true);
   }, [orgId]);
 
   function toggleExpanded(next: boolean) {
@@ -64,72 +63,80 @@ export function PulseSidebar({
   }
 
   return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-8">
-      <section className="rounded-lg border border-border bg-card p-4">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-primary">
-          The Pulse
-        </h2>
-        <div className="space-y-4">
-          <PulseMetricRow
-            metric="selectivity"
-            aggregate={aggregateByMetric.get("selectivity")}
+    <div className="flex flex-col gap-6">
+      <section className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            The Pulse
+          </h2>
+        </div>
+        <dl className="flex flex-col">
+          <PulseRow
+            label={METRIC_LABELS.selectivity}
+            value={aggregateByMetric.get("selectivity")?.aggregateLabel ?? "No ratings yet"}
+            votes={aggregateByMetric.get("selectivity")?.totalVotes ?? 0}
           />
-          <PulseMetricRow
-            metric="vibe_check"
+          <PulseNumericRow
+            label={METRIC_LABELS.vibe_check}
             aggregate={aggregateByMetric.get("vibe_check")}
-            scaleHint="Social ←→ Corporate"
+            symbol="●"
+            scaleHint="Social → Corporate"
           />
-          <PulseMetricRow
-            metric="coop_boost"
+          <PulseNumericRow
+            label={METRIC_LABELS.coop_boost}
             aggregate={aggregateByMetric.get("coop_boost")}
+            symbol="★"
           />
           <PulseTechStackRow aggregate={aggregateByMetric.get("tech_stack")} />
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Health Status
-            </p>
-            <p className="mt-1 font-medium">{HEALTH_LABELS[healthStatus]}</p>
-          </div>
+          <PulseRow label="Health Status" value={HEALTH_LABELS[healthStatus]} />
+        </dl>
+        <div className="border-t border-border px-4 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            aria-expanded={expanded}
+            onClick={() => toggleExpanded(!expanded)}
+          >
+            {expanded ? "Hide Rating Form" : "Rate This Org"}
+          </Button>
         </div>
-        <Button
-          className="mt-4 w-full"
-          type="button"
-          variant="outline"
-          aria-expanded={expanded}
-          onClick={() => toggleExpanded(!expanded)}
-        >
-          {expanded ? "Hide Rating Form" : "Rate This Org"}
-        </Button>
         {expanded ? (
-          <PulseVoteForm
-            orgId={orgId}
-            onAuthRequired={(payload) => setAuthPrompt(payload)}
-          />
+          <div className="border-t border-border px-4 py-4">
+            <PulseVoteForm
+              orgId={orgId}
+              onAuthRequired={(payload) => setAuthPrompt(payload)}
+            />
+          </div>
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          External Links
-        </h2>
-        {externalLinks.length > 0 ? (
-          <ul className="space-y-2 text-sm">
-            {externalLinks.map((link) => (
-              <li key={link.url}>
-                <a
-                  href={link.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {link.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">No structured links yet.</p>
-        )}
+      <section className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            External Links
+          </h2>
+        </div>
+        <div className="px-4 py-3">
+          {externalLinks.length > 0 ? (
+            <ul className="space-y-2 text-sm">
+              {externalLinks.map((link) => (
+                <li key={link.url}>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-foreground underline-offset-4 hover:underline"
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No structured links yet.</p>
+          )}
+        </div>
       </section>
 
       {authPrompt ? (
@@ -138,60 +145,79 @@ export function PulseSidebar({
           onClose={() => setAuthPrompt(null)}
         />
       ) : null}
-    </aside>
-  );
-}
-
-function PulseMetricRow({
-  metric,
-  aggregate,
-  scaleHint,
-}: {
-  metric: PulseMetric;
-  aggregate?: PulseAggregate;
-  scaleHint?: string;
-}) {
-  const isNumeric = metric === "vibe_check" || metric === "coop_boost";
-  const numericValue = aggregate ? Number.parseFloat(aggregate.aggregateValue) : NaN;
-  return (
-    <div className="border-b border-border pb-3 last:border-0">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {METRIC_LABELS[metric]}
-      </p>
-      {isNumeric && Number.isFinite(numericValue) ? (
-        <NumericMetricBar
-          value={numericValue}
-          symbol={metric === "coop_boost" ? "★" : "●"}
-        />
-      ) : (
-        <p className="mt-1 font-medium">
-          {aggregate?.aggregateLabel ?? "No ratings yet"}
-        </p>
-      )}
-      {scaleHint ? (
-        <p className="text-[11px] text-muted-foreground">{scaleHint}</p>
-      ) : null}
-      <p className="text-xs text-muted-foreground">
-        {aggregate?.totalVotes ?? 0} votes
-      </p>
     </div>
   );
 }
 
-function NumericMetricBar({ value, symbol }: { value: number; symbol: string }) {
-  const filled = Math.round(Math.max(0, Math.min(5, value)));
+function PulseRow({
+  label,
+  value,
+  votes,
+}: {
+  label: string;
+  value: ReactNode;
+  votes?: number;
+}) {
   return (
-    <p className="mt-1 font-medium tracking-wide" aria-label={`${value.toFixed(1)} out of 5`}>
-      {Array.from({ length: 5 }).map((_, index) => (
-        <span
-          key={index}
-          className={index < filled ? "text-primary" : "text-muted-foreground"}
-        >
-          {symbol}
-        </span>
-      ))}{" "}
-      <span className="text-sm text-muted-foreground">{value.toFixed(1)} / 5</span>
-    </p>
+    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
+      <dt className="text-sm font-medium text-foreground">{label}</dt>
+      <dd className="text-right text-sm text-foreground">
+        <span>{value}</span>
+        {typeof votes === "number" ? (
+          <span className="ml-2 text-xs text-muted-foreground">({votes})</span>
+        ) : null}
+      </dd>
+    </div>
+  );
+}
+
+function PulseNumericRow({
+  label,
+  aggregate,
+  symbol,
+  scaleHint,
+}: {
+  label: string;
+  aggregate?: PulseAggregate;
+  symbol: string;
+  scaleHint?: string;
+}) {
+  const numericValue = aggregate ? Number.parseFloat(aggregate.aggregateValue) : NaN;
+  const filled = Number.isFinite(numericValue)
+    ? Math.round(Math.max(0, Math.min(5, numericValue)))
+    : 0;
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
+      <dt className="flex flex-col text-sm font-medium text-foreground">
+        <span>{label}</span>
+        {scaleHint ? (
+          <span className="text-[11px] font-normal text-muted-foreground">
+            {scaleHint}
+          </span>
+        ) : null}
+      </dt>
+      <dd className="text-right text-sm text-foreground">
+        {Number.isFinite(numericValue) ? (
+          <span className="tabular-nums">
+            <span aria-hidden="true">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <span
+                  key={i}
+                  className={i < filled ? "text-foreground" : "text-muted-foreground"}
+                >
+                  {symbol}
+                </span>
+              ))}
+            </span>
+            <span className="ml-2 text-xs text-muted-foreground">
+              {numericValue.toFixed(1)} / 5 ({aggregate?.totalVotes ?? 0})
+            </span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">No ratings yet</span>
+        )}
+      </dd>
+    </div>
   );
 }
 
@@ -205,32 +231,32 @@ function PulseTechStackRow({ aggregate }: { aggregate?: PulseAggregate }) {
   const visible = tags.slice(0, 6);
   const overflow = Math.max(0, tags.length - visible.length);
   return (
-    <div className="border-b border-border pb-3 last:border-0">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        Tech Stack
-      </p>
-      <div className="mt-1 flex flex-wrap gap-1">
+    <div className="flex flex-col gap-2 border-b border-border px-4 py-3 last:border-b-0">
+      <dt className="text-sm font-medium text-foreground">Tech Stack</dt>
+      <dd>
         {visible.length === 0 ? (
-          <p className="font-medium">No tech tags yet</p>
+          <p className="text-sm text-muted-foreground">No tech tags yet</p>
         ) : (
-          visible.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-border bg-background px-2 py-0.5 text-xs"
-            >
-              {tag}
-            </span>
-          ))
+          <div className="flex flex-wrap gap-1.5">
+            {visible.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground"
+              >
+                {tag}
+              </span>
+            ))}
+            {overflow > 0 ? (
+              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                +{overflow}
+              </span>
+            ) : null}
+          </div>
         )}
-        {overflow > 0 ? (
-          <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
-            +{overflow} more
-          </span>
-        ) : null}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {aggregate?.totalVotes ?? 0} votes
-      </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {aggregate?.totalVotes ?? 0} votes
+        </p>
+      </dd>
     </div>
   );
 }
@@ -308,20 +334,14 @@ function PulseVoteForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="mt-4 space-y-3 rounded-md border border-border bg-background p-3 text-sm"
-    >
-      <fieldset className="space-y-1">
-        <legend className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Selectivity
-        </legend>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-sm">
+      <FormField label="Selectivity">
         <select
           value={selectivity}
           onChange={(event: ChangeEvent<HTMLSelectElement>) =>
             setSelectivity(event.target.value as typeof SELECTIVITY_OPTIONS[number])
           }
-          className="w-full rounded-md border border-border bg-card px-2 py-1"
+          className="h-9 w-full rounded-md border border-border bg-transparent px-3 text-sm text-foreground outline-none focus:border-foreground"
         >
           {SELECTIVITY_OPTIONS.map((option) => (
             <option key={option} value={option}>
@@ -329,32 +349,22 @@ function PulseVoteForm({
             </option>
           ))}
         </select>
-      </fieldset>
+      </FormField>
 
-      <fieldset className="space-y-1">
-        <legend className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Vibe Check ({vibe})
-        </legend>
+      <FormField label={`Vibe Check (${vibe})`} hint="Social → Corporate">
         <input
           type="range"
           min={1}
           max={5}
           value={vibe}
           onChange={(event) => setVibe(Number.parseInt(event.target.value, 10))}
-          className="w-full"
+          className="w-full accent-[color:var(--foreground)]"
           aria-label="Vibe Check rating"
         />
-        <div className="flex justify-between text-[11px] text-muted-foreground">
-          <span>Social</span>
-          <span>Corporate</span>
-        </div>
-      </fieldset>
+      </FormField>
 
-      <fieldset className="space-y-1">
-        <legend className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Co-op Boost ({coop})
-        </legend>
-        <div className="flex gap-1" role="radiogroup" aria-label="Co-op Boost rating">
+      <FormField label={`Co-op Boost (${coop})`}>
+        <div className="flex gap-1.5" role="radiogroup" aria-label="Co-op Boost rating">
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
@@ -365,35 +375,52 @@ function PulseVoteForm({
               aria-label={`${star} out of 5`}
               className={
                 star <= coop
-                  ? "text-primary text-lg"
-                  : "text-muted-foreground text-lg"
+                  ? "text-lg text-foreground"
+                  : "text-lg text-muted-foreground hover:text-foreground"
               }
             >
               ★
             </button>
           ))}
         </div>
-      </fieldset>
+      </FormField>
 
-      <fieldset className="space-y-1">
-        <legend className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Tech Stack (optional, comma separated)
-        </legend>
+      <FormField label="Tech Stack" hint="Optional, comma separated">
         <input
           value={techInput}
           onChange={(event) => setTechInput(event.target.value)}
           placeholder="ROS2, C++, Python"
-          className="w-full rounded-md border border-border bg-card px-2 py-1"
+          className="h-9 w-full rounded-md border border-border bg-transparent px-3 text-sm text-foreground outline-none focus:border-foreground"
         />
-      </fieldset>
+      </FormField>
 
-      <Button type="submit" disabled={submitting}>
-        {submitting ? "Submitting..." : "Submit Rating"}
+      <Button type="submit" disabled={submitting} className="w-full">
+        {submitting ? "Submitting…" : "Submit Rating"}
       </Button>
       {message ? (
         <p className="text-xs text-muted-foreground">{message}</p>
       ) : null}
     </form>
+  );
+}
+
+function FormField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </legend>
+      {children}
+      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+    </fieldset>
   );
 }
 
@@ -409,15 +436,14 @@ function PendingActionModal({
   }
   const [authOpen, setAuthOpen] = useState(false);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-w-sm rounded-lg border border-border bg-card p-5 text-sm">
-        <h3 className="text-base font-semibold">Sign in to rate</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-w-sm rounded-md border border-border bg-[color:var(--surface)] p-6 text-sm">
+        <h3 className="text-lg font-semibold text-foreground">Sign in to rate</h3>
         <p className="mt-2 text-muted-foreground">
-          Pulse votes need an account so we can prevent ballot stuffing. Sign-in
-          UI lands with FRD-6; this stub will save your rating and submit it
-          automatically once you sign in.
+          Pulse votes need an account so we can prevent ballot stuffing. Your
+          rating is saved and submitted automatically once you sign in.
         </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>

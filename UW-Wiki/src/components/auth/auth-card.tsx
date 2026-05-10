@@ -2,11 +2,24 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
 import { clientEnv } from "@/lib/config/env-client";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signIn" | "signUp" | "magic" | "reset";
+
+const MODE_TITLES: Record<Mode, string> = {
+  signIn: "Log into your account",
+  signUp: "Create your account",
+  magic: "Email sign-in link",
+  reset: "Reset your password",
+};
+
+const MODE_SUBMIT: Record<Mode, string> = {
+  signIn: "Continue with email",
+  signUp: "Create account",
+  magic: "Send sign-in link",
+  reset: "Send reset link",
+};
 
 export function AuthCard({
   returnTo = "/",
@@ -19,6 +32,7 @@ export function AuthCard({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [mode, setMode] = useState<Mode>("signIn");
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,7 +82,6 @@ export function AuthCard({
           },
         });
         if (magicError) {
-          // Non-enumeration: always show success.
           setMessage("If that email exists, a sign-in link has been sent.");
         } else {
           setMessage("Check your email for a sign-in link.");
@@ -104,98 +117,191 @@ export function AuthCard({
     }
   }
 
+  function pickMode(next: Mode) {
+    setMode(next);
+    setShowEmailForm(true);
+    setError(null);
+    setMessage(null);
+  }
+
   return (
-    <section
-      className={
-        embedded
-          ? "w-full rounded-lg border border-border bg-card p-6"
-          : "w-full max-w-md rounded-lg border border-border bg-card p-6"
-      }
-    >
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold">
-          {mode === "signUp"
-            ? "Create account"
-            : mode === "magic"
-              ? "Email sign-in link"
-              : mode === "reset"
-                ? "Reset password"
-                : "Sign in"}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Continue to UW Wiki. You can still browse anonymously.
-        </p>
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-sm"}>
+      <h1 className="text-3xl font-semibold tracking-tight text-[#fdfdfd] md:text-4xl">
+        {MODE_TITLES[mode]}
+      </h1>
+      <p className="mt-2 text-sm text-[#888888]">
+        Continue to UW Wiki. You can still browse anonymously.
+      </p>
+
+      <div className="mt-8 flex flex-col gap-3">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={google}
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+        >
+          <GoogleGlyph />
+          Continue with Google
+        </button>
+
+        <div className="relative my-2 flex items-center">
+          <span className="h-px flex-1 bg-[#2a2a2a]" />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => pickMode("signIn")}
+          className={authPillClass(mode === "signIn" && showEmailForm)}
+        >
+          <MailGlyph />
+          Sign in with email
+        </button>
+        <button
+          type="button"
+          onClick={() => pickMode("magic")}
+          className={authPillClass(mode === "magic" && showEmailForm)}
+        >
+          <SparkGlyph />
+          Email me a sign-in link
+        </button>
+        <button
+          type="button"
+          onClick={() => pickMode("signUp")}
+          className={authPillClass(mode === "signUp" && showEmailForm)}
+        >
+          <UserGlyph />
+          Create a new account
+        </button>
+        <button
+          type="button"
+          onClick={() => pickMode("reset")}
+          className="self-start pt-1 text-xs text-[#888888] transition-colors duration-150 hover:text-[#fdfdfd]"
+        >
+          Forgot your password?
+        </button>
       </div>
 
-      <form onSubmit={submit} className="space-y-3">
-        {mode === "signUp" ? (
-          <label className="block text-sm">
-            Display name
-            <input
+      {showEmailForm ? (
+        <form onSubmit={submit} className="mt-6 flex flex-col gap-3 border-t border-[#2a2a2a] pt-6">
+          {mode === "signUp" ? (
+            <AuthInput
+              label="Display name"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
+              onChange={setDisplayName}
+              required
               minLength={2}
               maxLength={50}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
-              required
             />
-          </label>
-        ) : null}
-        <label className="block text-sm">
-          Email
-          <input
+          ) : null}
+          <AuthInput
+            label="Email"
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+            onChange={setEmail}
             required
           />
-        </label>
-        {mode === "signIn" || mode === "signUp" ? (
-          <label className="block text-sm">
-            Password
-            <input
+          {mode === "signIn" || mode === "signUp" ? (
+            <AuthInput
+              label="Password"
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={8}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
+              onChange={setPassword}
               required
+              minLength={8}
             />
-          </label>
-        ) : null}
-        <Button type="submit" disabled={loading} className="w-full">
-          {loading ? "Working..." : mode === "signUp" ? "Create account" : mode === "magic" ? "Send link" : mode === "reset" ? "Send reset link" : "Sign in"}
-        </Button>
-      </form>
+          ) : null}
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Working…" : MODE_SUBMIT[mode]}
+          </button>
+        </form>
+      ) : null}
 
-      <Button
-        type="button"
-        variant="outline"
-        className="mt-3 w-full"
-        disabled={loading}
-        onClick={google}
-      >
-        Continue with Google
-      </Button>
+      {error ? <p className="mt-4 text-sm text-[#ff7a7a]">{error}</p> : null}
+      {message ? <p className="mt-4 text-sm text-[#888888]">{message}</p> : null}
+    </div>
+  );
+}
 
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-      {message ? <p className="mt-3 text-sm text-muted-foreground">{message}</p> : null}
+function authPillClass(active: boolean): string {
+  const base =
+    "inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border px-5 text-sm font-medium transition-colors duration-150";
+  return active
+    ? `${base} border-[#fdfdfd] bg-[#1f1f1f] text-[#fdfdfd]`
+    : `${base} border-[#2a2a2a] bg-transparent text-[#fdfdfd] hover:border-[#fdfdfd]`;
+}
 
-      <div className="mt-5 flex flex-wrap gap-3 text-sm">
-        <button type="button" className="text-primary hover:underline" onClick={() => setMode("signIn")}>
-          Password sign in
-        </button>
-        <button type="button" className="text-primary hover:underline" onClick={() => setMode("magic")}>
-          Magic link
-        </button>
-        <button type="button" className="text-primary hover:underline" onClick={() => setMode("signUp")}>
-          Sign up
-        </button>
-        <button type="button" className="text-primary hover:underline" onClick={() => setMode("reset")}>
-          Forgot password?
-        </button>
-      </div>
-    </section>
+function AuthInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required,
+  minLength,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  type?: string;
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-sm text-[#fdfdfd]">
+      <span className="text-[11px] uppercase tracking-[0.16em] text-[#888888]">
+        {label}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        minLength={minLength}
+        maxLength={maxLength}
+        className="h-11 w-full rounded-md border border-[#2a2a2a] bg-transparent px-3 text-sm text-[#fdfdfd] outline-none transition-colors duration-150 placeholder:text-[#666666] focus:border-[#fdfdfd]"
+      />
+    </label>
+  );
+}
+
+function GoogleGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+  );
+}
+
+function MailGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 7l9 6 9-6" />
+    </svg>
+  );
+}
+
+function SparkGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.5 5.5l2.8 2.8M15.7 15.7l2.8 2.8M5.5 18.5l2.8-2.8M15.7 8.3l2.8-2.8" />
+    </svg>
+  );
+}
+
+function UserGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
   );
 }

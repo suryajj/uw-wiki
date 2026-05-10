@@ -31,18 +31,18 @@ export default async function ReviewDetailPage({ params }: PageProps) {
   const overallMergeable = proposal.mergeability_status === "mergeable";
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl p-6 md:p-10">
+    <main className="flex min-h-screen w-full flex-col gap-6 px-6 py-10 md:px-10 lg:px-16">
       <h1 className="text-3xl font-bold">Proposal Review</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Status: {proposal.status} · Mergeability: {proposal.mergeability_status}
       </p>
 
       {isReviewerAffiliated ? (
-        <div className="mt-6 rounded-lg border border-yellow-600 bg-yellow-950/20 p-4 text-sm">
-          <p className="font-medium text-yellow-400">
+        <div className="mt-6 rounded-lg border border-border bg-[color:var(--surface-2)] p-4 text-sm">
+          <p className="font-medium text-foreground">
             You are affiliated with this organization.
           </p>
-          <p className="mt-1 text-yellow-200/80">
+          <p className="mt-1 text-muted-foreground">
             Your decision will be logged with your affiliation status. All
             actions remain enabled per FRD-4 §5.3 (disclosure-only).
           </p>
@@ -108,7 +108,7 @@ function MergeabilityBadge({ status }: { status: string }) {
     status === "mergeable"
       ? "border-green-600 text-green-300"
       : status === "needs_rebase"
-        ? "border-yellow-600 text-yellow-300"
+        ? "border-border text-muted-foreground"
         : status === "conflict"
           ? "border-red-600 text-red-300"
           : "border-border text-muted-foreground";

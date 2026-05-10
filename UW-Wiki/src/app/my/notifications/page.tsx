@@ -20,15 +20,15 @@ export default async function MyNotificationsPage({ searchParams }: PageProps) {
   const notifications = await listNotifications(user.id, unreadOnly);
 
   return (
-    <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Notifications</h1>
-          <p className="mt-2 text-muted-foreground">Proposal updates, replies, and page digests.</p>
+    <main className="flex min-h-screen w-full flex-col gap-8 px-6 py-10 md:px-10 lg:px-16">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight text-foreground">Notifications</h1>
+          <p className="text-muted-foreground">Proposal updates, replies, and page digests.</p>
         </div>
         <MarkAllNotificationsReadButton />
-      </div>
-      <div className="mt-6 flex gap-2">
+      </header>
+      <div className="flex gap-2">
         <Button asChild variant={!unreadOnly ? "default" : "outline"} size="sm">
           <Link href="/my/notifications">All</Link>
         </Button>
@@ -36,10 +36,10 @@ export default async function MyNotificationsPage({ searchParams }: PageProps) {
           <Link href="/my/notifications?tab=unread">Unread</Link>
         </Button>
       </div>
-      <div className="mt-6 space-y-3">
+      <div className="flex flex-col">
         {notifications.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-medium">No notifications here.</p>
+          <div className="border border-dashed border-border p-10 text-center">
+            <p className="font-medium text-foreground">No notifications here.</p>
           </div>
         ) : (
           notifications.map((notification) => {
@@ -50,19 +50,19 @@ export default async function MyNotificationsPage({ searchParams }: PageProps) {
             return (
               <article
                 key={notification.id}
-                className={`rounded-lg border border-border bg-card p-4 ${
-                  notification.readAt ? "opacity-75" : ""
+                className={`flex flex-col gap-2 border-b border-border py-5 ${
+                  notification.readAt ? "opacity-60" : ""
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <Link href={href} className="font-semibold hover:underline">
+                  <div className="flex flex-col gap-1">
+                    <Link href={href} className="font-medium text-foreground transition-colors duration-150 hover:underline">
                       {String(notification.payload.title ?? notification.type)}
                     </Link>
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {String(notification.payload.body ?? "")}
                     </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {formatRelativeTime(notification.createdAt)}
                     </p>
                   </div>

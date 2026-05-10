@@ -1,63 +1,95 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Map shadcn/ui CSS variables to Tailwind theme tokens */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--surface-2);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--foreground);
   --color-border: var(--border);
-  --color-input: var(--input);
+  --color-input: var(--border);
   --color-ring: var(--ring);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--foreground);
+  --color-destructive: #b00020;
+  --color-destructive-foreground: var(--background);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-serif), Georgia, "Times New Roman", serif;
+  --font-serif: var(--font-serif), Georgia, "Times New Roman", serif;
 }
 
 :root {
-  /* UW Wiki dark theme — from PRD §12 */
-  --background: oklch(0.09 0 0);
-  --foreground: oklch(1 0 0);
-  --card: oklch(0.12 0 0);
-  --card-foreground: oklch(1 0 0);
-  --popover: oklch(0.12 0 0);
-  --popover-foreground: oklch(1 0 0);
-  --primary: oklch(0.82 0.16 87);
-  --primary-foreground: oklch(0.09 0 0);
-  --secondary: oklch(0.18 0 0);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.18 0 0);
-  --accent-foreground: oklch(1 0 0);
-  --border: oklch(0.22 0 0);
-  --input: oklch(0.22 0 0);
-  --ring: oklch(0.82 0.16 87);
-  --destructive: oklch(0.577 0.245 27.33);
-  --destructive-foreground: oklch(1 0 0);
-  --radius: 0.625rem;
+  /* Light theme — strict B&W per design */
+  --background: #fdfdfd;
+  --foreground: #141414;
+  --surface: #fdfdfd;
+  --surface-2: #f4f4f4;
+  --muted-foreground: #666666;
+  --border: #e5e5e5;
+  --primary: #141414;
+  --primary-foreground: #fdfdfd;
+  --ring: #141414;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: #141414;
+  --foreground: #fdfdfd;
+  --surface: #141414;
+  --surface-2: #1f1f1f;
+  --muted-foreground: #888888;
+  --border: #2a2a2a;
+  --primary: #fdfdfd;
+  --primary-foreground: #141414;
+  --ring: #fdfdfd;
 }
 
 * {
   border-color: var(--border);
 }
 
-body {
+html, body {
   background-color: var(--background);
   color: var(--foreground);
+  font-family: var(--font-serif);
   font-feature-settings: "rlig" 1, "calt" 1;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+/* Utility — tight tracking on small caps headers */
+.eyebrow {
+  font-family: var(--font-serif);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Hide scrollbars on toolbars but keep scrollable */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+::selection {
+  background: var(--foreground);
+  color: var(--background);
 }

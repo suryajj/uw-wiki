@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AuthCard } from "@/components/auth/auth-card";
 import { sanitizeReturnTo } from "@/lib/auth/guards";
 
@@ -8,8 +10,53 @@ export default async function SignInPage({
 }) {
   const { returnTo } = await searchParams;
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <AuthCard returnTo={sanitizeReturnTo(returnTo)} />
-    </main>
+    <div className="grid min-h-screen w-full grid-cols-1 bg-[#141414] text-[#fdfdfd] md:grid-cols-2">
+      {/* Left: form */}
+      <div className="relative flex flex-col justify-between bg-[#141414] px-8 py-10 md:px-16 md:py-14">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="text-base font-semibold tracking-tight text-[#fdfdfd]">
+            UW Wiki
+          </Link>
+          <span className="rounded-full border border-[#2a2a2a] px-3 py-1 text-xs text-[#888888]">
+            You are signing into <span className="text-[#fdfdfd]">UW Wiki</span>
+          </span>
+        </div>
+
+        <div className="my-auto flex w-full justify-center py-12">
+          <AuthCard returnTo={sanitizeReturnTo(returnTo)} />
+        </div>
+
+        <p className="text-center text-xs text-[#666666]">
+          By continuing, you agree to UW Wiki&rsquo;s{" "}
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </div>
+
+      {/* Right: ambient panel */}
+      <div
+        aria-hidden="true"
+        className="relative hidden overflow-hidden bg-[#141414] md:block"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 75% 30%, #3a3a3a 0%, #1a1a1a 35%, #141414 70%)",
+        }}
+      >
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span
+            className="select-none text-[28vw] font-semibold leading-none tracking-tighter text-[#fdfdfd]"
+            style={{ opacity: 0.04 }}
+          >
+            UW
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

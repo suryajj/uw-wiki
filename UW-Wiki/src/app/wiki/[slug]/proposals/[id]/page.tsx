@@ -31,7 +31,7 @@ export default async function ContributorProposalPage({ params }: PageProps) {
   }>;
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl p-6 md:p-10">
+    <main className="flex min-h-screen w-full flex-col gap-6 px-6 py-10 md:px-10 lg:px-16">
       <Button asChild variant="ghost">
         <Link href="/my/contributions">Back to Contributions</Link>
       </Button>

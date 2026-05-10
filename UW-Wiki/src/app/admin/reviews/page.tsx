@@ -9,7 +9,7 @@ export default async function ReviewsPage() {
   const proposals = await listProposalQueue();
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
+    <main className="flex min-h-screen w-full flex-col gap-6 px-6 py-10 md:px-10 lg:px-16">
       <h1 className="text-3xl font-bold">Reviewer Queue</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Section-scoped proposals are ordered FIFO with mergeability badges.

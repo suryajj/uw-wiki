@@ -25,30 +25,32 @@ export default async function MyBookmarksPage() {
   }).filter((item) => item.page && item.org);
 
   return (
-    <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
-      <h1 className="text-3xl font-bold">My Bookmarks</h1>
-      <p className="mt-2 text-muted-foreground">Saved wiki pages, newest first.</p>
-      <div className="mt-6 space-y-3">
+    <main className="flex min-h-screen w-full flex-col gap-8 px-6 py-10 md:px-10 lg:px-16">
+      <header className="flex flex-col gap-2 border-b border-border pb-6">
+        <h1 className="text-4xl font-semibold tracking-tight text-foreground">My Bookmarks</h1>
+        <p className="text-muted-foreground">Saved wiki pages, newest first.</p>
+      </header>
+      <div className="flex flex-col">
         {bookmarks.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-6">
-            <p className="font-medium">No bookmarks yet.</p>
+          <div className="border border-dashed border-border p-10 text-center">
+            <p className="font-medium text-foreground">No bookmarks yet.</p>
             <p className="mt-2 text-sm text-muted-foreground">
               Bookmark wiki pages from their page header to keep them here.
             </p>
           </div>
         ) : (
           bookmarks.map(({ row, page, org }) => (
-            <article key={row.page_id} className="rounded-lg border border-border bg-card p-4">
+            <article key={row.page_id} className="flex flex-col gap-2 border-b border-border py-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <Link href={`/wiki/${page!.slug}`} className="text-lg font-semibold hover:underline">
+                <div className="flex flex-col gap-1">
+                  <Link href={`/wiki/${page!.slug}`} className="text-lg font-medium text-foreground transition-colors duration-150 hover:underline">
                     {org!.org_name}
                   </Link>
-                  <p className="mt-1 text-sm text-muted-foreground">{org!.category}</p>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{org!.category}</p>
                   {org!.tagline ? (
-                    <p className="mt-2 text-sm text-muted-foreground">{org!.tagline}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{org!.tagline}</p>
                   ) : null}
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Bookmarked {formatRelativeTime(row.created_at)} · Last edited{" "}
                     {formatRelativeTime(page!.last_modified_at)}
                   </p>

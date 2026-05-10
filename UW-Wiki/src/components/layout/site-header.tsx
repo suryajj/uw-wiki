@@ -1,55 +1,83 @@
 import Link from "next/link";
 
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
 export async function SiteHeader() {
   const user = await getCurrentUser();
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-        <Link href="/" className="font-semibold text-primary">
-          UW Wiki
+    <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
+      <div className="flex w-full items-center justify-between px-6 py-4 md:px-10">
+        <Link
+          href="/"
+          className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight text-foreground transition-colors duration-150 hover:opacity-80"
+        >
+          <span>UW Wiki</span>
+          <span className="text-xs font-normal italic text-muted-foreground">v0.1</span>
         </Link>
-        <nav className="flex items-center gap-3 text-sm">
-          <Link className="text-muted-foreground hover:text-foreground" href="/search">
+
+        <nav className="flex items-center gap-1 text-sm">
+          <Link
+            className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
+            href="/search"
+          >
             Search
           </Link>
           {user?.role === "reviewer" || user?.role === "admin" ? (
-            <Link className="text-muted-foreground hover:text-foreground" href="/admin/reviews">
+            <Link
+              className="rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
+              href="/admin/reviews"
+            >
               Admin
             </Link>
           ) : null}
           {user ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <NotificationBell />
-              <Link className="text-muted-foreground hover:text-foreground" href="/my/bookmarks">
+              <Link
+                className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
+                href="/my/bookmarks"
+              >
                 Bookmarks
               </Link>
-              <Link className="text-muted-foreground hover:text-foreground" href="/my/contributions">
+              <Link
+                className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] lg:inline-flex"
+                href="/my/contributions"
+              >
                 Contributions
               </Link>
-              <Link className="text-muted-foreground hover:text-foreground" href="/my/profile">
+              <Link
+                className="rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
+                href="/my/profile"
+              >
                 {user.displayName ?? user.email}
               </Link>
+              <ThemeToggle />
               <form action="/api/auth/sign-out" method="post">
-                <button className="rounded-md border border-border px-2 py-1 text-xs" type="submit">
+                <button
+                  className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground"
+                  type="submit"
+                >
                   Sign Out
                 </button>
               </form>
             </div>
           ) : (
-            <Link
-              href="/auth/sign-in"
-              className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground"
-            >
-              Sign In
-            </Link>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Link
+                href="/auth/sign-in"
+                className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--surface-2)] hover:text-foreground"
+              >
+                Sign In
+              </Link>
+            </div>
           )}
         </nav>
       </div>
       {user && !user.emailVerifiedAt ? (
-        <div className="border-t border-yellow-600 bg-yellow-950/30 px-4 py-2 text-center text-xs text-yellow-200">
+        <div className="border-t border-border bg-[color:var(--surface-2)] px-6 py-2 text-center text-xs text-muted-foreground md:px-10">
           Please verify your email address. You can keep using UW Wiki while
           unverified.
         </div>

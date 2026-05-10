@@ -50,22 +50,22 @@ export function NotificationBell() {
       >
         <Bell className="size-4" />
         {count > 0 ? (
-          <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-medium text-background">
             {count > 9 ? "9+" : count}
           </span>
         ) : null}
       </Button>
       {open ? (
-        <div className="absolute right-0 top-10 z-50 w-80 rounded-lg border border-border bg-card p-3 text-sm shadow-lg">
-          <div className="flex items-center justify-between">
-            <p className="font-semibold">Notifications</p>
-            <button type="button" className="text-xs text-primary hover:underline" onClick={markAllRead}>
+        <div className="absolute right-0 top-11 z-50 w-80 overflow-hidden rounded-md border border-border bg-[color:var(--surface)] text-sm">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Notifications</p>
+            <button type="button" className="text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground" onClick={markAllRead}>
               Mark all read
             </button>
           </div>
-          <div className="mt-3 space-y-2">
+          <div className="flex flex-col">
             {items.length === 0 ? (
-              <p className="text-muted-foreground">No unread notifications.</p>
+              <p className="px-4 py-6 text-center text-muted-foreground">No unread notifications.</p>
             ) : (
               items.map((item) => {
                 const href = typeof item.payload.href === "string" ? item.payload.href : "/my/notifications";
@@ -74,9 +74,9 @@ export function NotificationBell() {
                     key={item.id}
                     href={href}
                     onClick={() => void markRead(item.id)}
-                    className="block rounded-md border border-border p-2 hover:border-primary/40"
+                    className="block border-b border-border px-4 py-3 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
                   >
-                    <p className="font-medium">{String(item.payload.title ?? item.type)}</p>
+                    <p className="font-medium text-foreground">{String(item.payload.title ?? item.type)}</p>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {String(item.payload.body ?? "")}
                     </p>
@@ -85,8 +85,8 @@ export function NotificationBell() {
               })
             )}
           </div>
-          <Link href="/my/notifications" className="mt-3 block text-xs text-primary hover:underline">
-            View all notifications
+          <Link href="/my/notifications" className="block px-4 py-3 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground">
+            View all notifications →
           </Link>
         </div>
       ) : null}

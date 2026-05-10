@@ -14,7 +14,7 @@ type SortMode = "name-asc" | "name-desc";
 
 export function DirectoryView({ orgs }: Props) {
   const [filter, setFilter] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const [sortMode, setSortMode] = useState<SortMode>("name-asc");
 
   const filtered = useMemo(() => {
@@ -28,25 +28,25 @@ export function DirectoryView({ orgs }: Props) {
   }, [orgs, filter]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center">
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-col gap-4 border-b border-border pb-4 md:flex-row md:items-center">
         <input
           type="text"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          placeholder="Filter organizations..."
-          className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          placeholder="Filter organizations…"
+          className="h-10 flex-1 rounded-full border border-border bg-transparent px-4 text-sm text-foreground outline-none transition-colors duration-150 placeholder:text-muted-foreground focus:border-foreground"
           aria-label="Filter organizations"
         />
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground" htmlFor="directory-sort">
-            Sort by
+        <div className="flex items-center gap-3 text-sm">
+          <label className="text-xs uppercase tracking-wider text-muted-foreground" htmlFor="directory-sort">
+            Sort
           </label>
           <select
             id="directory-sort"
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value as SortMode)}
-            className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+            className="rounded-full border border-border bg-transparent px-3 py-1.5 text-sm text-foreground outline-none transition-colors duration-150 hover:border-foreground"
           >
             <option value="name-asc">Name (A–Z)</option>
             <option value="name-desc">Name (Z–A)</option>
@@ -54,23 +54,8 @@ export function DirectoryView({ orgs }: Props) {
           <div
             role="group"
             aria-label="Layout"
-            className="ml-2 flex overflow-hidden rounded-md border border-border"
+            className="flex overflow-hidden rounded-full border border-border"
           >
-            <button
-              type="button"
-              aria-pressed={view === "grid"}
-              aria-label="Grid layout"
-              title="Grid"
-              onClick={() => setView("grid")}
-              className={cn(
-                "px-3 py-1 text-xs",
-                view === "grid"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-accent",
-              )}
-            >
-              Grid
-            </button>
             <button
               type="button"
               aria-pressed={view === "list"}
@@ -78,13 +63,28 @@ export function DirectoryView({ orgs }: Props) {
               title="List"
               onClick={() => setView("list")}
               className={cn(
-                "border-l border-border px-3 py-1 text-xs",
+                "px-3 py-1.5 text-xs transition-colors duration-150",
                 view === "list"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-accent",
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               List
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "grid"}
+              aria-label="Grid layout"
+              title="Grid"
+              onClick={() => setView("grid")}
+              className={cn(
+                "border-l border-border px-3 py-1.5 text-xs transition-colors duration-150",
+                view === "grid"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Grid
             </button>
           </div>
         </div>
@@ -99,24 +99,26 @@ export function DirectoryView({ orgs }: Props) {
         if (inCategory.length === 0) return null;
 
         return (
-          <section key={category} aria-labelledby={`cat-${category}`}>
+          <section key={category} aria-labelledby={`cat-${category}`} className="flex flex-col gap-3">
             <h2
               id={`cat-${category}`}
-              className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground"
+              className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
             >
               {category}
             </h2>
-            <div
-              className={cn(
-                view === "grid"
-                  ? "grid gap-3 md:grid-cols-2 lg:grid-cols-3"
-                  : "flex flex-col gap-2",
-              )}
-            >
-              {inCategory.map((org) => (
-                <OrgCard key={org.id} org={org} layout={view} />
-              ))}
-            </div>
+            {view === "list" ? (
+              <div className="flex flex-col">
+                {inCategory.map((org) => (
+                  <OrgRow key={org.id} org={org} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-l border-border">
+                {inCategory.map((org) => (
+                  <OrgTile key={org.id} org={org} />
+                ))}
+              </div>
+            )}
           </section>
         );
       })}
@@ -137,39 +139,40 @@ function sortOrgs(orgs: DirectoryOrg[], mode: SortMode): DirectoryOrg[] {
   );
 }
 
-function OrgCard({ org, layout }: { org: DirectoryOrg; layout: "grid" | "list" }) {
+function OrgRow({ org }: { org: DirectoryOrg }) {
   const href = `/wiki/${org.pageSlug ?? org.orgSlug}`;
-  if (layout === "list") {
-    return (
-      <Link
-        href={href}
-        className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40"
-      >
-        <span className="font-medium text-foreground">{org.orgName}</span>
-        <span className="mx-4 flex-1 truncate text-sm text-muted-foreground">
-          {org.tagline ?? "No tagline yet."}
-        </span>
-        <span className="rounded-full border border-primary/40 px-2 py-0.5 text-xs text-primary">
-          {org.category}
-        </span>
-      </Link>
-    );
-  }
   return (
     <Link
       href={href}
-      className="flex flex-col gap-2 rounded-md border border-border bg-card p-4 transition-colors hover:border-primary/40"
+      className="group flex items-baseline justify-between gap-6 border-b border-border px-6 py-4 transition-colors duration-150 hover:bg-[color:var(--surface-2)] md:px-10 lg:px-16"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-foreground">{org.orgName}</span>
-        <span className="rounded-full border border-primary/40 px-2 py-0.5 text-xs text-primary">
-          {org.category}
-        </span>
-      </div>
-      <p className="line-clamp-2 text-sm text-muted-foreground">
+      <span className="min-w-[200px] text-lg font-medium text-foreground">
+        {org.orgName}
+      </span>
+      <span className="hidden flex-1 truncate text-sm text-muted-foreground md:inline">
         {org.tagline ?? "No tagline yet."}
-      </p>
+      </span>
+      <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+        {org.category}
+      </span>
     </Link>
   );
 }
 
+function OrgTile({ org }: { org: DirectoryOrg }) {
+  const href = `/wiki/${org.pageSlug ?? org.orgSlug}`;
+  return (
+    <Link
+      href={href}
+      className="flex flex-col gap-2 border-b border-r border-border bg-background p-6 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
+    >
+      <span className="text-lg font-medium text-foreground">{org.orgName}</span>
+      <p className="line-clamp-3 text-sm text-muted-foreground">
+        {org.tagline ?? "No tagline yet."}
+      </p>
+      <span className="mt-auto pt-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+        {org.category}
+      </span>
+    </Link>
+  );
+}

@@ -16,7 +16,7 @@ export default async function WikiHistoryPage({ params }: PageProps) {
   const versions = await getPageVersionHistory(page.pageId);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 p-6 md:p-10">
+    <main className="flex min-h-screen w-full flex-col gap-6 px-6 py-10 md:px-10 lg:px-16">
       <header className="flex items-start justify-between gap-4 border-b border-border pb-6">
         <div>
           <p className="text-sm text-muted-foreground">{page.orgName}</p>

@@ -19,12 +19,14 @@ export default async function ProfilePage() {
     ensureNotificationPreferences(user.id),
   ]);
   return (
-    <main className="mx-auto min-h-screen max-w-3xl p-6 md:p-10">
-      <h1 className="text-3xl font-bold">My Profile</h1>
-      <p className="mt-2 text-muted-foreground">
-        Manage self-declared affiliations. Admins can also add or revoke
-        affiliations from the admin dashboard.
-      </p>
+    <main className="flex min-h-screen w-full flex-col gap-8 px-6 py-10 md:px-10 lg:px-16">
+      <header className="flex flex-col gap-2 border-b border-border pb-6">
+        <h1 className="text-4xl font-semibold tracking-tight text-foreground">My Profile</h1>
+        <p className="text-muted-foreground">
+          Manage self-declared affiliations. Admins can also add or revoke
+          affiliations from the admin dashboard.
+        </p>
+      </header>
       <AffiliationManager orgs={orgs ?? []} initialAffiliations={affiliations ?? []} />
       <NotificationPreferencesForm initialPreferences={notificationPreferences} />
     </main>

@@ -110,7 +110,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
       const button = document.createElement("button");
       button.type = "button";
       button.className =
-        "uw-comment-margin-indicator absolute -left-7 top-3 hidden h-5 min-w-5 items-center justify-center rounded-full border border-border bg-card px-1 text-[10px] font-medium text-muted-foreground hover:border-primary lg:flex";
+        "uw-comment-margin-indicator absolute -left-7 top-3 hidden h-5 min-w-5 items-center justify-center rounded-full border border-border bg-[color:var(--surface)] px-1 text-[10px] font-medium text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground lg:flex";
       button.dataset.sectionSlug = slug;
       button.title = `${count} comment${count > 1 ? "s" : ""}`;
       button.textContent = count > 9 ? "9+" : String(count);
@@ -248,7 +248,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
       {selection ? (
         <button
           type="button"
-          className="fixed z-50 -translate-x-1/2 rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground shadow"
+          className="fixed z-50 -translate-x-1/2 rounded-full bg-foreground px-3 py-1 text-sm font-medium text-background shadow"
           style={{ top: selection.rect.bottom, left: selection.rect.left }}
           onClick={() => {
             setSidebarOpen(true);
@@ -497,9 +497,9 @@ function CommentCard({
       data-comment-id={comment.id}
       onClick={onSelect}
       className={cn(
-        "rounded-lg border border-border bg-card p-3",
+        "rounded-md border border-border bg-[color:var(--surface)] p-3 transition-colors duration-150",
         isReply && "ml-5 bg-background",
-        isSelected && "border-primary",
+        isSelected && "border-foreground",
         onSelect && "cursor-pointer",
       )}
     >
@@ -516,7 +516,7 @@ function CommentCard({
         ) : null}
       </div>
       {!isReply && comment.anchorText ? (
-        <p className="mb-2 border-l-2 border-primary/40 pl-2 text-xs text-muted-foreground">
+        <p className="mb-2 border-l-2 border-foreground/30 pl-2 text-xs text-muted-foreground">
           {comment.isAnchored
             ? `“${comment.anchorText.slice(0, 80)}${
                 comment.anchorText.length > 80 ? "…" : ""
@@ -527,12 +527,12 @@ function CommentCard({
         </p>
       ) : null}
       <div
-        className="text-sm leading-6 text-zinc-200"
+        className="text-sm leading-6 text-foreground"
         dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(comment.body) }}
       />
       <div className="mt-3 flex items-center gap-3 text-xs">
         <button
-          className="text-muted-foreground hover:text-primary"
+          className="text-muted-foreground transition-colors duration-150 hover:text-foreground"
           onClick={(event) => {
             event.stopPropagation();
             void vote("up");
@@ -541,7 +541,7 @@ function CommentCard({
           ▲ {comment.upvotes}
         </button>
         <button
-          className="text-muted-foreground hover:text-red-400"
+          className="text-muted-foreground transition-colors duration-150 hover:text-foreground"
           onClick={(event) => {
             event.stopPropagation();
             void vote("down");

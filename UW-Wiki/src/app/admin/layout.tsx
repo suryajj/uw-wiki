@@ -12,11 +12,11 @@ export default async function AdminLayout({
   const counts = await getAdminBadgeCounts();
   const isAdmin = user?.role === "admin";
   return (
-    <div className="mx-auto grid min-h-screen max-w-7xl grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside className="border-b border-border bg-card p-4 lg:min-h-screen lg:border-b-0 lg:border-r">
-        <h1 className="text-lg font-semibold text-primary">Admin</h1>
+    <div className="grid min-h-screen w-full grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <aside className="border-b border-border px-6 py-8 lg:min-h-screen lg:border-b-0 lg:border-r lg:px-8">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Admin</h1>
         <p className="mt-1 text-xs text-muted-foreground">{user?.email ?? "Not signed in"}</p>
-        <nav className="mt-6 flex flex-wrap gap-2 lg:flex-col">
+        <nav className="mt-8 flex flex-col gap-3">
           <AdminLink href="/admin/reviews" label="Reviews" badge={counts.proposals} />
           <AdminLink href="/admin/reports" label="Reports" badge={counts.reports} />
           {isAdmin ? (
@@ -31,7 +31,7 @@ export default async function AdminLayout({
           ) : null}
         </nav>
       </aside>
-      <div>{children}</div>
+      <div className="px-6 py-8 md:px-10 lg:px-12">{children}</div>
     </div>
   );
 }
@@ -48,11 +48,11 @@ function AdminLink({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:border-primary/50"
+      className="flex items-center justify-between text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
     >
       <span>{label}</span>
       {badge ? (
-        <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+        <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-foreground">
           {badge}
         </span>
       ) : null}
