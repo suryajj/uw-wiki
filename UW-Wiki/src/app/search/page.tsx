@@ -2,7 +2,8 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useMemo, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 type ToolPart = {
   type: string;
@@ -26,12 +27,30 @@ type SearchToolOutput = {
 };
 
 export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+function SearchPageInner() {
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/search" }),
     [],
   );
   const { messages, status, sendMessage, error } = useChat({ transport });
   const [input, setInput] = useState("");
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams.get("q")?.trim() ?? "";
+  const autoSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    if (autoSubmittedRef.current) return;
+    if (!initialQuery) return;
+    autoSubmittedRef.current = true;
+    sendMessage({ text: initialQuery });
+  }, [initialQuery, sendMessage]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
