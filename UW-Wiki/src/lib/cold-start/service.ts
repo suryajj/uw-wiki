@@ -1,15 +1,51 @@
 import "server-only";
 
+import { generateObject } from "ai";
+import { z } from "zod";
+
+import { openrouter } from "@/lib/ai/provider";
 import { reembedPage } from "@/lib/ai/embeddings";
 import { logServerError } from "@/lib/api/errors";
 import { env } from "@/lib/config/env";
+import { markdownToProseMirrorNodes } from "@/lib/prosemirror/from-markdown";
 import { validateProposalDoc } from "@/lib/prosemirror/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/utils/slug";
 import { SUGGESTED_TEMPLATE } from "@/lib/wiki/template";
 import type { CurrentUser } from "@/lib/auth/current-user";
-import type { OrgCategory, ProseMirrorDoc } from "@/types/domain";
+import type { OrgCategory, ProseMirrorDoc, ProseMirrorNode } from "@/types/domain";
 import type { OrgMetadataInput } from "@/lib/cold-start/schemas";
+
+const COLD_START_SYNTHESIS_SYSTEM = `You are writing a neutral, encyclopedic Wikipedia-style article ABOUT a student organization at the University of Waterloo. You are NOT the organization. You are an outside observer summarizing what is publicly known.
+
+VOICE (non-negotiable):
+- Always third-person. Never use "we", "us", "our", "I", "you", "your", "let's".
+- Refer to the org by its name, or as "the team", "the club", "the organization", or "members".
+- Past tense for finished events, present tense for ongoing facts.
+- No exclamation points. No marketing hype. No emojis.
+
+EVIDENCE HANDLING (most important):
+- The research evidence below is messy web scrapes. Most of it is NOISE. Be aggressive about ignoring irrelevant content.
+- Specifically IGNORE and never include: land acknowledgements (Haldimand Tract, Neutral/Anishinaabeg/Haudenosaunee), Sedra Student Design Centre boilerplate, university navigation menus, "Learn more about…" CTAs, donation pitches, employee count tables, RocketReach/Apollo/SignalHire data, follower counts ("1,793 followers"), generic UW admissions requirements, Waterloo presidents (Burt Matthews, James Downey, Doug Wright, Vivek Goel), Waterloo university history, Med School Study Planner content, University of Washington Diversity Blueprint content.
+- If most of a section's evidence looks unrelated to this specific organization, OMIT the section entirely (add its title to droppedSections).
+- NEVER copy phrases verbatim from the source. Always paraphrase in your own neutral words.
+- Do not invent facts. If unsure, omit.
+
+STRUCTURE:
+- Each kept section: 2–5 sentences of plain encyclopedic prose. NO sub-headings unless the source clearly enumerates a list (then use "### Subheading" sparingly).
+- Use bullet lists ONLY for genuinely list-like content: project teams, past nonprofit partners, exec roles. Otherwise prose.
+- "External Links" section: ONLY a short bullet list of clean official URLs (website, Instagram, LinkedIn, GitHub). Format: "- [Label](url)". Skip if no clean URLs.
+
+OUTPUT FORMAT:
+- Output a JSON object matching the schema: { sections: [{title, markdown}], droppedSections: [string] }
+- Section titles should match the candidate names provided (Overview, Time Commitment, Culture and Vibe, Subteams and Roles, Past Projects, Exec History, How to Apply, External Links). You may omit any.
+- "Overview" should always be present if any reliable info exists.
+`;
+
+type SynthesizedDraft = {
+  sections: Array<{ title: string; markdown: string }>;
+  droppedSections: string[];
+};
 
 const WATERLOO_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -78,7 +114,7 @@ export async function generateDraftForJob(
     .eq("id", jobId);
 
   const research = await researchOrg(orgMetadata);
-  const draft = synthesizeDraft(orgMetadata, research);
+  const draft = await synthesizeDraftWithLLM(orgMetadata, research);
   const pulseEstimates = estimatePulse(orgMetadata, research);
   const sectionSources = Object.fromEntries(
     research.map((item) => [slugify(item.section), item.sources]),
@@ -284,24 +320,251 @@ async function identifyOrg(input: string, categoryHint?: OrgCategory): Promise<O
   };
 }
 
+// Domains known to produce noise for UW org research
+const TAVILY_BLOCKED_DOMAINS = [
+  "blueprintprep.com", // Blueprint Test Prep (med school)
+  "washington.edu", // University of Washington
+  "rocketreach.co",
+  "signalhire.com",
+  "thecompaniesapi.com",
+  "leadiq.com",
+  "apollo.io",
+  "zoominfo.com",
+  "uwaterloo.ca/sedra-student-design-centre",
+  "uwaterloo.ca/about/who-we-are/indigenous-relations",
+  "uwaterloo.ca/future-students",
+  "uwaterloo.ca/admissions",
+];
+
+// Patterns matching obvious scrape artifacts to strip from raw text before LLM
+const NOISE_PATTERNS: RegExp[] = [
+  /The University of Waterloo acknowledges that much of our work[\s\S]*?Office of Indigenous Relations\.?/gi,
+  /Haldimand Tract[\s\S]*?Six Nations[\s\S]*?Grand River\.?/gi,
+  /Sedra Student Design Centre[\s\S]*?(N2L 3G1 Canada|Engineering Website Help)/gi,
+  /200 University Avenue[\s\S]*?N2L 3G1 Canada/gi,
+  /Learn more about the Educating the Engineer of the Future[\s\S]*?ways to support\.?/gi,
+  /Information about the University of Waterloo/gi,
+  /Information about Sedra Student Design Centre/gi,
+  /Provide website feedback\s*Engineering Website Help/gi,
+  /\d+\s*(likes|followers)\b/gi,
+  /\bExternal link for [^\n]+/gi,
+  /Get Verified Emails/gi,
+  /View All Employees/gi,
+  /\bView contact profiles from [^\n]+/gi,
+  /Click here to view [^\n]+/gi,
+  /Open in app\s*Sign up\s*Sign in/gi,
+  /Sitemap\s*Open in app/gi,
+  /Press enter or click to view image in full size/gi,
+  /\[\.\.\.\]/g,
+  /Right carat/g,
+  // University of Washington Diversity Blueprint (totally unrelated)
+  /Diversity Blueprint[\s\S]*?University of Washington[\s\S]*?(Indigenous|inclusion)/gi,
+  /Med School Study Planner[\s\S]*?(study schedule|hours per day)/gi,
+  /Blueprint Help Center[\s\S]*?Setting Study Hours/gi,
+];
+
+function stripNoise(text: string): string {
+  let out = text;
+  for (const pattern of NOISE_PATTERNS) out = out.replace(pattern, "");
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+function deriveDomain(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedSnippet(url: string | undefined, content: string): boolean {
+  if (!url) return false;
+  const lowerUrl = url.toLowerCase();
+  if (TAVILY_BLOCKED_DOMAINS.some((d) => lowerUrl.includes(d))) return false;
+  // Reject pure navigation/menu dumps (very low signal-to-noise)
+  if (content.length < 80) return false;
+  // Reject snippets that are >40% PDF / image / employee-list boilerplate
+  if (/View All Employees|RocketReach|SignalHire|Apollo\.io/i.test(content)) return false;
+  return true;
+}
+
 async function researchOrg(org: OrgMetadataInput): Promise<ResearchResult[]> {
+  const orgDomain = deriveDomain(org.website);
+  // Run a small set of targeted queries instead of one per section.
+  // Each query returns up to 8 results — we'll deduplicate and pre-filter.
+  const queries = [
+    {
+      q: `${org.name} University of Waterloo student club overview`,
+      includeDomains: orgDomain ? [orgDomain] : undefined,
+    },
+    { q: `${org.name} University of Waterloo project teams subteams members` },
+    { q: `${org.name} University of Waterloo recruitment apply application` },
+    { q: `${org.name} University of Waterloo time commitment hours per week` },
+    { q: `${org.name} University of Waterloo past projects partners` },
+  ];
+
+  const seenUrls = new Set<string>();
+  const collected: Array<{ url: string; content: string; title?: string }> = [];
+
+  for (const { q, includeDomains } of queries) {
+    const search = await tavilySearch(q, { includeDomains, maxResults: 8 });
+    for (const item of search) {
+      if (!item.url || !item.content) continue;
+      if (seenUrls.has(item.url)) continue;
+      const cleaned = stripNoise(item.content);
+      if (!isAllowedSnippet(item.url, cleaned)) continue;
+      seenUrls.add(item.url);
+      collected.push({ url: item.url, content: cleaned, title: item.title });
+    }
+  }
+
+  // Bucket the deduplicated, cleaned snippets by section heuristically so the
+  // LLM gets a structured but compact evidence packet. Each section gets
+  // snippets whose text matches its heuristic; the "Overview" bucket is a
+  // catch-all so nothing is lost.
+  const sectionBuckets = new Map<string, Array<{ url: string; content: string }>>();
+  for (const title of SECTION_TITLES) sectionBuckets.set(title, []);
+
+  for (const snippet of collected) {
+    const matched = matchSections(snippet.content);
+    if (matched.length === 0) {
+      sectionBuckets.get("Overview")!.push(snippet);
+    } else {
+      for (const m of matched) sectionBuckets.get(m)!.push(snippet);
+    }
+  }
+
   const results: ResearchResult[] = [];
   for (const section of SECTION_TITLES) {
-    const search = await tavilySearch(`${org.name} University of Waterloo ${section}`);
-    const summary =
-      search.map((item) => item.content).filter(Boolean).join(" ") ||
-      fallbackSectionText(org, section);
+    const bucket = sectionBuckets.get(section)!;
+    // Cap each bucket so the LLM context stays small (~400 chars per snippet,
+    // up to 4 snippets per section).
+    const trimmed = bucket
+      .slice(0, 4)
+      .map((s) => s.content.slice(0, 600))
+      .join(" \n\n ");
     results.push({
       section,
-      status: summary ? "completed" : "skipped",
-      sources: search.flatMap((item) => (item.url ? [item.url] : [])),
-      summary,
+      status: trimmed ? "completed" : "skipped",
+      sources: bucket.slice(0, 4).map((s) => s.url),
+      summary: trimmed || fallbackSectionText(org, section),
     });
   }
   return results;
 }
 
-function synthesizeDraft(
+function matchSections(content: string): string[] {
+  const lower = content.toLowerCase();
+  const out: string[] = [];
+  if (/(time commitment|hours per week|hours\/week|10 hours)/.test(lower)) {
+    out.push("Time Commitment");
+  }
+  if (/(culture|values|vibe|social|retreat|community)/.test(lower)) {
+    out.push("Culture and Vibe");
+  }
+  if (/(subteam|project team|developer|designer|product manager|technical lead|director|vp )/.test(lower)) {
+    out.push("Subteams and Roles");
+  }
+  if (/(past project|partnered|nonprofit partner|previously worked|case study)/.test(lower)) {
+    out.push("Past Projects");
+  }
+  if (/(president|founder|founded in|exec history|leadership|alumni)/.test(lower)) {
+    out.push("Exec History");
+  }
+  if (/(apply|application|recruitment|how to join|interview|hiring)/.test(lower)) {
+    out.push("How to Apply");
+  }
+  if (/(linkedin|instagram|github|medium|website)/.test(lower)) {
+    out.push("External Links");
+  }
+  return out;
+}
+
+async function synthesizeDraftWithLLM(
+  org: OrgMetadataInput,
+  research: ResearchResult[],
+): Promise<ProseMirrorDoc> {
+  // Build a compact evidence packet for the LLM. Snippets have already been
+  // domain-filtered and noise-stripped in researchOrg().
+  const evidence = research
+    .filter((item) => item.summary && item.summary.length > 60)
+    .map((item) => {
+      const trimmed = item.summary.slice(0, 2400);
+      const sources = item.sources.slice(0, 3).join(", ");
+      return `### Candidate section: ${item.section}\nSources: ${sources}\nNotes: ${trimmed}`;
+    })
+    .join("\n\n");
+
+  const userPrompt = `Organization: ${org.name}
+Category: ${org.category}
+One-liner: ${org.oneLiner ?? "(none)"}
+Official website: ${org.website ?? "(none)"}
+
+Write a neutral, third-person Wikipedia-style article about this organization using ONLY the evidence below as a starting point. Be ruthless: the evidence contains a lot of irrelevant scrapes — discard anything that isn't clearly about ${org.name} as a UW student organization.
+
+Sections to consider (omit any that lack real evidence — list dropped titles in droppedSections):
+${SECTION_TITLES.map((t) => `- ${t}`).join("\n")}
+
+Evidence:
+
+${evidence || "(no usable evidence)"}`;
+
+  let synthesized: SynthesizedDraft | null = null;
+  try {
+    const { object } = await generateObject({
+      model: openrouter.chat("google/gemini-2.5-flash"),
+      schema: z.object({
+        sections: z.array(
+          z.object({
+            title: z.string().min(1).max(120),
+            markdown: z.string().min(1).max(4000),
+          }),
+        ),
+        droppedSections: z.array(z.string()),
+      }),
+      system: COLD_START_SYNTHESIS_SYSTEM,
+      prompt: userPrompt,
+      maxOutputTokens: 6000,
+      temperature: 0.3,
+    });
+    synthesized = object;
+  } catch (error) {
+    logServerError("cold-start.synthesize", error);
+  }
+
+  if (!synthesized || synthesized.sections.length === 0) {
+    return synthesizeDraftFallback(org, research);
+  }
+
+  const docContent: ProseMirrorNode[] = [];
+  for (const section of synthesized.sections) {
+    const heading: ProseMirrorNode = {
+      type: "heading",
+      attrs: { level: 2, slug: slugify(section.title) },
+      content: [{ type: "text", text: section.title }],
+    };
+    const body = markdownToProseMirrorNodes(section.markdown);
+    if (body.length === 0) continue; // skip empties
+    docContent.push(heading, ...body);
+  }
+
+  if (docContent.length === 0) return synthesizeDraftFallback(org, research);
+
+  const doc: ProseMirrorDoc = {
+    type: "doc",
+    content: docContent,
+  } as ProseMirrorDoc;
+
+  const validation = validateProposalDoc(doc);
+  if (!validation.ok) {
+    logServerError("cold-start.synthesize.validate", new Error(validation.error));
+    return synthesizeDraftFallback(org, research);
+  }
+  return doc;
+}
+
+function synthesizeDraftFallback(
   org: OrgMetadataInput,
   research: ResearchResult[],
 ): ProseMirrorDoc {
@@ -381,24 +644,30 @@ async function seedPulseAggregates(orgId: string, estimates: Record<string, unkn
   }
 }
 
-async function tavilySearch(query: string): Promise<Array<{ title?: string; url?: string; content?: string }>> {
+async function tavilySearch(
+  query: string,
+  opts: { includeDomains?: string[]; excludeDomains?: string[]; maxResults?: number } = {},
+): Promise<Array<{ title?: string; url?: string; content?: string }>> {
   if (!env.TAVILY_API_KEY) return [];
   try {
+    const body: Record<string, unknown> = {
+      api_key: env.TAVILY_API_KEY,
+      query,
+      max_results: opts.maxResults ?? 5,
+      search_depth: "advanced",
+    };
+    if (opts.includeDomains?.length) body.include_domains = opts.includeDomains;
+    if (opts.excludeDomains?.length) body.exclude_domains = opts.excludeDomains;
     const response = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: env.TAVILY_API_KEY,
-        query,
-        max_results: 3,
-        search_depth: "basic",
-      }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) return [];
-    const body = (await response.json()) as {
+    const data = (await response.json()) as {
       results?: Array<{ title?: string; url?: string; content?: string }>;
     };
-    return body.results ?? [];
+    return data.results ?? [];
   } catch (error) {
     logServerError("cold-start.tavily", error);
     return [];

@@ -2,9 +2,8 @@
 
 import { motion } from "framer-motion";
 
-const LINE_1 = "Honest, student-edited knowledge base";
-const LINE_2 = "for UW extracurriculars, design teams,";
-const LINE_3 = "ECs, and campus orgs.";
+const LINE_1 = "Honest, student-edited knowledge base for UW";
+const LINE_2 = "extracurriculars, design teams, and campus orgs.";
 
 function AnimatedLine({
   text,
@@ -33,10 +32,9 @@ function AnimatedLine({
 
 export function HeroText() {
   return (
-    <p className="max-w-3xl text-2xl font-medium leading-snug tracking-tight text-foreground md:text-3xl lg:text-4xl">
+    <p className="max-w-5xl text-2xl font-medium leading-snug tracking-tight text-foreground md:text-3xl lg:text-4xl">
       <AnimatedLine text={LINE_1} delay={0.05} />
       <AnimatedLine text={LINE_2} delay={0.18} />
-      <AnimatedLine text={LINE_3} delay={0.31} />
     </p>
   );
 }

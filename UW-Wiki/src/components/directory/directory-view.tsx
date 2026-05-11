@@ -10,12 +10,9 @@ type Props = {
   orgs: DirectoryOrg[];
 };
 
-type SortMode = "name-asc" | "name-desc";
-
 export function DirectoryView({ orgs }: Props) {
   const [filter, setFilter] = useState("");
   const [view, setView] = useState<"grid" | "list">("list");
-  const [sortMode, setSortMode] = useState<SortMode>("name-asc");
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase().trim();
@@ -39,18 +36,6 @@ export function DirectoryView({ orgs }: Props) {
           aria-label="Filter organizations"
         />
         <div className="flex items-center gap-3 text-sm">
-          <label className="text-xs uppercase tracking-wider text-muted-foreground" htmlFor="directory-sort">
-            Sort
-          </label>
-          <select
-            id="directory-sort"
-            value={sortMode}
-            onChange={(event) => setSortMode(event.target.value as SortMode)}
-            className="rounded-full border border-border bg-transparent px-3 py-1.5 text-sm text-foreground outline-none transition-colors duration-150 hover:border-foreground"
-          >
-            <option value="name-asc">Name (A–Z)</option>
-            <option value="name-desc">Name (Z–A)</option>
-          </select>
           <div
             role="group"
             aria-label="Layout"
@@ -93,7 +78,6 @@ export function DirectoryView({ orgs }: Props) {
       {ORG_CATEGORIES.map((category) => {
         const inCategory = sortOrgs(
           filtered.filter((org) => org.category === category),
-          sortMode,
         );
 
         if (inCategory.length === 0) return null;
@@ -132,11 +116,8 @@ export function DirectoryView({ orgs }: Props) {
   );
 }
 
-function sortOrgs(orgs: DirectoryOrg[], mode: SortMode): DirectoryOrg[] {
-  const direction = mode === "name-asc" ? 1 : -1;
-  return [...orgs].sort(
-    (a, b) => a.orgName.localeCompare(b.orgName) * direction,
-  );
+function sortOrgs(orgs: DirectoryOrg[]): DirectoryOrg[] {
+  return [...orgs].sort((a, b) => a.orgName.localeCompare(b.orgName));
 }
 
 function OrgRow({ org }: { org: DirectoryOrg }) {
