@@ -55,6 +55,15 @@ export function WikiArticleShell({
   });
 
   useEffect(() => {
+    // Listen for external "Propose Edit" triggers (e.g. icon button in the
+    // page header). The header lives outside WikiArticleShell, so we use a
+    // custom event to flip the mode without lifting state to the page.
+    const handler = () => setMode("edit");
+    window.addEventListener("wiki:propose-edit", handler);
+    return () => window.removeEventListener("wiki:propose-edit", handler);
+  }, []);
+
+  useEffect(() => {
     if (mode !== "edit" || !editor || !pageVersionId) return;
     const existing = loadDraft(pageId, pageVersionId);
     if (existing) {
@@ -147,11 +156,6 @@ export function WikiArticleShell({
   if (mode === "read") {
     return (
       <div id="wiki-content" className="flex flex-col gap-8">
-        <div className="flex items-center justify-end">
-          <Button type="button" onClick={() => setMode("edit")}>
-            Propose Edit
-          </Button>
-        </div>
         {isEmpty ? (
           <EmptyPagePlaceholder onProposeEdit={() => setMode("edit")} />
         ) : (

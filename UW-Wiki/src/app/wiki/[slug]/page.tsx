@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { BookmarkButton } from "@/components/bookmarks/bookmark-button";
-import { Button } from "@/components/ui/button";
+import {
+  ProposeEditButton,
+  ViewHistoryButton,
+} from "@/components/wiki/article-header-actions";
 import { LifecycleBanner } from "@/components/wiki/lifecycle-banner";
 import { PulseSidebar } from "@/components/wiki/pulse-sidebar";
 import { TableOfContents, type TocEntry } from "@/components/wiki/table-of-contents";
@@ -96,36 +98,27 @@ export default async function WikiPage({ params }: PageProps) {
             <span>Last updated {formatRelativeTime(page.lastModifiedAt)}</span>
           </p>
 
-          <header className="mb-8 flex flex-col gap-4 border-b border-border pb-6">
+          <header className="mb-8 flex flex-col gap-3 border-b border-border pb-6">
             <div className="flex items-baseline gap-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               <span>{page.category}</span>
               {page.isAdminSeeded ? <span>· Admin seeded</span> : null}
             </div>
-            <h1 className="text-5xl font-semibold tracking-tight text-foreground">
-              {page.orgName}
-            </h1>
-            {page.tagline ? (
-              <p className="text-lg text-muted-foreground">{page.tagline}</p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <BookmarkButton
-                pageId={page.pageId}
-                initialState={bookmarkState}
-                isSignedIn={!!user}
-                returnTo={`/wiki/${page.pageSlug}`}
-              />
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/wiki/${page.pageSlug}/history`}>View History</Link>
-              </Button>
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="flex-1 text-5xl font-semibold tracking-tight text-foreground">
+                {page.orgName}
+              </h1>
+              <div className="flex shrink-0 items-center gap-1.5 pt-2">
+                <BookmarkButton
+                  pageId={page.pageId}
+                  initialState={bookmarkState}
+                  isSignedIn={!!user}
+                  returnTo={`/wiki/${page.pageSlug}`}
+                />
+                <ViewHistoryButton href={`/wiki/${page.pageSlug}/history`} />
+                <ProposeEditButton />
+              </div>
             </div>
           </header>
-
-          {page.isColdStart ? (
-            <div className="mb-6 border-y border-border bg-[color:var(--surface-2)] px-4 py-3 text-sm text-muted-foreground">
-              This content was AI-generated and is pending human review. Propose
-              an edit to improve it.
-            </div>
-          ) : null}
 
           <LifecycleBanner
             status={page.lifecycleStatus}

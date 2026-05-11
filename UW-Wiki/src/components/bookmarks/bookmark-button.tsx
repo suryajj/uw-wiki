@@ -4,7 +4,7 @@ import { Bookmark, BookmarkCheck } from "lucide-react";
 import { useState } from "react";
 
 import { AuthModal } from "@/components/auth/auth-modal";
-import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { savePendingAction } from "@/lib/pending-actions/storage";
 
 export function BookmarkButton({
@@ -19,14 +19,13 @@ export function BookmarkButton({
   returnTo: string;
 }) {
   const [state, setState] = useState(initialState);
-  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const bookmarked = state === "bookmarked";
+  const label = bookmarked ? "Remove bookmark" : "Bookmark page";
 
   async function toggle() {
     const desiredState = bookmarked ? "unbookmarked" : "bookmarked";
-    setMessage(null);
     if (!isSignedIn) {
       savePendingAction("bookmark.toggle", { pageId, desiredState }, returnTo);
       setAuthOpen(true);
@@ -47,36 +46,33 @@ export function BookmarkButton({
     setLoading(false);
     if (!res.ok || !body.state) {
       setState(previous);
-      setMessage(body.error ?? "Could not update bookmark.");
       return;
     }
     setState(body.state);
-    setMessage(body.state === "bookmarked" ? "Page bookmarked." : "Bookmark removed.");
   }
 
   return (
-    <div className="relative">
-      <Button
-        type="button"
-        variant={bookmarked ? "default" : "outline"}
-        onClick={toggle}
-        disabled={loading}
-        title={bookmarked ? "Remove bookmark" : "Bookmark page"}
-        aria-label={bookmarked ? "Remove bookmark" : "Bookmark page"}
-      >
-        {bookmarked ? <BookmarkCheck className="mr-2 size-5" /> : <Bookmark className="mr-2 size-5" />}
-        {bookmarked ? "Bookmarked" : "Bookmark"}
-      </Button>
-      {message ? (
-        <p className="absolute right-0 mt-2 w-48 text-right text-xs text-muted-foreground">
-          {message}
-        </p>
-      ) : null}
+    <>
+      <Tooltip label={label}>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={loading}
+          aria-label={label}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground disabled:opacity-50"
+        >
+          {bookmarked ? (
+            <BookmarkCheck className="size-4 text-foreground" />
+          ) : (
+            <Bookmark className="size-4" />
+          )}
+        </button>
+      </Tooltip>
       <AuthModal
         open={authOpen}
         returnTo={returnTo}
         onClose={() => setAuthOpen(false)}
       />
-    </div>
+    </>
   );
 }
