@@ -116,7 +116,7 @@ export const listOrgsTool = tool({
     limit: z.number().int().min(1).max(10).default(5),
   }),
   execute: async ({ metric, order, category, limit }) => {
-    if (metric && metric !== "tech_stack") {
+    if (metric) {
       const select = encodeURIComponent(
         "aggregate_value,aggregate_label,total_votes,organizations!inner(org_name,org_slug,category)",
       );
@@ -221,9 +221,6 @@ export const ragTools = {
 
 function formatOrgData(row: OrgWithPulseRow) {
   const lastModifiedAt = row.pages?.last_modified_at ?? null;
-  const daysSinceEdit = lastModifiedAt
-    ? Math.floor((Date.now() - new Date(lastModifiedAt).getTime()) / 86_400_000)
-    : null;
 
   const pulse = Object.fromEntries(
     (row.pulse_aggregates ?? []).map((aggregate) => [
@@ -241,20 +238,11 @@ function formatOrgData(row: OrgWithPulseRow) {
     orgSlug: row.org_slug,
     category: row.category,
     claimedStatus: row.claimed_status ?? "unclaimed",
-    healthStatus: computeHealthStatus(daysSinceEdit),
     lastModifiedAt,
     pulse: {
       selectivity: pulse.selectivity ?? null,
       vibeCheck: pulse.vibe_check ?? null,
       coopBoost: pulse.coop_boost ?? null,
-      techStack: pulse.tech_stack ?? null,
     },
   };
-}
-
-function computeHealthStatus(daysSinceEdit: number | null) {
-  if (daysSinceEdit === null) return "unknown";
-  if (daysSinceEdit <= 180) return "healthy";
-  if (daysSinceEdit <= 365) return "stale";
-  return "outdated";
 }

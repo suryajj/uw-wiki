@@ -876,17 +876,8 @@ function synthesizeDraftFallback(
 function estimatePulse(
   org: OrgMetadataInput,
   research: ResearchResult[],
-): { selectivity: string | null; techStack: string[] | null; vibeCheck: null; coopBoost: null } {
+): { selectivity: string | null; vibeCheck: null; coopBoost: null } {
   const text = research.map((item) => item.summary).join(" ");
-  const tech = [
-    "ROS2",
-    "C++",
-    "Python",
-    "SolidWorks",
-    "Altium",
-    "React",
-    "Docker",
-  ].filter((tag) => new RegExp(`\\b${escapeRegex(tag)}\\b`, "i").test(text));
   const selectivity = /application|apply|interview/i.test(text)
     ? "Application-Based"
     : /invite/i.test(text)
@@ -894,7 +885,6 @@ function estimatePulse(
       : "Open Membership";
   return {
     selectivity,
-    techStack: tech.length > 0 ? tech : null,
     vibeCheck: null,
     coopBoost: null,
   };
@@ -909,16 +899,6 @@ async function seedPulseAggregates(orgId: string, estimates: Record<string, unkn
       metric: "selectivity",
       aggregate_value: estimates.selectivity,
       aggregate_label: estimates.selectivity,
-      total_votes: 1,
-    });
-  }
-  if (Array.isArray(estimates.techStack) && estimates.techStack.length > 0) {
-    const value = estimates.techStack.join(", ");
-    rows.push({
-      org_id: orgId,
-      metric: "tech_stack",
-      aggregate_value: value,
-      aggregate_label: value,
       total_votes: 1,
     });
   }
@@ -988,6 +968,3 @@ function fallbackSectionText(org: OrgMetadataInput, section: string): string {
   return `No reliable public information found for ${section.toLowerCase()} yet.`;
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

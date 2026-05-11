@@ -16,7 +16,7 @@ const voteLimiter = createRateLimiter(30, "10 m");
 
 const voteSchema = z.object({
   orgId: z.string().uuid(),
-  metric: z.enum(["selectivity", "vibe_check", "coop_boost", "tech_stack"]),
+  metric: z.enum(["selectivity", "vibe_check", "coop_boost"]),
   value: z.string().min(1).max(200),
 });
 
@@ -110,23 +110,6 @@ async function recomputeAggregate(orgId: string, metric: PulseMetric) {
 function computeAggregateValue(metric: PulseMetric, values: string[]): string {
   if (metric === "selectivity") {
     return mode(values);
-  }
-  if (metric === "tech_stack") {
-    // FRD-2 §3.5: aggregate by tag frequency across votes, sort by count
-    // descending, take the top 15. Tags split on commas, trimmed.
-    const counts = new Map<string, number>();
-    for (const value of values) {
-      for (const tag of value.split(",")) {
-        const cleaned = tag.trim();
-        if (!cleaned) continue;
-        counts.set(cleaned, (counts.get(cleaned) ?? 0) + 1);
-      }
-    }
-    const ordered = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 15)
-      .map(([tag]) => tag);
-    return ordered.join(", ");
   }
   const numbers = values
     .map((value) => Number.parseFloat(value))

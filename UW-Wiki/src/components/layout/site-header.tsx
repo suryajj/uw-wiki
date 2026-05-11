@@ -34,7 +34,6 @@ export async function SiteHeader() {
           ) : null}
           {user ? (
             <div className="flex items-center gap-1">
-              <NotificationBell />
               <Link
                 className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
                 href="/my/bookmarks"
@@ -53,7 +52,6 @@ export async function SiteHeader() {
               >
                 {user.displayName ?? user.email}
               </Link>
-              <ThemeToggle />
               <form action="/api/auth/sign-out" method="post">
                 <button
                   className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground"
@@ -62,6 +60,8 @@ export async function SiteHeader() {
                   Sign Out
                 </button>
               </form>
+              <NotificationBell />
+              <ThemeToggle />
             </div>
           ) : (
             <div className="flex items-center gap-2">

@@ -74,13 +74,13 @@ export default async function WikiPage({ params }: PageProps) {
 
   return (
     <main className="flex min-h-screen w-full flex-col px-6 py-8 md:px-10 lg:px-16">
-      <div className="grid w-full gap-12 lg:grid-cols-[200px_minmax(0,1fr)_320px]">
+      <div className="grid w-full gap-12 lg:grid-cols-[200px_minmax(0,1fr)]">
         {/* Left section nav (Grokipedia style) */}
         <aside className="lg:order-1">
           <TableOfContents entries={tocEntries} />
         </aside>
 
-        {/* Center: naked article */}
+        {/* Article column — Pulse floats inside so body text wraps under it */}
         <article className="min-w-0 lg:order-2">
           <p className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
             <svg
@@ -98,27 +98,32 @@ export default async function WikiPage({ params }: PageProps) {
             <span>Last updated {formatRelativeTime(page.lastModifiedAt)}</span>
           </p>
 
-          <header className="mb-8 flex flex-col gap-3 border-b border-border pb-6">
-            <div className="flex items-baseline gap-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <span>{page.category}</span>
-              {page.isAdminSeeded ? <span>· Admin seeded</span> : null}
-            </div>
-            <div className="flex items-start justify-between gap-4">
-              <h1 className="flex-1 text-5xl font-semibold tracking-tight text-foreground">
-                {page.orgName}
-              </h1>
-              <div className="flex shrink-0 items-center gap-1.5 pt-2">
-                <BookmarkButton
-                  pageId={page.pageId}
-                  initialState={bookmarkState}
-                  isSignedIn={!!user}
-                  returnTo={`/wiki/${page.pageSlug}`}
-                />
-                <ViewHistoryButton href={`/wiki/${page.pageSlug}/history`} />
-                <ProposeEditButton />
-              </div>
+          <header className="mb-6 flex items-start justify-between gap-4">
+            <h1 className="flex-1 text-5xl font-semibold tracking-tight text-foreground">
+              {page.orgName}
+            </h1>
+            <div className="flex shrink-0 items-center gap-1.5 pt-2">
+              <BookmarkButton
+                pageId={page.pageId}
+                initialState={bookmarkState}
+                isSignedIn={!!user}
+                returnTo={`/wiki/${page.pageSlug}`}
+              />
+              <ViewHistoryButton href={`/wiki/${page.pageSlug}/history`} />
+              <ProposeEditButton />
             </div>
           </header>
+
+          {/* Float Pulse to the right so article text wraps beneath it */}
+          <aside className="mb-4 w-full lg:float-right lg:ml-8 lg:w-[320px]">
+            <PulseSidebar
+              orgId={page.orgId}
+              aggregates={page.pulseAggregates}
+              externalLinks={page.externalLinks}
+              category={page.category}
+              isAdminSeeded={page.isAdminSeeded}
+            />
+          </aside>
 
           <LifecycleBanner
             status={page.lifecycleStatus}
@@ -132,16 +137,6 @@ export default async function WikiPage({ params }: PageProps) {
             initialContent={page.contentJson}
           />
         </article>
-
-        {/* Right Pulse infobox */}
-        <aside className="lg:order-3 lg:sticky lg:top-24 lg:self-start">
-          <PulseSidebar
-            orgId={page.orgId}
-            aggregates={page.pulseAggregates}
-            healthStatus={page.lifecycleStatus}
-            externalLinks={page.externalLinks}
-          />
-        </aside>
       </div>
     </main>
   );

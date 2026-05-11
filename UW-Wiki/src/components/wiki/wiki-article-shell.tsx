@@ -48,7 +48,7 @@ export function WikiArticleShell({
     editorProps: {
       attributes: {
         class:
-          "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif text-foreground prose-headings:font-serif prose-headings:text-foreground prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
+          "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-h2:text-3xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-3 prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
       },
       handleDrop: (_view, event) => handleEditorDrop(event as unknown as DragEvent),
     },
@@ -155,7 +155,9 @@ export function WikiArticleShell({
 
   if (mode === "read") {
     return (
-      <div id="wiki-content" className="flex flex-col gap-8">
+      // Use plain block flow (no flex) so text wraps around the floated Pulse
+      // sidebar that sits beside this component.
+      <div id="wiki-content" className="block">
         {isEmpty ? (
           <EmptyPagePlaceholder onProposeEdit={() => setMode("edit")} />
         ) : (
@@ -163,7 +165,9 @@ export function WikiArticleShell({
             {renderProseMirrorDoc(initialContent, { decorateSections: true })}
           </div>
         )}
-        <CommentsWidget pageId={pageId} />
+        <div className="clear-both mt-12">
+          <CommentsWidget pageId={pageId} />
+        </div>
       </div>
     );
   }
