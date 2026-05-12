@@ -18,7 +18,6 @@ import type { CommentTree } from "@/types/domain";
 
 type SelectionState = {
   anchorText: string;
-  sectionSlug: string;
   rect: { left: number; top: number; width: number; bottom: number };
 } | null;
 
@@ -32,6 +31,9 @@ const HIGHLIGHT_DARK_CLASS = "uw-comment-highlight-dark";
 export function CommentsWidget({ pageId }: { pageId: string }) {
   const [comments, setComments] = useState<CommentTree[]>([]);
   const [selection, setSelection] = useState<SelectionState>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<{
+    anchorText: string;
+  } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerBody, setComposerBody] = useState("");
@@ -40,7 +42,11 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
   const [sortMode, setSortMode] = useState<SortMode>("recent");
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
   const [reportState, setReportState] = useState<ReportState | null>(null);
+  const [pendingSectionScroll, setPendingSectionScroll] = useState<string | null>(
+    null,
+  );
   const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const lastScrolledCommentId = useRef<string | null>(null);
 
   const loadComments = useCallback(async () => {
     const res = await fetch(`/api/comments?pageId=${encodeURIComponent(pageId)}`);
@@ -55,33 +61,41 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
   }, [loadComments]);
 
   useEffect(() => {
+    function onMouseDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-add-comment-button]")) return;
+      setSelection(null);
+    }
     function onMouseUp() {
       const sel = window.getSelection();
       const text = sel?.toString().trim() ?? "";
-      if (!sel || sel.isCollapsed || !text) {
+      if (!sel || sel.isCollapsed || text.length < 2) {
         setSelection(null);
         return;
       }
       const range = sel.getRangeAt(0);
-      const wikiContent = document.getElementById("wiki-content");
-      if (!wikiContent || !wikiContent.contains(range.commonAncestorContainer)) {
+      const articleBody = document.getElementById("wiki-article-body");
+      if (!articleBody || !articleBody.contains(range.commonAncestorContainer)) {
         setSelection(null);
         return;
       }
       const rect = range.getBoundingClientRect();
       setSelection({
         anchorText: text.length > 500 ? `${text.slice(0, 499)}…` : text,
-        sectionSlug: findNearestSectionSlug(range.startContainer),
         rect: {
           left: rect.left + rect.width / 2,
           top: rect.top,
           width: rect.width,
-          bottom: rect.bottom + window.scrollY + 8,
+          bottom: rect.bottom + 8,
         },
       });
     }
+    document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("mouseup", onMouseUp);
-    return () => document.removeEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   // Margin indicators: count top-level comments per section slug.
@@ -94,11 +108,11 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
   }, [comments]);
 
   useEffect(() => {
-    const wikiContent = document.getElementById("wiki-content");
-    if (!wikiContent) return undefined;
+    const articleBody = document.getElementById("wiki-article-body");
+    if (!articleBody) return undefined;
 
     const heading = Array.from(
-      wikiContent.querySelectorAll<HTMLElement>("[data-section-slug]"),
+      articleBody.querySelectorAll<HTMLElement>("[data-section-slug]"),
     );
     const placed: Array<{ wrapper: HTMLElement; original: HTMLElement }> = [];
 
@@ -117,10 +131,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
       button.addEventListener("click", () => {
         setSidebarOpen(true);
         setSelectedCommentId(null);
-        const card = document.querySelector<HTMLElement>(
-          `[data-comments-section="${slug}"]`,
-        );
-        card?.scrollIntoView({ block: "start", behavior: "smooth" });
+        setPendingSectionScroll(slug);
       });
       const wrapper = document.createElement("div");
       wrapper.className = "relative";
@@ -140,19 +151,19 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
 
   // Highlight controller.
   useEffect(() => {
-    const wikiContent = document.getElementById("wiki-content");
-    if (!wikiContent) return undefined;
+    const articleBody = document.getElementById("wiki-article-body");
+    if (!articleBody) return undefined;
 
     if (!sidebarOpen) {
-      removeHighlights(wikiContent);
+      removeHighlights(articleBody);
       return undefined;
     }
 
-    removeHighlights(wikiContent);
+    removeHighlights(articleBody);
     for (const comment of comments) {
       if (!comment.isAnchored || !comment.anchorText) continue;
       highlightAnchor(
-        wikiContent,
+        articleBody,
         comment.anchorText,
         comment.id,
         comment.id === selectedCommentId
@@ -161,17 +172,65 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
       );
     }
 
+    if (
+      selectedCommentId &&
+      selectedCommentId !== lastScrolledCommentId.current
+    ) {
+      const mark = articleBody.querySelector<HTMLElement>(
+        `mark[data-comment-id="${selectedCommentId}"]`,
+      );
+      mark?.scrollIntoView({ behavior: "smooth", block: "center" });
+      lastScrolledCommentId.current = selectedCommentId;
+    }
+    if (!selectedCommentId) {
+      lastScrolledCommentId.current = null;
+    }
+
     return () => {
-      removeHighlights(wikiContent);
+      removeHighlights(articleBody);
     };
   }, [sidebarOpen, comments, selectedCommentId]);
 
+  // Margin-indicator → scroll sidebar to section once it has rendered.
+  useEffect(() => {
+    if (!sidebarOpen || !pendingSectionScroll) return;
+    const target = sidebarRef.current?.querySelector<HTMLElement>(
+      `[data-comments-section="${pendingSectionScroll}"]`,
+    );
+    target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setPendingSectionScroll(null);
+  }, [sidebarOpen, pendingSectionScroll]);
+
+  // Click-on-highlight → select the comment in the sidebar.
+  useEffect(() => {
+    const articleBody = document.getElementById("wiki-article-body");
+    if (!articleBody) return undefined;
+
+    function onClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      const mark = target?.closest<HTMLElement>("mark[data-comment-id]");
+      if (!mark) return;
+      const commentId = mark.dataset.commentId;
+      if (!commentId) return;
+      event.stopPropagation();
+      setSidebarOpen(true);
+      setSelectedCommentId(commentId);
+      const card = sidebarRef.current?.querySelector<HTMLElement>(
+        `[data-comment-id="${commentId}"]`,
+      );
+      card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    articleBody.addEventListener("click", onClick);
+    return () => articleBody.removeEventListener("click", onClick);
+  }, []);
+
   const groupedSidebar = useMemo(() => {
     if (comments.length === 0) return [];
-    const wikiContent = document.getElementById("wiki-content");
+    const articleBody = document.getElementById("wiki-article-body");
     const order = new Map<string, number>();
-    if (wikiContent) {
-      const headings = wikiContent.querySelectorAll<HTMLElement>(
+    if (articleBody) {
+      const headings = articleBody.querySelectorAll<HTMLElement>(
         "[data-section-slug]",
       );
       headings.forEach((heading, index) => {
@@ -213,7 +272,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
 
   async function submitComment(parentCommentId?: string) {
     if (!composerBody.trim()) return;
-    const source = selection ?? { anchorText: "", sectionSlug: "unknown" };
+    const source = pendingAnchor ?? selection ?? { anchorText: "" };
     setComposerError(null);
     const res = await fetch("/api/comments", {
       method: "POST",
@@ -222,7 +281,6 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
         pageId,
         body: composerBody,
         anchorText: source.anchorText,
-        sectionSlug: source.sectionSlug,
         isAnonymous: composerAnonymous,
         parentCommentId: parentCommentId ?? null,
       }),
@@ -239,18 +297,21 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
     setComposerBody("");
     setComposerOpen(false);
     setSelection(null);
+    setPendingAnchor(null);
   }
 
   return (
     <section className="relative mt-10 border-t border-border pt-8">
       <HighlightStyles />
 
-      {selection ? (
+      {selection && !composerOpen ? (
         <button
           type="button"
+          data-add-comment-button
           className="fixed z-50 -translate-x-1/2 rounded-full bg-foreground px-3 py-1 text-sm font-medium text-background shadow"
           style={{ top: selection.rect.bottom, left: selection.rect.left }}
           onClick={() => {
+            setPendingAnchor({ anchorText: selection.anchorText });
             setSidebarOpen(true);
             setComposerOpen(true);
           }}
@@ -324,6 +385,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
                 setSidebarOpen(false);
                 setSelectedCommentId(null);
                 setComposerOpen(false);
+                setPendingAnchor(null);
               }}
             >
               Close
@@ -333,8 +395,10 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
             {composerOpen ? (
               <div className="mb-4 rounded-lg border border-border bg-card p-3">
                 <p className="mb-2 text-xs text-muted-foreground">
-                  {selection?.anchorText
-                    ? `Anchored to: ${selection.anchorText}`
+                  {pendingAnchor?.anchorText ?? selection?.anchorText
+                    ? `Anchored to: ${
+                        pendingAnchor?.anchorText ?? selection?.anchorText
+                      }`
                     : "General page comment"}
                 </p>
                 <textarea
@@ -371,6 +435,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
                       onClick={() => {
                         setComposerOpen(false);
                         setComposerBody("");
+                        setPendingAnchor(null);
                       }}
                     >
                       Cancel
@@ -499,7 +564,8 @@ function CommentCard({
       className={cn(
         "rounded-md border border-border bg-[color:var(--surface)] p-3 transition-colors duration-150",
         isReply && "ml-5 bg-background",
-        isSelected && "border-foreground",
+        isSelected &&
+          "border-[rgba(250,204,21,0.95)] bg-[rgba(250,204,21,0.06)] ring-2 ring-[rgba(250,204,21,0.35)]",
         onSelect && "cursor-pointer",
       )}
     >
@@ -695,11 +761,13 @@ function HighlightStyles() {
   return (
     <style suppressHydrationWarning>{`
       .${HIGHLIGHT_LIGHT_CLASS} {
-        background-color: rgba(254, 201, 59, 0.2);
+        background-color: rgba(250, 204, 21, 0.18);
+        color: inherit;
         border-radius: 2px;
       }
       .${HIGHLIGHT_DARK_CLASS} {
-        background-color: rgba(254, 201, 59, 0.4);
+        background-color: rgba(250, 204, 21, 0.42);
+        color: inherit;
         border-radius: 2px;
       }
     `}</style>
@@ -715,26 +783,39 @@ function highlightAnchor(
   const cleaned = anchorText.replace(/\s+/g, " ").trim();
   if (!cleaned) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const candidates: Text[] = [];
+  const segs: { node: Text; start: number; len: number }[] = [];
+  let fullText = "";
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
-    if (node.parentElement?.closest(`.${HIGHLIGHT_LIGHT_CLASS}, .${HIGHLIGHT_DARK_CLASS}`)) {
-      continue;
-    }
-    candidates.push(node);
+    const value = node.nodeValue ?? "";
+    segs.push({ node, start: fullText.length, len: value.length });
+    fullText += value;
   }
-  for (const node of candidates) {
-    const text = node.nodeValue ?? "";
-    const idx = text.indexOf(cleaned);
-    if (idx === -1) continue;
+  const idx = fullText.indexOf(cleaned);
+  if (idx === -1) return;
+  const endIdx = idx + cleaned.length;
+  const pieces: { node: Text; from: number; to: number }[] = [];
+  for (const seg of segs) {
+    const segEnd = seg.start + seg.len;
+    if (segEnd <= idx) continue;
+    if (seg.start >= endIdx) break;
+    const from = Math.max(0, idx - seg.start);
+    const to = Math.min(seg.len, endIdx - seg.start);
+    if (to > from) pieces.push({ node: seg.node, from, to });
+  }
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const { node, from, to } = pieces[i];
     const range = document.createRange();
-    range.setStart(node, idx);
-    range.setEnd(node, idx + cleaned.length);
+    range.setStart(node, from);
+    range.setEnd(node, to);
     const mark = document.createElement("mark");
     mark.className = className;
     mark.dataset.commentId = commentId;
-    range.surroundContents(mark);
-    return;
+    try {
+      range.surroundContents(mark);
+    } catch {
+      // Range crosses an element boundary; skip this piece.
+    }
   }
 }
 
@@ -753,24 +834,3 @@ function removeHighlights(root: HTMLElement) {
   }
 }
 
-function findNearestSectionSlug(node: Node): string {
-  let current: Node | null = node;
-  while (current && current.nodeType !== Node.ELEMENT_NODE) {
-    current = current.parentNode;
-  }
-  let element = current as Element | null;
-  while (element) {
-    if (element instanceof HTMLElement && element.dataset.sectionSlug) {
-      return element.dataset.sectionSlug;
-    }
-    let previous = element.previousElementSibling;
-    while (previous) {
-      if (previous instanceof HTMLElement && previous.dataset.sectionSlug) {
-        return previous.dataset.sectionSlug;
-      }
-      previous = previous.previousElementSibling;
-    }
-    element = element.parentElement;
-  }
-  return "unknown";
-}

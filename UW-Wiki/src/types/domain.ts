@@ -157,6 +157,13 @@ export type PageVersionSummary = {
 // FRD-3: comments
 // ---------------------------------------------------------------------
 
+/**
+ * Branded section slug. Always derived from the page's ProseMirror doc;
+ * never literally `"unknown"`. Construct via `asSectionSlug` (see
+ * `lib/comments/section-slug.ts`).
+ */
+export type SectionSlug = string & { readonly __brand: "SectionSlug" };
+
 export type CommentRow = {
   id: string;
   pageId: string;
@@ -165,7 +172,7 @@ export type CommentRow = {
   isAnonymous: boolean;
   isEdited: boolean;
   isHidden: boolean;
-  sectionSlug: string;
+  sectionSlug: SectionSlug;
   anchorText: string;
   body: string;
   upvotes: number;

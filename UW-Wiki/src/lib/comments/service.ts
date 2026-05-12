@@ -3,7 +3,12 @@ import "server-only";
 import { reembedComment } from "@/lib/ai/embeddings";
 import { pageTextFromDoc, reanchor } from "@/lib/comments/anchoring";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { CommentTree, OrgMeta, ProseMirrorDoc } from "@/types/domain";
+import type {
+  CommentTree,
+  OrgMeta,
+  ProseMirrorDoc,
+  SectionSlug,
+} from "@/types/domain";
 
 type CommentDbRow = {
   id: string;
@@ -154,7 +159,7 @@ function mapCommentRow(row: CommentDbRow): Omit<CommentTree, "replies"> {
     isAnonymous: row.is_anonymous,
     isEdited: row.is_edited,
     isHidden: row.is_hidden,
-    sectionSlug: row.section_slug ?? "unknown",
+    sectionSlug: (row.section_slug ?? "overview") as SectionSlug,
     anchorText: row.anchor_text ?? "",
     body: row.body,
     upvotes: row.upvotes,
