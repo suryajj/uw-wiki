@@ -32,7 +32,7 @@ function renderNode(
   switch (node.type) {
     case "paragraph":
       return (
-        <p key={key} className="mb-4 leading-7 text-zinc-200">
+        <p key={key} className="mb-4 leading-7 text-foreground">
           {renderChildren(node, key, options)}
         </p>
       );
@@ -45,8 +45,8 @@ function renderNode(
       const isOfficial = node.attrs?.official === true;
       const baseClass =
         level === 2
-          ? "scroll-mt-24 mt-10 mb-4 text-2xl font-semibold text-white"
-          : "scroll-mt-20 mt-6 mb-3 text-lg font-medium text-zinc-100";
+          ? "scroll-mt-24 mt-10 mb-4 text-2xl font-semibold text-foreground"
+          : "scroll-mt-20 mt-6 mb-3 text-lg font-medium text-foreground";
       const officialClass = isOfficial
         ? "border-l-4 border-primary pl-3 bg-primary/5"
         : "";
@@ -75,13 +75,13 @@ function renderNode(
     }
     case "bulletList":
       return (
-        <ul key={key} className="mb-4 list-disc space-y-1 pl-6 text-zinc-200">
+        <ul key={key} className="mb-4 list-disc space-y-1 pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ul>
       );
     case "orderedList":
       return (
-        <ol key={key} className="mb-4 list-decimal space-y-1 pl-6 text-zinc-200">
+        <ol key={key} className="mb-4 list-decimal space-y-1 pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ol>
       );
@@ -91,7 +91,7 @@ function renderNode(
       return (
         <blockquote
           key={key}
-          className="mb-4 border-l-4 border-border pl-4 italic text-zinc-300"
+          className="mb-4 border-l-4 border-border pl-4 italic text-muted-foreground"
         >
           {renderChildren(node, key, options)}
         </blockquote>
@@ -100,7 +100,7 @@ function renderNode(
       return (
         <pre
           key={key}
-          className="mb-4 overflow-x-auto rounded-md bg-card p-3 text-sm text-zinc-200"
+          className="mb-4 overflow-x-auto rounded-md bg-card p-3 text-sm text-foreground"
         >
           <code>{renderChildren(node, key, options)}</code>
         </pre>

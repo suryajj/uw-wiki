@@ -15,7 +15,6 @@ export const PULSE_METRICS = [
   "selectivity",
   "vibe_check",
   "coop_boost",
-  "tech_stack",
 ] as const;
 
 export type PulseMetric = (typeof PULSE_METRICS)[number];
@@ -312,7 +311,6 @@ export type ColdStartOrgMetadata = {
 
 export type ColdStartPulseEstimates = {
   selectivity?: string | null;
-  techStack?: string[] | null;
   vibeCheck?: null;
   coopBoost?: null;
 };

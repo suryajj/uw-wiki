@@ -5,23 +5,13 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type Re
 import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
 import { savePendingAction } from "@/lib/pending-actions/storage";
-import type { LifecycleStatus, PulseAggregate, PulseMetric } from "@/types/domain";
+import type { OrgCategory, PulseAggregate, PulseMetric } from "@/types/domain";
 
 const METRIC_LABELS: Record<PulseMetric, string> = {
   selectivity: "Selectivity",
   vibe_check: "Vibe Check",
   coop_boost: "Co-op Boost",
-  tech_stack: "Tech Stack",
 };
-
-const HEALTH_LABELS: Record<LifecycleStatus, string> = {
-  active: "Active",
-  needs_update: "Needs Update",
-  stale: "Stale",
-  potentially_defunct: "Potentially Defunct",
-};
-
-const COLLAPSED_KEY_PREFIX = "uw-wiki-pulse-collapsed:";
 
 type PendingPulseVote = {
   votes: Array<{ orgId: string; metric: PulseMetric; value: string }>;
@@ -30,15 +20,17 @@ type PendingPulseVote = {
 export function PulseSidebar({
   orgId,
   aggregates,
-  healthStatus,
   externalLinks,
+  category,
+  isAdminSeeded,
 }: {
   orgId: string;
   aggregates: PulseAggregate[];
-  healthStatus: LifecycleStatus;
   externalLinks: Array<{ label: string; url: string }>;
+  category: OrgCategory;
+  isAdminSeeded: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
   const [authPrompt, setAuthPrompt] = useState<PendingPulseVote | null>(null);
 
   const aggregateByMetric = useMemo(
@@ -46,29 +38,17 @@ export function PulseSidebar({
     [aggregates],
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(`${COLLAPSED_KEY_PREFIX}${orgId}`);
-    if (stored === "1") setExpanded(false);
-    else setExpanded(true);
-  }, [orgId]);
-
-  function toggleExpanded(next: boolean) {
-    setExpanded(next);
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      `${COLLAPSED_KEY_PREFIX}${orgId}`,
-      next ? "0" : "1",
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-0">
       <section className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
-        <div className="border-b border-border px-4 py-3">
+        <div className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
           <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             The Pulse
           </h2>
+          <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+            {category}
+            {isAdminSeeded ? " · Admin seeded" : ""}
+          </span>
         </div>
         <dl className="flex flex-col">
           <PulseRow
@@ -87,39 +67,14 @@ export function PulseSidebar({
             aggregate={aggregateByMetric.get("coop_boost")}
             symbol="★"
           />
-          <PulseTechStackRow aggregate={aggregateByMetric.get("tech_stack")} />
-          <PulseRow label="Health Status" value={HEALTH_LABELS[healthStatus]} />
         </dl>
-        <div className="border-t border-border px-4 py-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            aria-expanded={expanded}
-            onClick={() => toggleExpanded(!expanded)}
-          >
-            {expanded ? "Hide Rating Form" : "Rate This Org"}
-          </Button>
-        </div>
-        {expanded ? (
-          <div className="border-t border-border px-4 py-4">
-            <PulseVoteForm
-              orgId={orgId}
-              onAuthRequired={(payload) => setAuthPrompt(payload)}
-            />
-          </div>
-        ) : null}
-      </section>
 
-      <section className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="border-t border-border px-4 py-3">
+          <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             External Links
-          </h2>
-        </div>
-        <div className="px-4 py-3">
+          </h3>
           {externalLinks.length > 0 ? (
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1.5 text-sm">
               {externalLinks.map((link) => (
                 <li key={link.url}>
                   <a
@@ -134,10 +89,32 @@ export function PulseSidebar({
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No structured links yet.</p>
+            <p className="text-sm text-muted-foreground">No links yet.</p>
           )}
         </div>
+
+        <div className="border-t border-border px-4 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => setRateOpen(true)}
+          >
+            Rate This Org
+          </Button>
+        </div>
       </section>
+
+      {rateOpen ? (
+        <RateOrgModal
+          orgId={orgId}
+          onClose={() => setRateOpen(false)}
+          onAuthRequired={(payload) => {
+            setRateOpen(false);
+            setAuthPrompt(payload);
+          }}
+        />
+      ) : null}
 
       {authPrompt ? (
         <PendingActionModal
@@ -159,13 +136,15 @@ function PulseRow({
   votes?: number;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
+    <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
       <dt className="text-sm font-medium text-foreground">{label}</dt>
-      <dd className="text-right text-sm text-foreground">
-        <span>{value}</span>
-        {typeof votes === "number" ? (
-          <span className="ml-2 text-xs text-muted-foreground">({votes})</span>
-        ) : null}
+      <dd className="flex items-center gap-1.5 text-right text-sm text-foreground">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5">
+          <span>{value}</span>
+          {typeof votes === "number" ? (
+            <span className="text-[11px] text-muted-foreground">{votes}</span>
+          ) : null}
+        </span>
       </dd>
     </div>
   );
@@ -187,7 +166,7 @@ function PulseNumericRow({
     ? Math.round(Math.max(0, Math.min(5, numericValue)))
     : 0;
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
+    <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 last:border-b-0">
       <dt className="flex flex-col text-sm font-medium text-foreground">
         <span>{label}</span>
         {scaleHint ? (
@@ -198,7 +177,7 @@ function PulseNumericRow({
       </dt>
       <dd className="text-right text-sm text-foreground">
         {Number.isFinite(numericValue) ? (
-          <span className="tabular-nums">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 tabular-nums">
             <span aria-hidden="true">
               {Array.from({ length: 5 }).map((_, i) => (
                 <span
@@ -209,53 +188,13 @@ function PulseNumericRow({
                 </span>
               ))}
             </span>
-            <span className="ml-2 text-xs text-muted-foreground">
-              {numericValue.toFixed(1)} / 5 ({aggregate?.totalVotes ?? 0})
+            <span className="text-[11px] text-muted-foreground">
+              {numericValue.toFixed(1)} · {aggregate?.totalVotes ?? 0}
             </span>
           </span>
         ) : (
           <span className="text-muted-foreground">No ratings yet</span>
         )}
-      </dd>
-    </div>
-  );
-}
-
-function PulseTechStackRow({ aggregate }: { aggregate?: PulseAggregate }) {
-  const tags = aggregate?.aggregateValue
-    ? aggregate.aggregateValue
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-    : [];
-  const visible = tags.slice(0, 6);
-  const overflow = Math.max(0, tags.length - visible.length);
-  return (
-    <div className="flex flex-col gap-2 border-b border-border px-4 py-3 last:border-b-0">
-      <dt className="text-sm font-medium text-foreground">Tech Stack</dt>
-      <dd>
-        {visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tech tags yet</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {visible.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-foreground"
-              >
-                {tag}
-              </span>
-            ))}
-            {overflow > 0 ? (
-              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                +{overflow}
-              </span>
-            ) : null}
-          </div>
-        )}
-        <p className="mt-1 text-xs text-muted-foreground">
-          {aggregate?.totalVotes ?? 0} votes
-        </p>
       </dd>
     </div>
   );
@@ -267,19 +206,65 @@ const SELECTIVITY_OPTIONS = [
   "Invite-Only",
 ] as const;
 
-function PulseVoteForm({
+function RateOrgModal({
   orgId,
+  onClose,
   onAuthRequired,
 }: {
   orgId: string;
+  onClose: () => void;
   onAuthRequired: (payload: PendingPulseVote) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-md rounded-md border border-border bg-[color:var(--surface)] p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rate-org-title"
+      >
+        <div className="mb-4 flex items-baseline justify-between">
+          <h3 id="rate-org-title" className="text-lg font-semibold text-foreground">
+            Rate This Org
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <PulseVoteForm
+          orgId={orgId}
+          onAuthRequired={onAuthRequired}
+          onSuccess={onClose}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PulseVoteForm({
+  orgId,
+  onAuthRequired,
+  onSuccess,
+}: {
+  orgId: string;
+  onAuthRequired: (payload: PendingPulseVote) => void;
+  onSuccess?: () => void;
 }) {
   const [selectivity, setSelectivity] = useState<typeof SELECTIVITY_OPTIONS[number]>(
     "Application-Based",
   );
   const [vibe, setVibe] = useState(3);
   const [coop, setCoop] = useState(3);
-  const [techInput, setTechInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -305,26 +290,20 @@ function PulseVoteForm({
     setSubmitting(true);
     setMessage(null);
     try {
-      const tags = techInput
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-        .join(", ");
       const intendedVotes: PendingPulseVote["votes"] = [
         { orgId, metric: "selectivity", value: selectivity },
         { orgId, metric: "vibe_check", value: String(vibe) },
         { orgId, metric: "coop_boost", value: String(coop) },
-        ...(tags ? [{ orgId, metric: "tech_stack" as PulseMetric, value: tags }] : []),
       ];
-      const callsWithPayload = intendedVotes.map((vote) =>
-        submitOne(vote.metric, vote.value, intendedVotes),
+      const results = await Promise.all(
+        intendedVotes.map((vote) => submitOne(vote.metric, vote.value, intendedVotes)),
       );
-      const results = await Promise.all(callsWithPayload);
       const firstError = results.find((result) => !result.ok && !result.alreadyHandled);
       if (firstError && "error" in firstError && firstError.error) {
         setMessage(firstError.error);
       } else if (results.every((result) => result.ok)) {
         setMessage("Ratings submitted. Refresh to see updated aggregates.");
+        onSuccess?.();
       } else {
         setMessage("Some ratings need sign-in. Check the prompt and try again.");
       }
@@ -385,15 +364,6 @@ function PulseVoteForm({
         </div>
       </FormField>
 
-      <FormField label="Tech Stack" hint="Optional, comma separated">
-        <input
-          value={techInput}
-          onChange={(event) => setTechInput(event.target.value)}
-          placeholder="ROS2, C++, Python"
-          className="h-9 w-full rounded-md border border-border bg-transparent px-3 text-sm text-foreground outline-none focus:border-foreground"
-        />
-      </FormField>
-
       <Button type="submit" disabled={submitting} className="w-full">
         {submitting ? "Submitting…" : "Submit Rating"}
       </Button>
@@ -435,6 +405,10 @@ function PendingActionModal({
     savePendingAction("pulse.vote", payload, window.location.pathname);
   }
   const [authOpen, setAuthOpen] = useState(false);
+  // useEffect placeholder to silence unused warning if needed in future
+  useEffect(() => {
+    void payload;
+  }, [payload]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="max-w-sm rounded-md border border-border bg-[color:var(--surface)] p-6 text-sm">

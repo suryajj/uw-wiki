@@ -6,11 +6,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
+import { MagnifierIcon } from "@/components/icons/magnifier";
 import { RagMarkdown } from "@/components/search/rag-markdown";
 
 type ToolPart = {
   type: string;
   toolName?: string;
+  state?: string;
+  input?: unknown;
   output?: unknown;
 };
 
@@ -77,8 +80,11 @@ function SearchPageInner() {
   const citations = lastAssistant
     ? collectCitations(lastAssistant.parts as ToolPart[])
     : [];
+  const activeToolCall = lastAssistant
+    ? findActiveToolCall(lastAssistant.parts as ToolPart[])
+    : null;
   const isStreaming = status === "streaming" || status === "submitted";
-  const showSkeleton = isStreaming && assistantText.length === 0;
+  const showSkeleton = isStreaming && assistantText.length === 0 && !activeToolCall;
 
   return (
     <main
@@ -95,6 +101,7 @@ function SearchPageInner() {
           citations={citations}
           showSkeleton={showSkeleton}
           isStreaming={isStreaming}
+          activeToolCall={activeToolCall}
         />
       ) : (
         <EmptyHero />
@@ -146,12 +153,14 @@ function AnsweredView({
   citations,
   showSkeleton,
   isStreaming,
+  activeToolCall,
 }: {
   questionText: string;
   assistantText: string;
   citations: SearchChunk[];
   showSkeleton: boolean;
   isStreaming: boolean;
+  activeToolCall: { tool: string; query: string } | null;
 }) {
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8">
@@ -166,7 +175,25 @@ function AnsweredView({
       </motion.h1>
 
       <AnimatePresence mode="wait">
-        {showSkeleton ? (
+        {activeToolCall && assistantText.length === 0 ? (
+          <motion.div
+            key={`tool-${activeToolCall.tool}-${activeToolCall.query}`}
+            initial={{ opacity: 0, y: 4, filter: "blur(4px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, filter: "blur(4px)" }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <MagnifierIcon className="text-muted-foreground" />
+            <span>
+              {toolLabel(activeToolCall.tool)}{" "}
+              <span className="font-mono text-foreground">
+                {activeToolCall.query}
+              </span>
+              <span className="ml-1 inline-block animate-pulse">…</span>
+            </span>
+          </motion.div>
+        ) : showSkeleton ? (
           <SkeletonAnswer key="skeleton" />
         ) : (
           <motion.div
@@ -260,21 +287,7 @@ function SearchInput({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="7" />
-        <path d="M21 21l-4.3-4.3" />
-      </svg>
+      <MagnifierIcon className="shrink-0 text-muted-foreground" />
       <input
         className="h-9 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground"
         value={input}
@@ -297,6 +310,44 @@ function extractText(parts: { type: string }[]): string {
     .filter((p) => p.type === "text")
     .map((p) => ("text" in p ? (p as { text: string }).text : ""))
     .join("");
+}
+
+function findActiveToolCall(parts: ToolPart[]): { tool: string; query: string } | null {
+  // The AI SDK streams parts like { type: "tool-search_wiki", state: "input-available", input: {...} }
+  // followed by an "output-available" update on the same logical part. We pick
+  // the most recent tool part whose output hasn't arrived yet.
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const part = parts[i];
+    if (!part.type.startsWith("tool-")) continue;
+    if (part.output !== undefined) continue; // already finished — skip
+    const toolName = part.type.slice(5); // strip "tool-"
+    const input = (part.input ?? {}) as Record<string, unknown>;
+    const query =
+      typeof input.query === "string"
+        ? input.query
+        : Array.isArray(input.orgs)
+          ? (input.orgs as Array<{ name?: string; slug?: string }>)
+              .map((o) => o.name ?? o.slug ?? "")
+              .filter(Boolean)
+              .join(", ")
+          : "";
+    if (!query) return null;
+    return { tool: toolName, query };
+  }
+  return null;
+}
+
+function toolLabel(tool: string): string {
+  switch (tool) {
+    case "search_wiki":
+      return "Searching the wiki for";
+    case "get_org_data":
+      return "Looking up";
+    case "list_orgs":
+      return "Browsing orgs by";
+    default:
+      return "Searching for";
+  }
 }
 
 function collectCitations(parts: ToolPart[]): SearchChunk[] {
