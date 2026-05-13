@@ -7,11 +7,9 @@ import { openrouter } from "@/lib/ai/provider";
 import { reembedPage } from "@/lib/ai/embeddings";
 import { logServerError } from "@/lib/api/errors";
 import { env } from "@/lib/config/env";
-import { markdownToProseMirrorNodes } from "@/lib/prosemirror/from-markdown";
 import { validateProposalDoc } from "@/lib/prosemirror/validate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/utils/slug";
-import { SUGGESTED_TEMPLATE } from "@/lib/wiki/template";
 import type { CurrentUser } from "@/lib/auth/current-user";
 import type { OrgCategory, ProseMirrorDoc, ProseMirrorNode } from "@/types/domain";
 import type { OrgMetadataInput } from "@/lib/cold-start/schemas";
@@ -61,12 +59,22 @@ STRUCTURE:
 - Use prose for narrative content. Use bullet lists for genuinely enumerable content: exec roles, project team names, nonprofit client list, competition results.
 - No sub-headings within sections unless the source clearly enumerates distinct categories.
 
+CITATIONS (very important):
+- Every factual sentence (years, names, numbers, partners, awards, projects) SHOULD cite at least one refId from the per-section source pool.
+- Cite refIds from the section's listed pool whenever possible. If a refId from a different section's pool also supports the claim, you may cite it.
+- 1-3 refIds per factual sentence is ideal. Generic glue sentences ("The team has several subteams.") do not need citations.
+- Never invent refIds — only cite numbers that appear in the Source pool you were given.
+- If a section's evidence is too thin to support any specific claim, write a short, neutral sentence WITHOUT citations rather than dropping the section.
+
 OUTPUT FORMAT:
-- Output a JSON object matching the schema: { sections: [{title, markdown}], droppedSections: [string] }
+- Output a JSON object: { sections: [{title, blocks: [...]}], droppedSections: [string] }
+- Each block has a "kind" — one of "paragraph", "bulletList", "linkList".
+  • "paragraph" block: provide "sentences": [{text, citations: number[]}]. Use for prose narrative.
+  • "bulletList" block: provide "items": [{text, citations: number[]}]. Use for enumerable content like roles, partners, projects.
+  • "linkList" block: provide "links": [{label, url}]. Use ONLY for the External Links section. No citations needed (each item IS its source).
 - Section titles must be from: Overview, Time Commitment, Culture and Vibe, Subteams and Roles, Past Projects, History, How to Apply, External Links.
-- "Overview" and "Past Projects" must always be present (use a thin note for Past Projects if evidence is sparse).
-- Do NOT invent an "Other" section. Fold any outlying facts into the most relevant canonical section.
-- Sections with no reliable evidence at all (other than Overview and Past Projects) may be omitted — add their names to droppedSections.
+- "Overview" and "Past Projects" must always be present.
+- Do NOT invent an "Other" or "References" section — references are generated automatically.
 `;
 
 const FOLLOWUP_SYSTEM = `You just read web search results about a student organization at the University of Waterloo. Your job is to identify SPECIFIC NAMED ENTITIES that were mentioned but not yet fully detailed — partner nonprofits, sponsors, specific events, competitions, workshops, awards, founding year, founders' names, notable alumni — and emit 4 to 6 focused web search queries that would surface concrete facts about those entities.
@@ -84,9 +92,22 @@ Rules:
 - If the first-pass evidence is too thin to identify entities, return an empty array.
 - Output only the queries — no commentary.`;
 
+type CitedFragment = { text: string; citations: number[] };
+
+type SynthesizedBlock =
+  | { kind: "paragraph"; sentences: CitedFragment[] }
+  | { kind: "bulletList"; items: CitedFragment[] }
+  | { kind: "linkList"; links: Array<{ label: string; url: string }> };
+
 type SynthesizedDraft = {
-  sections: Array<{ title: string; markdown: string }>;
+  sections: Array<{ title: string; blocks: SynthesizedBlock[] }>;
   droppedSections: string[];
+};
+
+type ReferenceEntry = {
+  refId: number;
+  url: string;
+  title: string;
 };
 
 const WATERLOO_ID = "00000000-0000-0000-0000-000000000001";
@@ -107,6 +128,8 @@ type ResearchResult = {
   status: "completed" | "skipped";
   sources: string[];
   summary: string;
+  /** url → human-readable title, for building references */
+  sourceTitles?: Record<string, string>;
 };
 
 // Progress events emitted during draft generation. The actual type lives in
@@ -166,7 +189,27 @@ export async function generateDraftForJob(
   await emit({ kind: "phase", label: "Researching the web" });
   const research = await researchOrg(orgMetadata, emit);
   await emit({ kind: "phase", label: "Writing the article" });
-  const draft = await synthesizeDraftWithLLM(orgMetadata, research);
+  let draft: ProseMirrorDoc;
+  try {
+    draft = await synthesizeDraftWithLLM(orgMetadata, research);
+  } catch (error) {
+    // Detail was already logged at the throw site. Persist + propagate a
+    // generic message so the admin UI / stream client never sees provider /
+    // model / parse internals.
+    const publicMessage = "Cold-start synthesis failed. Please try again.";
+    await client
+      .from("cold_start_jobs")
+      .update({
+        status: "failed",
+        current_step: "synthesis_failed",
+        error: publicMessage,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId);
+    throw error instanceof Error && error.name === "ColdStartSynthesisError"
+      ? error
+      : new Error(publicMessage);
+  }
   const pulseEstimates = estimatePulse(orgMetadata, research);
   const sectionSources = Object.fromEntries(
     research.map((item) => [slugify(item.section), item.sources]),
@@ -524,9 +567,10 @@ async function researchOrg(
   }
 
   // --- Bucket snippets by canonical section + an "Other" catch-all ---
-  const sectionBuckets = new Map<string, Array<{ url: string; content: string; source: string }>>();
+  type BucketSnippet = { url: string; content: string; source: string; title?: string };
+  const sectionBuckets = new Map<string, BucketSnippet[]>();
   for (const title of SECTION_TITLES) sectionBuckets.set(title, []);
-  const otherBucket: Array<{ url: string; content: string; source: string }> = [];
+  const otherBucket: BucketSnippet[] = [];
 
   // Only snippets that actually mention the org go into topic buckets.
   // Snippets that don't mention the org fall through to Overview seed only if
@@ -557,10 +601,17 @@ async function researchOrg(
     }
   }
 
+  const titlesFor = (bucket: BucketSnippet[]): Record<string, string> => {
+    const map: Record<string, string> = {};
+    for (const s of bucket) {
+      if (s.title && !map[s.url]) map[s.url] = s.title;
+    }
+    return map;
+  };
+
   const results: ResearchResult[] = [];
   for (const section of SECTION_TITLES) {
     const bucket = sectionBuckets.get(section)!;
-    // Up to 6 snippets x 900 chars each so the LLM has real material to work with
     const trimmed = bucket
       .slice(0, 6)
       .map((s) => `[${s.source}] ${s.content.slice(0, 900)}`)
@@ -570,10 +621,9 @@ async function researchOrg(
       status: trimmed ? "completed" : "skipped",
       sources: bucket.slice(0, 6).map((s) => s.url),
       summary: trimmed || fallbackSectionText(org, section),
+      sourceTitles: titlesFor(bucket.slice(0, 6)),
     });
   }
-  // Append an "Other" bucket as raw extra evidence — the LLM may use it to
-  // augment existing sections or emit a final "Other" section.
   if (otherBucket.length > 0) {
     const trimmed = otherBucket
       .slice(0, 4)
@@ -584,6 +634,7 @@ async function researchOrg(
       status: "completed",
       sources: otherBucket.slice(0, 4).map((s) => s.url),
       summary: trimmed,
+      sourceTitles: titlesFor(otherBucket.slice(0, 4)),
     });
   }
   return results;
@@ -760,31 +811,57 @@ async function synthesizeDraftWithLLM(
   org: OrgMetadataInput,
   research: ResearchResult[],
 ): Promise<ProseMirrorDoc> {
-  // Build a compact evidence packet for the LLM. Snippets have already been
-  // domain-filtered and noise-stripped in researchOrg().
-  const evidence = research
-    .filter((item) => item.summary && item.summary.length > 60)
-    .map((item) => {
-      const trimmed = item.summary.slice(0, 3500);
-      const sources = item.sources.slice(0, 4).join(", ");
-      return `### Candidate section: ${item.section}\nSources: ${sources}\nNotes: ${trimmed}`;
-    })
-    .join("\n\n");
+  // Build a global, deduped URL pool. Each unique URL gets a numeric refId
+  // that the LLM will use to cite claims back to a source.
+  const urlPool = buildUrlPool(research);
+  const urlToInputRefId = new Map<string, number>();
+  urlPool.forEach((entry, i) => urlToInputRefId.set(entry.url, i + 1));
 
-  // Pre-extract all known org-facing URLs from sources so External Links has
-  // real material to work with instead of guessing or writing bare labels.
+  // For each section, the list of refIds whose evidence appears in that
+  // section's bucket. The LLM is told to cite only from this subset.
+  const sectionRefIds = new Map<string, number[]>();
+  for (const item of research) {
+    const ids: number[] = [];
+    for (const url of item.sources) {
+      const id = urlToInputRefId.get(url);
+      if (id && !ids.includes(id)) ids.push(id);
+    }
+    sectionRefIds.set(item.section, ids);
+  }
+
   const knownUrls = extractOrgUrls(org, research);
   const urlHint =
     knownUrls.length > 0
       ? `\nKnown URLs for this org (use these for External Links):\n${knownUrls.map((u) => `- ${u}`).join("\n")}`
       : "";
 
+  const sourcePoolBlock = urlPool.length
+    ? urlPool
+        .map(
+          (entry, i) =>
+            `[${i + 1}] ${entry.title ? `${entry.title} — ` : ""}${entry.url}`,
+        )
+        .join("\n")
+    : "(no sources)";
+
+  const evidence = research
+    .filter((item) => item.summary && item.summary.length > 60)
+    .map((item) => {
+      const ids = sectionRefIds.get(item.section) ?? [];
+      const trimmed = item.summary.slice(0, 3500);
+      return `### Candidate section: ${item.section}\nrefIds available for this section: [${ids.join(", ") || "—"}]\nNotes: ${trimmed}`;
+    })
+    .join("\n\n");
+
   const userPrompt = `Organization: ${org.name}
 Category: ${org.category}
 One-liner: ${org.oneLiner ?? "(none)"}
 Official website: ${org.website ?? "(none)"}${urlHint}
 
-Write a neutral, third-person Wikipedia-style article about this organization using ONLY the evidence below as a starting point. Be ruthless: the evidence contains a lot of irrelevant scrapes — discard anything that isn't clearly about ${org.name} as a UW student organization.
+Source pool (cite these refIds):
+${sourcePoolBlock}
+
+Write a neutral, third-person Wikipedia-style article. Every factual sentence must cite at least one refId from the section's available pool. Be ruthless: discard evidence that isn't clearly about ${org.name}.
 
 Sections to consider (omit any that lack real evidence — list dropped titles in droppedSections):
 ${SECTION_TITLES.map((t) => `- ${t}`).join("\n")}
@@ -793,7 +870,39 @@ Evidence:
 
 ${evidence || "(no usable evidence)"}`;
 
+  const blockSchema = z.object({
+    kind: z.enum(["paragraph", "bulletList", "linkList"]),
+    sentences: z
+      .array(
+        z.object({
+          text: z.string().min(1).max(800),
+          citations: z.array(z.number().int().positive()).max(6).default([]),
+        }),
+      )
+      .max(20)
+      .optional(),
+    items: z
+      .array(
+        z.object({
+          text: z.string().min(1).max(400),
+          citations: z.array(z.number().int().positive()).max(6).default([]),
+        }),
+      )
+      .max(30)
+      .optional(),
+    links: z
+      .array(
+        z.object({
+          label: z.string().min(1).max(120),
+          url: z.string().min(4).max(500),
+        }),
+      )
+      .max(20)
+      .optional(),
+  });
+
   let synthesized: SynthesizedDraft | null = null;
+  let lastError: unknown = null;
   try {
     const { object } = await generateObject({
       model: openrouter.chat("google/gemini-2.5-flash"),
@@ -801,24 +910,71 @@ ${evidence || "(no usable evidence)"}`;
         sections: z.array(
           z.object({
             title: z.string().min(1).max(120),
-            markdown: z.string().min(1).max(6000),
+            blocks: z.array(blockSchema).min(1).max(20),
           }),
         ),
         droppedSections: z.array(z.string()),
       }),
       system: COLD_START_SYNTHESIS_SYSTEM,
       prompt: userPrompt,
-      maxOutputTokens: 8000,
+      maxOutputTokens: 12000,
       temperature: 0.3,
     });
-    synthesized = object;
+    synthesized = object as SynthesizedDraft;
   } catch (error) {
-    logServerError("cold-start.synthesize", error);
+    lastError = error;
+    logSynthesisError(error, {
+      org: org.name,
+      urlPoolSize: urlPool.length,
+      promptChars: userPrompt.length,
+    });
   }
 
-  if (!synthesized || synthesized.sections.length === 0) {
-    return synthesizeDraftFallback(org, research);
+  if (!synthesized) {
+    // lastError was already logged in detail via logSynthesisError above.
+    throw new ColdStartSynthesisError();
   }
+  if (synthesized.sections.length === 0) {
+    console.error(
+      JSON.stringify({
+        scope: "cold-start.synthesize.empty",
+        reason: "llm-returned-zero-sections",
+        droppedSections: synthesized.droppedSections ?? [],
+        org: org.name,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    throw new ColdStartSynthesisError();
+  }
+
+  // Renumber: only refIds that the LLM actually cited get a final refId in the
+  // References section, numbered 1..M in order of first appearance.
+  const inputToFinalRefId = new Map<number, number>();
+  for (const section of synthesized.sections) {
+    for (const block of section.blocks) {
+      const fragments = blockFragments(block);
+      for (const frag of fragments) {
+        for (const inputId of frag.citations) {
+          if (!urlPool[inputId - 1]) continue; // unknown id — skip
+          if (!inputToFinalRefId.has(inputId)) {
+            inputToFinalRefId.set(inputId, inputToFinalRefId.size + 1);
+          }
+        }
+      }
+    }
+  }
+
+  const references: ReferenceEntry[] = [];
+  for (const [inputId, finalId] of inputToFinalRefId.entries()) {
+    const entry = urlPool[inputId - 1];
+    if (!entry) continue;
+    references.push({
+      refId: finalId,
+      url: entry.url,
+      title: entry.title || deriveDomain(entry.url) || entry.url,
+    });
+  }
+  references.sort((a, b) => a.refId - b.refId);
 
   const docContent: ProseMirrorNode[] = [];
   for (const section of synthesized.sections) {
@@ -827,12 +983,37 @@ ${evidence || "(no usable evidence)"}`;
       attrs: { level: 2, slug: slugify(section.title) },
       content: [{ type: "text", text: section.title }],
     };
-    const body = markdownToProseMirrorNodes(section.markdown);
-    if (body.length === 0) continue; // skip empties
+    const body: ProseMirrorNode[] = [];
+    for (const block of section.blocks) {
+      const built = blockToProseMirror(block, inputToFinalRefId);
+      if (built) body.push(built);
+    }
+    if (body.length === 0) continue;
     docContent.push(heading, ...body);
   }
 
-  if (docContent.length === 0) return synthesizeDraftFallback(org, research);
+  if (docContent.length === 0) {
+    console.error(
+      JSON.stringify({
+        scope: "cold-start.synthesize.empty",
+        reason: "all-sections-assembled-empty",
+        org: org.name,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    throw new ColdStartSynthesisError();
+  }
+
+  if (references.length > 0) {
+    docContent.push(
+      {
+        type: "heading",
+        attrs: { level: 2, slug: "references" },
+        content: [{ type: "text", text: "References" }],
+      },
+      referencesListNode(references),
+    );
+  }
 
   const doc: ProseMirrorDoc = {
     type: "doc",
@@ -841,36 +1022,220 @@ ${evidence || "(no usable evidence)"}`;
 
   const validation = validateProposalDoc(doc);
   if (!validation.ok) {
-    logServerError("cold-start.synthesize.validate", new Error(validation.error));
-    return synthesizeDraftFallback(org, research);
+    console.error(
+      JSON.stringify({
+        scope: "cold-start.synthesize.validate",
+        reason: "doc-validation-failed",
+        error: validation.error,
+        org: org.name,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    throw new ColdStartSynthesisError();
   }
   return doc;
 }
 
-function synthesizeDraftFallback(
-  org: OrgMetadataInput,
+/**
+ * Thrown when cold-start synthesis fails. Carries no details — diagnostic
+ * information is written to server logs only. The thrown message is the only
+ * thing surfaced to the admin UI / streaming client.
+ */
+class ColdStartSynthesisError extends Error {
+  constructor() {
+    super("Cold-start synthesis failed. Please try again.");
+    this.name = "ColdStartSynthesisError";
+  }
+}
+
+function buildUrlPool(
   research: ResearchResult[],
-): ProseMirrorDoc {
-  const content = research.flatMap((item) => [
-    {
-      type: "heading",
-      attrs: { level: 2, slug: slugify(item.section) },
-      content: [{ type: "text", text: item.section }],
-    },
-    {
-      type: "paragraph",
+): Array<{ url: string; title: string }> {
+  const seen = new Map<string, { url: string; title: string }>();
+  for (const item of research) {
+    for (const url of item.sources) {
+      if (!url || seen.has(url)) continue;
+      const title = item.sourceTitles?.[url] ?? "";
+      seen.set(url, { url, title });
+    }
+  }
+  return [...seen.values()];
+}
+
+function blockFragments(block: SynthesizedBlock): CitedFragment[] {
+  if (block.kind === "paragraph") return block.sentences ?? [];
+  if (block.kind === "bulletList") return block.items ?? [];
+  return [];
+}
+
+function blockToProseMirror(
+  block: SynthesizedBlock,
+  refMap: Map<number, number>,
+): ProseMirrorNode | null {
+  if (block.kind === "paragraph") {
+    const sentences = block.sentences ?? [];
+    if (sentences.length === 0) return null;
+    const inline: ProseMirrorNode[] = [];
+    sentences.forEach((s, i) => {
+      const text = i === 0 ? s.text : ` ${s.text}`;
+      inline.push({ type: "text", text });
+      for (const citation of citationNodes(s.citations, refMap)) {
+        inline.push(citation);
+      }
+    });
+    if (inline.length === 0) return null;
+    return { type: "paragraph", content: inline };
+  }
+  if (block.kind === "bulletList") {
+    const items = block.items ?? [];
+    if (items.length === 0) return null;
+    const listItems: ProseMirrorNode[] = items.map((item) => {
+      const inline: ProseMirrorNode[] = [{ type: "text", text: item.text }];
+      for (const citation of citationNodes(item.citations, refMap)) {
+        inline.push(citation);
+      }
+      return {
+        type: "listItem",
+        content: [{ type: "paragraph", content: inline }],
+      };
+    });
+    return { type: "bulletList", content: listItems };
+  }
+  if (block.kind === "linkList") {
+    const links = block.links ?? [];
+    if (links.length === 0) return null;
+    const listItems: ProseMirrorNode[] = [];
+    for (const link of links) {
+      if (!isSafeHttpUrl(link.url)) continue;
+      listItems.push({
+        type: "listItem",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: link.label,
+                marks: [
+                  {
+                    type: "link",
+                    attrs: {
+                      href: link.url,
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    }
+    if (listItems.length === 0) return null;
+    return { type: "bulletList", content: listItems };
+  }
+  return null;
+}
+
+function citationNodes(
+  citations: number[],
+  refMap: Map<number, number>,
+): ProseMirrorNode[] {
+  const out: ProseMirrorNode[] = [];
+  const seen = new Set<number>();
+  for (const id of citations) {
+    const finalId = refMap.get(id);
+    if (!finalId || seen.has(finalId)) continue;
+    seen.add(finalId);
+    out.push({ type: "citation", attrs: { refId: finalId } });
+  }
+  return out;
+}
+
+function referencesListNode(refs: ReferenceEntry[]): ProseMirrorNode {
+  return {
+    type: "bulletList",
+    content: refs.map((ref) => ({
+      type: "listItem",
+      attrs: { refId: ref.refId },
       content: [
         {
-          type: "text",
-          text: item.summary || fallbackSectionText(org, item.section),
+          type: "paragraph",
+          content: [
+            { type: "text", text: `[${ref.refId}] ${ref.title} — ` },
+            {
+              type: "text",
+              text: ref.url,
+              marks: [
+                {
+                  type: "link",
+                  attrs: {
+                    href: ref.url,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  },
+                },
+              ],
+            },
+          ],
         },
       ],
-    },
-  ]);
-  return {
-    type: "doc",
-    content: content.length > 0 ? content : SUGGESTED_TEMPLATE.content,
-  } as ProseMirrorDoc;
+    })),
+  };
+}
+
+function isSafeHttpUrl(url: string): boolean {
+  return /^https?:\/\/[^\s]+$/i.test(url);
+}
+
+function logSynthesisError(
+  error: unknown,
+  context: { org: string; urlPoolSize: number; promptChars: number },
+): void {
+  const err = error as
+    | (Error & {
+        cause?: unknown;
+        responseBody?: unknown;
+        text?: unknown;
+        statusCode?: unknown;
+        url?: unknown;
+        value?: unknown;
+      })
+    | undefined;
+  const payload = {
+    scope: "cold-start.synthesize",
+    org: context.org,
+    urlPoolSize: context.urlPoolSize,
+    promptChars: context.promptChars,
+    name: err?.name,
+    message: err?.message ?? String(error),
+    statusCode: err?.statusCode,
+    url: typeof err?.url === "string" ? err.url : undefined,
+    responseBody:
+      typeof err?.responseBody === "string"
+        ? err.responseBody.slice(0, 2000)
+        : undefined,
+    text: typeof err?.text === "string" ? err.text.slice(0, 2000) : undefined,
+    value: (() => {
+      try {
+        return err?.value !== undefined
+          ? JSON.stringify(err.value).slice(0, 2000)
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    })(),
+    cause:
+      err?.cause instanceof Error
+        ? `${err.cause.name}: ${err.cause.message}`
+        : err?.cause !== undefined
+          ? String(err.cause).slice(0, 500)
+          : undefined,
+    stack: err?.stack,
+    timestamp: new Date().toISOString(),
+  };
+  console.error(JSON.stringify(payload));
 }
 
 function estimatePulse(

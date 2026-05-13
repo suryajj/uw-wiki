@@ -17,6 +17,7 @@ const ALLOWED_NODES = new Set([
   "tableRow",
   "tableCell",
   "tableHeader",
+  "citation",
 ]);
 
 const ALLOWED_MARKS = new Set([
@@ -103,6 +104,16 @@ function validateNode(
     const src = String(node.attrs?.src ?? "");
     if (!ALLOWED_IMAGE_SRC.test(src)) {
       return fail("Image src must be a Supabase Storage URL or relative path.");
+    }
+  }
+
+  if (node.type === "citation") {
+    const refId = Number(node.attrs?.refId);
+    if (!Number.isInteger(refId) || refId < 1) {
+      return fail("Citation node must have attrs.refId (positive integer).");
+    }
+    if (node.content && node.content.length > 0) {
+      return fail("Citation node must be a leaf (no content).");
     }
   }
 

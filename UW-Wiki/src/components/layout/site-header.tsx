@@ -20,9 +20,9 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-1 text-sm">
           <Link
             className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
-            href="/search"
+            href="/orgs"
           >
-            Search
+            Orgs
           </Link>
           {user?.role === "reviewer" || user?.role === "admin" ? (
             <Link

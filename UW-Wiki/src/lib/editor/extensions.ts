@@ -9,6 +9,8 @@ import TableRow from "@tiptap/extension-table-row";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
+import { CitationNode } from "@/lib/editor/citation-extension";
+
 export const editorExtensions = [
   StarterKit.configure({
     heading: { levels: [2, 3] },
@@ -33,4 +35,5 @@ export const editorExtensions = [
   Placeholder.configure({
     placeholder: "Start writing...",
   }),
+  CitationNode,
 ];

@@ -85,8 +85,18 @@ function renderNode(
           {renderChildren(node, key, options)}
         </ol>
       );
-    case "listItem":
-      return <li key={key}>{renderChildren(node, key, options)}</li>;
+    case "listItem": {
+      const refIdAttr = Number(node.attrs?.refId);
+      const id =
+        Number.isInteger(refIdAttr) && refIdAttr >= 1
+          ? `ref-${refIdAttr}`
+          : undefined;
+      return (
+        <li key={key} id={id} className={id ? "scroll-mt-20" : undefined}>
+          {renderChildren(node, key, options)}
+        </li>
+      );
+    }
     case "blockquote":
       return (
         <blockquote
@@ -146,6 +156,20 @@ function renderNode(
       );
     case "text":
       return renderText(node, key);
+    case "citation": {
+      const refId = Number(node.attrs?.refId);
+      if (!Number.isInteger(refId) || refId < 1) return null;
+      return (
+        <sup key={key} className="ml-0.5 text-[10px] font-medium leading-none">
+          <a
+            href={`#ref-${refId}`}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            [{refId}]
+          </a>
+        </sup>
+      );
+    }
     default:
       return null;
   }

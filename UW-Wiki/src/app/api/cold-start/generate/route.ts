@@ -42,9 +42,11 @@ export async function POST(req: Request) {
         });
       } catch (error) {
         logServerError("cold-start.generate.stream", error);
+        // Never leak provider / parse / stack details to the client. The
+        // detailed error is in the server log under the scope above.
         write({
           kind: "error",
-          message: error instanceof Error ? error.message : "Could not generate draft.",
+          message: "Could not generate draft. Please try again.",
         });
       } finally {
         controller.close();

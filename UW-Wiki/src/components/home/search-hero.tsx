@@ -32,15 +32,15 @@ type SearchToolOutput = {
   suggestedPages?: Array<{ orgName: string; orgSlug: string }>;
 };
 
-export default function SearchPage() {
+export function SearchHero() {
   return (
     <Suspense fallback={null}>
-      <SearchPageInner />
+      <SearchHeroInner />
     </Suspense>
   );
 }
 
-function SearchPageInner() {
+function SearchHeroInner() {
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/search" }),
     [],
@@ -62,7 +62,6 @@ function SearchPageInner() {
     event.preventDefault();
     const text = input.trim();
     if (!text) return;
-    // Single-shot view: clear prior Q/A before asking again
     setMessages([]);
     sendMessage({ text });
     setInput("");
@@ -87,7 +86,7 @@ function SearchPageInner() {
   const showSkeleton = isStreaming && assistantText.length === 0 && !activeToolCall;
 
   return (
-    <main
+    <section
       className={
         hasMessages
           ? "flex min-h-screen w-full flex-col gap-6 px-6 pb-40 pt-10 md:px-10 lg:px-16"
@@ -120,7 +119,7 @@ function SearchPageInner() {
         isStreaming={isStreaming}
         floating={hasMessages}
       />
-    </main>
+    </section>
   );
 }
 
@@ -313,14 +312,11 @@ function extractText(parts: { type: string }[]): string {
 }
 
 function findActiveToolCall(parts: ToolPart[]): { tool: string; query: string } | null {
-  // The AI SDK streams parts like { type: "tool-search_wiki", state: "input-available", input: {...} }
-  // followed by an "output-available" update on the same logical part. We pick
-  // the most recent tool part whose output hasn't arrived yet.
   for (let i = parts.length - 1; i >= 0; i -= 1) {
     const part = parts[i];
     if (!part.type.startsWith("tool-")) continue;
-    if (part.output !== undefined) continue; // already finished — skip
-    const toolName = part.type.slice(5); // strip "tool-"
+    if (part.output !== undefined) continue;
+    const toolName = part.type.slice(5);
     const input = (part.input ?? {}) as Record<string, unknown>;
     const query =
       typeof input.query === "string"

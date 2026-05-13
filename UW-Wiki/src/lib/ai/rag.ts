@@ -48,6 +48,7 @@ export async function hybridSearch(
   query: string,
   filters: HybridSearchFilters = {},
 ): Promise<{ results: ChunkResult[]; fallbackPages: FallbackPage[] }> {
+  logTrace("start", { query, filters });
   const queryVector = await embedText(query);
 
   const [semanticResults, keywordResults] = await Promise.all([
@@ -55,12 +56,38 @@ export async function hybridSearch(
     keywordSearch(query, filters.universityId),
   ]);
 
+  logTrace("raw", {
+    semantic: summarize(semanticResults),
+    keyword: summarize(keywordResults),
+  });
+
   const merged = mergeWithRRF(semanticResults, keywordResults);
+  logTrace("merged", summarize(merged));
+
   const filtered = merged.filter((result) => {
     if (filters.category && result.category !== filters.category) return false;
     if (filters.orgSlug && result.orgSlug !== filters.orgSlug) return false;
     return true;
   });
+  const droppedByFilter = merged.length - filtered.length;
+  if (droppedByFilter > 0) {
+    logTrace("filtered", {
+      before: merged.length,
+      after: filtered.length,
+      dropped: droppedByFilter,
+      categoryFilter: filters.category ?? null,
+      orgSlugFilter: filters.orgSlug ?? null,
+      droppedSample: merged
+        .filter(
+          (r) =>
+            (filters.category && r.category !== filters.category) ||
+            (filters.orgSlug && r.orgSlug !== filters.orgSlug),
+        )
+        .slice(0, 5)
+        .map(traceFields),
+    });
+  }
+
   const aboveThreshold = filtered.filter(
     (result) => result.similarityScore >= SIMILARITY_THRESHOLD,
   );
@@ -68,10 +95,31 @@ export async function hybridSearch(
     (result) => result.similarityScore < SIMILARITY_THRESHOLD,
   );
 
-  return {
-    results: aboveThreshold.slice(0, TOP_K_RESULTS),
-    fallbackPages: uniqueFallbackPages(belowThreshold).slice(0, 5),
-  };
+  logTrace("threshold", {
+    threshold: SIMILARITY_THRESHOLD,
+    above: summarize(aboveThreshold),
+    below: {
+      total: belowThreshold.length,
+      comments: belowThreshold.filter((r) => r.chunkType === "comment").length,
+      content: belowThreshold.filter((r) => r.chunkType === "content").length,
+      sample: belowThreshold.slice(0, 5).map(traceFields),
+    },
+  });
+
+  const results = aboveThreshold.slice(0, TOP_K_RESULTS);
+  const fallbackPages = uniqueFallbackPages(belowThreshold).slice(0, 5);
+
+  logTrace("done", {
+    returned: {
+      total: results.length,
+      comments: results.filter((r) => r.chunkType === "comment").length,
+      content: results.filter((r) => r.chunkType === "content").length,
+      ids: results.map(traceFields),
+    },
+    fallbackPages: fallbackPages.length,
+  });
+
+  return { results, fallbackPages };
 }
 
 export const searchWikiTool = tool({
@@ -225,6 +273,44 @@ function mapChunkRow(row: SemanticRpcRow | KeywordRpcRow): Omit<
     anchoredSection: row.anchored_section,
     referencesPreviousVersion: row.references_previous_version,
     createdAt: row.created_at,
+  };
+}
+
+/**
+ * Server-only trace log for the hybrid search pipeline. Console output is
+ * structured JSON so it parses cleanly in dev terminals and Vercel function
+ * logs. Never returned to the client.
+ */
+function logTrace(stage: string, payload: Record<string, unknown>): void {
+  console.info(
+    JSON.stringify({
+      scope: `rag.search.${stage}`,
+      timestamp: new Date().toISOString(),
+      ...payload,
+    }),
+  );
+}
+
+function summarize(rows: ChunkResult[]) {
+  const comments = rows.filter((r) => r.chunkType === "comment");
+  const content = rows.filter((r) => r.chunkType === "content");
+  return {
+    total: rows.length,
+    comments: comments.length,
+    content: content.length,
+    topComments: comments.slice(0, 3).map(traceFields),
+    topContent: content.slice(0, 3).map(traceFields),
+  };
+}
+
+function traceFields(row: ChunkResult) {
+  return {
+    id: row.id,
+    type: row.chunkType,
+    score: Number(row.similarityScore?.toFixed?.(3) ?? row.similarityScore),
+    rrf: Number(row.rrfScore?.toFixed?.(4) ?? row.rrfScore),
+    org: row.orgSlug,
+    section: row.sectionSlug,
   };
 }
 
