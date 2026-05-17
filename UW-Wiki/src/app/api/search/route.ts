@@ -76,8 +76,13 @@ export async function POST(req: Request) {
     system: SYSTEM_PROMPT,
     messages: convertToModelMessages(messages),
     tools: ragTools,
-    stopWhen: stepCountIs(5),
-    maxOutputTokens: 1200,
+    // 8 steps is enough for: get_org_data → get_page_content → optional
+    // search_wiki follow-up, plus a multi-org compare (two reads in parallel).
+    stopWhen: stepCountIs(8),
+    // 4500 tokens supports a full article-grounded synthesis (Overview +
+    // Curriculum + Co-op + Culture + etc.) plus a multi-org comparison
+    // without truncation; previously 1200, which forced one-liner answers.
+    maxOutputTokens: 4500,
     onError: ({ error }) => logServerError("api.search.stream", error),
   });
 

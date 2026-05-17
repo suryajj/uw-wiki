@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { clearPendingAction, loadPendingAction } from "@/lib/pending-actions/storage";
+import { toast } from "@/lib/ui/toast";
 
 export function PendingActionResumer({ isSignedIn }: { isSignedIn: boolean }) {
-  const [message, setMessage] = useState<string | null>(null);
-
   useEffect(() => {
     if (!isSignedIn) return;
     const pending = loadPendingAction();
@@ -61,19 +60,14 @@ export function PendingActionResumer({ isSignedIn }: { isSignedIn: boolean }) {
 
       if (res?.ok) {
         clearPendingAction();
-        setMessage("Your saved action was completed.");
+        toast.success("Your saved action was completed.");
       } else {
-        setMessage("We could not replay your saved action. Try again.");
+        toast.error("We could not replay your saved action. Try again.");
       }
     }
 
     void replay();
   }, [isSignedIn]);
 
-  if (!message) return null;
-  return (
-    <div className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-card px-4 py-3 text-sm shadow">
-      {message}
-    </div>
-  );
+  return null;
 }

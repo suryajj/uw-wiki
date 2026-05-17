@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/lib/ui/toast";
+import { useAction } from "@/lib/ui/use-action";
 
 type Props = {
   reportId: string;
@@ -12,42 +14,62 @@ type Props = {
   status: string;
 };
 
+type ReportAction = "hide" | "unhide" | "dismiss";
+
+const SUCCESS_LABELS: Record<ReportAction, string> = {
+  hide: "Comment hidden.",
+  unhide: "Comment unhidden.",
+  dismiss: "Report dismissed.",
+};
+
 export function ReportActions({ reportId, commentId, isHidden, status }: Props) {
   const router = useRouter();
-  const [submitting, setSubmitting] = useState<"hide" | "unhide" | "dismiss" | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [active, setActive] = useState<ReportAction | null>(null);
 
-  async function call(action: "hide" | "unhide" | "dismiss") {
-    if (action !== "dismiss" && !commentId) {
-      setMessage("Comment is missing.");
-      return;
-    }
-    setSubmitting(action);
-    setMessage(null);
-    const url =
-      action === "dismiss"
-        ? `/api/admin/reports/${reportId}/dismiss`
-        : `/api/admin/comments/${commentId}/${action}`;
-    const res = await fetch(url, { method: "POST" });
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    setSubmitting(null);
-    if (!res.ok) {
-      setMessage(body.error ?? "Action failed.");
-      return;
-    }
-    router.refresh();
-  }
+  const action = useAction(
+    async (which: ReportAction) => {
+      if (which !== "dismiss" && !commentId) {
+        throw new Error("Comment is missing.");
+      }
+      setActive(which);
+      const url =
+        which === "dismiss"
+          ? `/api/admin/reports/${reportId}/dismiss`
+          : `/api/admin/comments/${commentId}/${which}`;
+      const res = await fetch(url, { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Action failed.");
+      return which;
+    },
+    {
+      successMessage: (which) => SUCCESS_LABELS[which],
+      onSuccess: () => {
+        setActive(null);
+        router.refresh();
+      },
+      onError: () => setActive(null),
+    },
+  );
+
+  // Helper to keep callsites tidy
+  const run = (which: ReportAction) => {
+    void action.run(which).catch(() => {
+      // useAction already toasts; nothing else to do
+      void toast;
+    });
+  };
 
   if (status !== "pending") {
     return (
-      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+      <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
         <span>Status: {status}</span>
         {isHidden ? (
           <Button
             size="sm"
             variant="outline"
-            disabled={submitting === "unhide"}
-            onClick={() => void call("unhide")}
+            loading={active === "unhide" && action.pending}
+            disabled={action.pending}
+            onClick={() => run("unhide")}
           >
             Unhide
           </Button>
@@ -60,16 +82,18 @@ export function ReportActions({ reportId, commentId, isHidden, status }: Props) 
     <div className="mt-3 flex flex-wrap gap-2">
       <Button
         size="sm"
-        disabled={submitting === "hide" || isHidden}
-        onClick={() => void call("hide")}
+        loading={active === "hide" && action.pending}
+        disabled={action.pending || isHidden}
+        onClick={() => run("hide")}
       >
         Hide Comment
       </Button>
       <Button
         size="sm"
         variant="outline"
-        disabled={submitting === "dismiss"}
-        onClick={() => void call("dismiss")}
+        loading={active === "dismiss" && action.pending}
+        disabled={action.pending}
+        onClick={() => run("dismiss")}
       >
         Dismiss Report
       </Button>
@@ -77,14 +101,12 @@ export function ReportActions({ reportId, commentId, isHidden, status }: Props) 
         <Button
           size="sm"
           variant="outline"
-          disabled={submitting === "unhide"}
-          onClick={() => void call("unhide")}
+          loading={active === "unhide" && action.pending}
+          disabled={action.pending}
+          onClick={() => run("unhide")}
         >
           Unhide
         </Button>
-      ) : null}
-      {message ? (
-        <span className="ml-2 text-xs text-destructive">{message}</span>
       ) : null}
     </div>
   );

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -39,26 +40,62 @@ const buttonVariants = cva(
   }
 )
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  asChild = false,
-  ...props
-}: React.ComponentProps<"button"> &
+type ButtonProps = Omit<React.ComponentProps<"button">, "loading"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
-  }) {
+    /**
+     * Show a spinner inside the button and disable interaction. The button
+     * children stay visible alongside the spinner — no text swap needed.
+     */
+    loading?: boolean
+  }
+
+function Button(props: ButtonProps) {
+  // Destructure custom props out so they NEVER reach the DOM. Note: when
+  // `asChild` is true, Slot.Root forwards remaining props to the rendered
+  // child — `loading` is a valid HTML attribute on <img> and <link>, so it's
+  // critical we strip it here before forwarding.
+  const {
+    className,
+    variant = "default",
+    size = "default",
+    asChild = false,
+    loading: loadingProp,
+    disabled,
+    children,
+    ...rest
+  } = props
+  const loading = loadingProp === true
   const Comp = asChild ? Slot.Root : "button"
+  const isIconOnly = typeof size === "string" && size.startsWith("icon")
+  const showChildren = !(loading && isIconOnly)
+
+  // When asChild is true, Slot.Root requires EXACTLY one React child — it
+  // uses React.Children.only internally. So we must pass `children` through
+  // as a single element and NOT inject our spinner alongside it. asChild is
+  // typically used for navigation links where loading state doesn't apply.
+  const content = asChild ? (
+    children
+  ) : (
+    <>
+      {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+      {showChildren ? children : null}
+    </>
+  )
 
   return (
     <Comp
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      data-loading={loading ? "" : undefined}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading || undefined}
       className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+      {...rest}
+    >
+      {content}
+    </Comp>
   )
 }
 

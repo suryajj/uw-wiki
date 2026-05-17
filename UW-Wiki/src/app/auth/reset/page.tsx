@@ -1,14 +1,14 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "@/lib/ui/toast";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState<boolean | null>(null);
 
@@ -17,7 +17,7 @@ export default function ResetPasswordPage() {
     supabase.auth.getSession().then(({ data }) => {
       setSessionReady(!!data.session);
       if (!data.session) {
-        setError("This reset link is invalid or expired. Request a new password reset email.");
+        toast.error("This reset link is invalid or expired. Request a new password reset email.");
       }
     });
   }, []);
@@ -25,16 +25,14 @@ export default function ResetPasswordPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setMessage(null);
-    setError(null);
     const supabase = createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (updateError) {
-      setError("Could not update password. Open the reset link again and retry.");
+      toast.error("Could not update password. Open the reset link again and retry.");
       return;
     }
-    setMessage("Password updated. You can close this page or return home.");
+    toast.success("Password updated. You can close this page or return home.");
   }
 
   return (
@@ -70,14 +68,14 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || sessionReady !== true}
-                className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+                className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
               >
-                {loading ? "Saving…" : sessionReady === null ? "Checking link…" : "Save password"}
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : null}
+                {sessionReady === null ? "Checking link…" : "Save password"}
               </button>
             </form>
-
-            {error ? <p className="mt-4 text-sm text-[#ff7a7a]">{error}</p> : null}
-            {message ? <p className="mt-4 text-sm text-[#888888]">{message}</p> : null}
           </div>
         </div>
 

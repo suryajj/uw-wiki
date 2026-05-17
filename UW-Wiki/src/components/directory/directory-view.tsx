@@ -11,7 +11,9 @@ type Props = {
 };
 
 export function DirectoryView({ orgs }: Props) {
-  const [view, setView] = useState<"grid" | "list">("list");
+  // Default to grid (tile) view — surfaces tagline + dense visual scan; the
+  // List/Grid toggle below is preserved for users who prefer the compact list.
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   return (
     <div className="flex flex-col gap-10">

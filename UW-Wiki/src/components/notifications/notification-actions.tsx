@@ -1,47 +1,61 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/ui/use-action";
 
 export function MarkAllNotificationsReadButton() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const action = useAction(
+    async () => {
+      const res = await fetch("/api/notifications/mark-all-read", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Could not mark notifications read.");
+      }
+    },
+    {
+      quietSuccess: true,
+      onSuccess: () => router.refresh(),
+    },
+  );
   return (
     <Button
       type="button"
       variant="outline"
-      disabled={loading}
-      onClick={async () => {
-        setLoading(true);
-        await fetch("/api/notifications/mark-all-read", { method: "POST" });
-        setLoading(false);
-        router.refresh();
-      }}
+      loading={action.pending}
+      onClick={() => action.run()}
     >
-      {loading ? "Marking..." : "Mark All Read"}
+      Mark All Read
     </Button>
   );
 }
 
 export function MarkNotificationReadButton({ id }: { id: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const action = useAction(
+    async () => {
+      const res = await fetch(`/api/notifications/${id}/mark-read`, { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Could not mark notification read.");
+      }
+    },
+    {
+      quietSuccess: true,
+      onSuccess: () => router.refresh(),
+    },
+  );
   return (
     <Button
       type="button"
       variant="outline"
       size="sm"
-      disabled={loading}
-      onClick={async () => {
-        setLoading(true);
-        await fetch(`/api/notifications/${id}/mark-read`, { method: "POST" });
-        setLoading(false);
-        router.refresh();
-      }}
+      loading={action.pending}
+      onClick={() => action.run()}
     >
-      {loading ? "Marking..." : "Mark Read"}
+      Mark Read
     </Button>
   );
 }

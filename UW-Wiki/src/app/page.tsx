@@ -9,7 +9,10 @@ export default async function HomePage() {
     <main className="flex w-full flex-col">
       <SearchHero />
 
-      <section className="flex flex-col gap-6 border-t border-border px-6 py-16 md:px-10 lg:px-16">
+      <section
+        id="browse-orgs"
+        className="flex flex-col gap-6 border-t border-border px-6 py-16 md:px-10 lg:px-16 scroll-mt-20"
+      >
         <header className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
             Browse organizations

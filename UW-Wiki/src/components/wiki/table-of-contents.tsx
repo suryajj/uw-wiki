@@ -79,13 +79,26 @@ function TocList({
   activeId: string;
   onSelect?: () => void;
 }) {
+  // Smooth-scroll to the target heading and update the URL hash without
+  // letting the browser do its default jump (which is instant + abrupt).
+  function handleClick(event: React.MouseEvent<HTMLAnchorElement>, id: string) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (typeof window !== "undefined" && window.history?.replaceState) {
+      window.history.replaceState(null, "", `#${id}`);
+    }
+    onSelect?.();
+  }
+
   return (
     <div className="flex flex-col gap-2.5">
       {entries.map((entry) => (
         <a
           key={entry.id}
           href={`#${entry.id}`}
-          onClick={onSelect}
+          onClick={(event) => handleClick(event, entry.id)}
           className={cn(
             "block text-sm leading-snug transition-colors duration-150",
             entry.level === 3 && "pl-4 text-[13px]",

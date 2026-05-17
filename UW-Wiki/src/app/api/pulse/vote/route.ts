@@ -8,7 +8,12 @@ import {
 } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { PulseMetric } from "@/types/domain";
+import {
+  getActivePulseMetrics,
+  PULSE_METRICS,
+  type OrgCategory,
+  type PulseMetric,
+} from "@/types/domain";
 
 export const runtime = "nodejs";
 
@@ -16,7 +21,7 @@ const voteLimiter = createRateLimiter(30, "10 m");
 
 const voteSchema = z.object({
   orgId: z.string().uuid(),
-  metric: z.enum(["selectivity", "vibe_check", "coop_boost"]),
+  metric: z.enum(PULSE_METRICS),
   value: z.string().min(1).max(200),
 });
 
@@ -43,6 +48,29 @@ export async function POST(req: Request) {
 
   const { orgId, metric, value } = parsed.data;
   const admin = createAdminClient();
+
+  // Per-category metric guard: programs only accept workload/employability/
+  // community; clubs/teams/etc. only accept selectivity/vibe_check/coop_boost.
+  // The DB CHECK constraint (migration 012) accepts the union of all 6, so we
+  // enforce the per-category split here.
+  const { data: orgRow, error: orgRowError } = await admin
+    .from("organizations")
+    .select("category")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (orgRowError) {
+    logServerError("pulse.vote.orgLookup", orgRowError);
+    return apiError("UNEXPECTED", "Could not verify org for this rating.");
+  }
+  if (!orgRow) return apiError("VALIDATION_FAILED", "Unknown org.");
+
+  const allowed = getActivePulseMetrics(orgRow.category as OrgCategory);
+  if (!allowed.includes(metric)) {
+    return apiError(
+      "VALIDATION_FAILED",
+      `Metric '${metric}' is not valid for ${orgRow.category} pages.`,
+    );
+  }
 
   const { data: existing } = await admin
     .from("pulse_ratings")
@@ -127,8 +155,10 @@ function computeAggregateValue(metric: PulseMetric, values: string[]): string {
 }
 
 function computeAggregateLabel(metric: PulseMetric, value: string): string {
-  if (metric === "vibe_check" || metric === "coop_boost") return `${value} / 5`;
-  return value;
+  // Every numeric metric (vibe/co-op for clubs, workload/employability/
+  // community for programs) shows as "X.Y / 5". Selectivity stays categorical.
+  if (metric === "selectivity") return value;
+  return `${value} / 5`;
 }
 
 function mode(values: string[]): string {

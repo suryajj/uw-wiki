@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/ui/use-action";
 
 type Row = {
   category: string;
@@ -20,25 +21,26 @@ export function LifecycleEditor({ rows }: { rows: Row[] }) {
       defunctMonths: Math.round((row.defunct_days ?? row.needs_update_days * 4) / 30),
     })),
   );
-  const [message, setMessage] = useState<string | null>(null);
-  async function save() {
-    const invalid = items.some(
-      (item) =>
-        item.needsUpdateMonths >= item.staleMonths ||
-        item.staleMonths >= item.defunctMonths,
-    );
-    if (invalid) {
-      setMessage("Thresholds must be needs-update < stale < defunct.");
-      return;
-    }
-    const res = await fetch("/api/admin/lifecycle/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: items }),
-    });
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    setMessage(res.ok ? "Lifecycle config saved." : body.error ?? "Failed.");
-  }
+  const saveAction = useAction(
+    async () => {
+      const invalid = items.some(
+        (item) =>
+          item.needsUpdateMonths >= item.staleMonths ||
+          item.staleMonths >= item.defunctMonths,
+      );
+      if (invalid) {
+        throw new Error("Thresholds must be needs-update < stale < defunct.");
+      }
+      const res = await fetch("/api/admin/lifecycle/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: items }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to save lifecycle config.");
+    },
+    { successMessage: "Lifecycle config saved." },
+  );
   return (
     <section className="mt-6 space-y-3">
       {items.map((item, index) => (
@@ -65,8 +67,9 @@ export function LifecycleEditor({ rows }: { rows: Row[] }) {
           ))}
         </div>
       ))}
-      <Button onClick={save}>Save Lifecycle Config</Button>
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+      <Button loading={saveAction.pending} onClick={() => saveAction.run()}>
+        Save Lifecycle Config
+      </Button>
     </section>
   );
 }

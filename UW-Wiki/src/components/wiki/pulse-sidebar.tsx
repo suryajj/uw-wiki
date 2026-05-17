@@ -5,12 +5,38 @@ import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type Re
 import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
 import { savePendingAction } from "@/lib/pending-actions/storage";
-import type { OrgCategory, PulseAggregate, PulseMetric } from "@/types/domain";
+import { toast } from "@/lib/ui/toast";
+import {
+  getActivePulseMetrics,
+  type OrgCategory,
+  type PulseAggregate,
+  type PulseMetric,
+} from "@/types/domain";
 
 const METRIC_LABELS: Record<PulseMetric, string> = {
   selectivity: "Selectivity",
   vibe_check: "Vibe Check",
   coop_boost: "Co-op Boost",
+  workload: "Workload",
+  employability: "Employability",
+  community: "Community",
+};
+
+// Scale hints for numeric metrics. Categorical metrics (Selectivity) render as
+// a pill instead and don't appear here.
+const SCALE_HINTS: Partial<Record<PulseMetric, string>> = {
+  vibe_check: "Social → Corporate",
+  workload: "Chill → Intense",
+  employability: "Niche → In-demand",
+  community: "Solo → Tight-knit",
+};
+
+const SYMBOLS: Partial<Record<PulseMetric, string>> = {
+  vibe_check: "●",
+  coop_boost: "★",
+  workload: "▰",
+  employability: "★",
+  community: "●",
 };
 
 type PendingPulseVote = {
@@ -19,16 +45,16 @@ type PendingPulseVote = {
 
 export function PulseSidebar({
   orgId,
+  category,
   aggregates,
   externalLinks,
-  category,
-  isAdminSeeded,
+  externalLinksLabel = "External Links",
 }: {
   orgId: string;
+  category: OrgCategory;
   aggregates: PulseAggregate[];
   externalLinks: Array<{ label: string; url: string }>;
-  category: OrgCategory;
-  isAdminSeeded: boolean;
+  externalLinksLabel?: string;
 }) {
   const [rateOpen, setRateOpen] = useState(false);
   const [authPrompt, setAuthPrompt] = useState<PendingPulseVote | null>(null);
@@ -41,37 +67,37 @@ export function PulseSidebar({
   return (
     <div className="flex flex-col gap-0">
       <section className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
-        <div className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="border-b border-border px-4 py-3">
           <h2 className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             The Pulse
           </h2>
-          <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            {category}
-            {isAdminSeeded ? " · Admin seeded" : ""}
-          </span>
         </div>
         <dl className="flex flex-col">
-          <PulseRow
-            label={METRIC_LABELS.selectivity}
-            value={aggregateByMetric.get("selectivity")?.aggregateLabel ?? "No ratings yet"}
-            votes={aggregateByMetric.get("selectivity")?.totalVotes ?? 0}
-          />
-          <PulseNumericRow
-            label={METRIC_LABELS.vibe_check}
-            aggregate={aggregateByMetric.get("vibe_check")}
-            symbol="●"
-            scaleHint="Social → Corporate"
-          />
-          <PulseNumericRow
-            label={METRIC_LABELS.coop_boost}
-            aggregate={aggregateByMetric.get("coop_boost")}
-            symbol="★"
-          />
+          {getActivePulseMetrics(category).map((metric) =>
+            metric === "selectivity" ? (
+              <PulseRow
+                key={metric}
+                label={METRIC_LABELS[metric]}
+                value={
+                  aggregateByMetric.get(metric)?.aggregateLabel ?? "No ratings yet"
+                }
+                votes={aggregateByMetric.get(metric)?.totalVotes ?? 0}
+              />
+            ) : (
+              <PulseNumericRow
+                key={metric}
+                label={METRIC_LABELS[metric]}
+                aggregate={aggregateByMetric.get(metric)}
+                symbol={SYMBOLS[metric] ?? "●"}
+                scaleHint={SCALE_HINTS[metric]}
+              />
+            ),
+          )}
         </dl>
 
         <div className="border-t border-border px-4 py-3">
           <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            External Links
+            {externalLinksLabel}
           </h3>
           {externalLinks.length > 0 ? (
             <ul className="space-y-1.5 text-sm">
@@ -108,6 +134,7 @@ export function PulseSidebar({
       {rateOpen ? (
         <RateOrgModal
           orgId={orgId}
+          category={category}
           onClose={() => setRateOpen(false)}
           onAuthRequired={(payload) => {
             setRateOpen(false);
@@ -208,13 +235,16 @@ const SELECTIVITY_OPTIONS = [
 
 function RateOrgModal({
   orgId,
+  category,
   onClose,
   onAuthRequired,
 }: {
   orgId: string;
+  category: OrgCategory;
   onClose: () => void;
   onAuthRequired: (payload: PendingPulseVote) => void;
 }) {
+  const isProgram = category === "Academic Programs";
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -230,7 +260,7 @@ function RateOrgModal({
       >
         <div className="mb-4 flex items-baseline justify-between">
           <h3 id="rate-org-title" className="text-lg font-semibold text-foreground">
-            Rate This Org
+            {isProgram ? "Rate This Program" : "Rate This Org"}
           </h3>
           <button
             type="button"
@@ -241,14 +271,45 @@ function RateOrgModal({
             ×
           </button>
         </div>
-        <PulseVoteForm
-          orgId={orgId}
-          onAuthRequired={onAuthRequired}
-          onSuccess={onClose}
-        />
+        {isProgram ? (
+          <ProgramVoteForm
+            orgId={orgId}
+            onAuthRequired={onAuthRequired}
+            onSuccess={onClose}
+          />
+        ) : (
+          <PulseVoteForm
+            orgId={orgId}
+            onAuthRequired={onAuthRequired}
+            onSuccess={onClose}
+          />
+        )}
       </div>
     </div>
   );
+}
+
+async function submitVote(
+  orgId: string,
+  metric: PulseMetric,
+  value: string,
+  allVotes: PendingPulseVote["votes"],
+  onAuthRequired: (payload: PendingPulseVote) => void,
+) {
+  const res = await fetch("/api/pulse/vote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orgId, metric, value }),
+  });
+  if (res.status === 401) {
+    onAuthRequired({ votes: allVotes });
+    return { ok: false, alreadyHandled: true } as const;
+  }
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    return { ok: false, alreadyHandled: false, error: body.error } as const;
+  }
+  return { ok: true } as const;
 }
 
 function PulseVoteForm({
@@ -266,29 +327,10 @@ function PulseVoteForm({
   const [vibe, setVibe] = useState(3);
   const [coop, setCoop] = useState(3);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function submitOne(metric: PulseMetric, value: string, allVotes: PendingPulseVote["votes"]) {
-    const res = await fetch("/api/pulse/vote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId, metric, value }),
-    });
-    if (res.status === 401) {
-      onAuthRequired({ votes: allVotes });
-      return { ok: false, alreadyHandled: true } as const;
-    }
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      return { ok: false, alreadyHandled: false, error: body.error } as const;
-    }
-    return { ok: true } as const;
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    setMessage(null);
     try {
       const intendedVotes: PendingPulseVote["votes"] = [
         { orgId, metric: "selectivity", value: selectivity },
@@ -296,16 +338,16 @@ function PulseVoteForm({
         { orgId, metric: "coop_boost", value: String(coop) },
       ];
       const results = await Promise.all(
-        intendedVotes.map((vote) => submitOne(vote.metric, vote.value, intendedVotes)),
+        intendedVotes.map((vote) =>
+          submitVote(orgId, vote.metric, vote.value, intendedVotes, onAuthRequired),
+        ),
       );
       const firstError = results.find((result) => !result.ok && !result.alreadyHandled);
       if (firstError && "error" in firstError && firstError.error) {
-        setMessage(firstError.error);
+        toast.error(firstError.error);
       } else if (results.every((result) => result.ok)) {
-        setMessage("Ratings submitted. Refresh to see updated aggregates.");
+        toast.success("Rating submitted. Refresh to see updated aggregates.");
         onSuccess?.();
-      } else {
-        setMessage("Some ratings need sign-in. Check the prompt and try again.");
       }
     } finally {
       setSubmitting(false);
@@ -364,12 +406,98 @@ function PulseVoteForm({
         </div>
       </FormField>
 
-      <Button type="submit" disabled={submitting} className="w-full">
-        {submitting ? "Submitting…" : "Submit Rating"}
+      <Button type="submit" loading={submitting} className="w-full">
+        Submit Rating
       </Button>
-      {message ? (
-        <p className="text-xs text-muted-foreground">{message}</p>
-      ) : null}
+    </form>
+  );
+}
+
+// Programs vote on Workload / Employability / Community — three numeric
+// sliders, no categorical selectivity dropdown.
+function ProgramVoteForm({
+  orgId,
+  onAuthRequired,
+  onSuccess,
+}: {
+  orgId: string;
+  onAuthRequired: (payload: PendingPulseVote) => void;
+  onSuccess?: () => void;
+}) {
+  const [workload, setWorkload] = useState(3);
+  const [employability, setEmployability] = useState(3);
+  const [community, setCommunity] = useState(3);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const intendedVotes: PendingPulseVote["votes"] = [
+        { orgId, metric: "workload", value: String(workload) },
+        { orgId, metric: "employability", value: String(employability) },
+        { orgId, metric: "community", value: String(community) },
+      ];
+      const results = await Promise.all(
+        intendedVotes.map((vote) =>
+          submitVote(orgId, vote.metric, vote.value, intendedVotes, onAuthRequired),
+        ),
+      );
+      const firstError = results.find((result) => !result.ok && !result.alreadyHandled);
+      if (firstError && "error" in firstError && firstError.error) {
+        toast.error(firstError.error);
+      } else if (results.every((result) => result.ok)) {
+        toast.success("Rating submitted. Refresh to see updated aggregates.");
+        onSuccess?.();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-sm">
+      <FormField label={`Workload (${workload})`} hint="Chill → Intense">
+        <input
+          type="range"
+          min={1}
+          max={5}
+          value={workload}
+          onChange={(event) => setWorkload(Number.parseInt(event.target.value, 10))}
+          className="w-full accent-[color:var(--foreground)]"
+          aria-label="Workload rating"
+        />
+      </FormField>
+
+      <FormField label={`Employability (${employability})`} hint="Niche → In-demand">
+        <input
+          type="range"
+          min={1}
+          max={5}
+          value={employability}
+          onChange={(event) =>
+            setEmployability(Number.parseInt(event.target.value, 10))
+          }
+          className="w-full accent-[color:var(--foreground)]"
+          aria-label="Employability rating"
+        />
+      </FormField>
+
+      <FormField label={`Community (${community})`} hint="Solo → Tight-knit">
+        <input
+          type="range"
+          min={1}
+          max={5}
+          value={community}
+          onChange={(event) => setCommunity(Number.parseInt(event.target.value, 10))}
+          className="w-full accent-[color:var(--foreground)]"
+          aria-label="Community rating"
+        />
+      </FormField>
+
+      <Button type="submit" loading={submitting} className="w-full">
+        Submit Rating
+      </Button>
     </form>
   );
 }

@@ -77,6 +77,68 @@ OUTPUT FORMAT:
 - Do NOT invent an "Other" or "References" section — references are generated automatically.
 `;
 
+const PROGRAM_SYNTHESIS_SYSTEM = `You are writing a neutral, encyclopedic Wikipedia-style article ABOUT a DEGREE PROGRAM at the University of Waterloo. The subject is a university degree, NOT a student club. Write like an outside observer summarizing what is publicly known about the program.
+
+VOICE (non-negotiable):
+- Always third-person. Never use "we", "us", "our", "I", "you", "your", "let's".
+- Refer to the program by its name, or as "the program", "the degree", "students in the program".
+- Present tense for ongoing facts, past tense for finished events.
+- No exclamation points. No marketing hype. No emojis.
+
+EVIDENCE HANDLING (most important):
+- The research evidence below is messy web scrapes. Most of it is NOISE. Be aggressive about ignoring irrelevant content.
+- Specifically IGNORE and never include: land acknowledgements (Haldimand Tract, Neutral/Anishinaabeg/Haudenosaunee), university navigation menus, "Learn more about…" CTAs, donation pitches, generic Waterloo presidents (Burt Matthews, James Downey, Doug Wright, Vivek Goel), unrelated programs at other universities (University of Washington, Wilfrid Laurier University), and unrelated student clubs.
+- NEVER copy phrases verbatim from the source. Always paraphrase in your own neutral words.
+- Entity names (course codes, professor names, employer names, salary numbers) are facts — they should always appear verbatim even when paraphrasing surrounding prose.
+- Do not invent facts. If unsure about a claim, omit it.
+
+CONFLICTING EVIDENCE:
+- If two sources disagree on a fact (e.g., one says admit cutoff 92%, another says 95%), write the range ("approximately 92–95%") or attribute one source ("according to the official program page, …"). Never silently omit conflicting facts.
+
+CONCRETE ENTITIES (very important — this is what makes the article good):
+- When evidence names specific course codes (e.g. CS 246, ECE 350, MATH 137), required courses, specializations/options, employer names (Google, Shopify, Meta), specific salary ranges, admit cutoffs, AIF requirements, capstone structures — INCLUDE THEM by name and number.
+- If a section's evidence mentions even one concrete entity, that section is worth keeping. Lead with the entity.
+
+SECTION-SPECIFIC RULES:
+
+"Overview": What the program is, the faculty/department it belongs to, length in years, plan format (regular vs co-op), and approximate cohort size if evidenced. One paragraph.
+
+"Curriculum": Required core courses (cite course codes when known), available electives/streams/specializations/options, capstone or thesis structure, technical depth. Use a bullet list for specializations or required course groupings; use prose for narrative description of the structure.
+
+"Co-op & Career": Co-op sequence (study/work alternation, number of work terms), average salary by stream if evidenced, top employers, common job titles, employment rate. Past Waterloo-specific data preferred.
+
+"Admissions": Admit average cutoff (latest known year), AIF (Admission Information Form) requirements, supplementary requirements, application deadlines, secondary school prerequisites.
+
+"Culture": Workload intensity, community vibe, student demographics (gender ratio, faculty composition), work-life balance, perception on r/uwaterloo or UWFlow. Use anecdotal evidence with hedging ("students often report…", "the program is generally described as…").
+
+"Resources" (CRITICAL): Output a bullet list of REAL markdown hyperlinks with the format "- [Human-readable label](https://actual-url.com)". Use the Known URLs provided in the prompt metadata. Cover: official program page on uwaterloo.ca, course calendar (ucalendar.uwaterloo.ca), undergraduate office contact, useful subreddits, UWFlow program page. NEVER write "Official Website" as bare text without a real href. If no clean URLs are available, OMIT this section entirely.
+
+SOURCE RELIABILITY:
+- Treat reddit.com and uwflow.com snippets as anecdotal. Use for culture/workload color, never for hard facts like admit cutoffs.
+- uwaterloo.ca / ucalendar.uwaterloo.ca / findoutmore.uwaterloo.ca: trustworthy for course codes, plan structure, admission requirements.
+- Anything from third-party degree-ranking sites or unrelated universities: ignore entirely.
+
+STRUCTURE:
+- Write as much as the evidence supports — there is no sentence limit per section. Fill each section fully, but do NOT pad with generic filler.
+- Use prose for narrative content. Use bullet lists for genuinely enumerable content: required courses, specializations, top employers, application requirements.
+- No sub-headings within sections unless the source clearly enumerates distinct categories.
+
+CITATIONS (very important):
+- Every factual sentence (course codes, employers, salaries, cutoffs, deadlines) SHOULD cite at least one refId from the per-section source pool.
+- 1-3 refIds per factual sentence is ideal. Generic glue sentences do not need citations.
+- Never invent refIds — only cite numbers that appear in the Source pool you were given.
+
+OUTPUT FORMAT:
+- Output a JSON object: { sections: [{title, blocks: [...]}], droppedSections: [string] }
+- Each block has a "kind" — one of "paragraph", "bulletList", "linkList".
+  • "paragraph" block: provide "sentences": [{text, citations: number[]}].
+  • "bulletList" block: provide "items": [{text, citations: number[]}].
+  • "linkList" block: provide "links": [{label, url}]. ONLY for the Resources section.
+- Section titles must be from: Overview, Curriculum, Co-op & Career, Admissions, Culture, Resources.
+- "Overview" must always be present.
+- Do NOT invent extra sections — references are generated automatically.
+`;
+
 const FOLLOWUP_SYSTEM = `You just read web search results about a student organization at the University of Waterloo. Your job is to identify SPECIFIC NAMED ENTITIES that were mentioned but not yet fully detailed — partner nonprofits, sponsors, specific events, competitions, workshops, awards, founding year, founders' names, notable alumni — and emit 4 to 6 focused web search queries that would surface concrete facts about those entities.
 
 Rules:
@@ -112,7 +174,7 @@ type ReferenceEntry = {
 
 const WATERLOO_ID = "00000000-0000-0000-0000-000000000001";
 
-const SECTION_TITLES = [
+const CLUB_SECTION_TITLES = [
   "Overview",
   "Time Commitment",
   "Culture and Vibe",
@@ -122,6 +184,35 @@ const SECTION_TITLES = [
   "How to Apply",
   "External Links",
 ] as const;
+
+const PROGRAM_SECTION_TITLES = [
+  "Overview",
+  "Curriculum",
+  "Co-op & Career",
+  "Admissions",
+  "Culture",
+  "Resources",
+] as const;
+
+type SectionTitle = string;
+
+/**
+ * Canonical section list for a given org category. Clubs/design teams/etc.
+ * follow the original 8-section structure; Academic Programs use a degree-
+ * shaped layout (Curriculum / Co-op / Admissions / Culture / Resources).
+ *
+ * The pipeline downstream (bucketing, synthesis prompt, draft renderer) reads
+ * from this helper rather than the legacy `SECTION_TITLES` constant.
+ */
+function getSectionTitles(category: OrgCategory | string | undefined): readonly SectionTitle[] {
+  return category === "Academic Programs"
+    ? PROGRAM_SECTION_TITLES
+    : CLUB_SECTION_TITLES;
+}
+
+function isProgramCategory(category: OrgCategory | string | undefined): boolean {
+  return category === "Academic Programs";
+}
 
 type ResearchResult = {
   section: string;
@@ -157,7 +248,7 @@ export async function createIdentificationJob(
       category_hint: categoryHint ?? null,
       org_metadata: metadata,
       current_step: "identified",
-      section_progress: SECTION_TITLES.map((title) => ({
+      section_progress: getSectionTitles(metadata.category).map((title) => ({
         slug: slugify(title),
         title,
         status: "pending",
@@ -491,39 +582,80 @@ async function researchOrg(
   const orgDomain = deriveDomain(org.website);
 
   // --- Phase 1: broad sweep ---
-  const phase1: Array<{ q: string; includeDomains?: string[]; source: string }> = [
-    {
-      q: `${org.name} University of Waterloo student club overview history founded`,
-      includeDomains: orgDomain ? [orgDomain] : undefined,
-      source: orgDomain ?? "web",
-    },
-    {
-      q: `${org.name} University of Waterloo project teams subteams members`,
-      source: "web",
-    },
-    {
-      q: `${org.name} University of Waterloo recruitment apply application interview`,
-      source: "web",
-    },
-    {
-      q: `${org.name} University of Waterloo time commitment hours per week`,
-      source: "web",
-    },
-    {
-      q: `${org.name} University of Waterloo past projects partners sponsors`,
-      source: "web",
-    },
-    {
-      q: `${org.name} University of Waterloo`,
-      includeDomains: ["reddit.com"],
-      source: "reddit.com",
-    },
-    {
-      q: `${org.name} Waterloo`,
-      includeDomains: ["medium.com"],
-      source: "medium.com",
-    },
-  ];
+  // For Academic Programs we target degree-shaped queries (curriculum, admit
+  // average, co-op employers) and trusted Waterloo domains (program page,
+  // course calendar, UWFlow); drop the club-shaped Medium publication crawl.
+  // For everything else we keep the original club sweep.
+  const phase1: Array<{ q: string; includeDomains?: string[]; source: string }> =
+    isProgramCategory(org.category)
+      ? [
+          {
+            q: `${org.name} University of Waterloo program overview faculty`,
+            includeDomains: ["uwaterloo.ca"],
+            source: "uwaterloo.ca",
+          },
+          {
+            q: `${org.name} Waterloo curriculum required courses electives specializations`,
+            includeDomains: ["uwaterloo.ca", "ucalendar.uwaterloo.ca"],
+            source: "ucalendar.uwaterloo.ca",
+          },
+          {
+            q: `${org.name} Waterloo co-op employers salary work term`,
+            source: "web",
+          },
+          {
+            q: `${org.name} Waterloo admission average cutoff AIF requirements`,
+            includeDomains: ["uwaterloo.ca", "findoutmore.uwaterloo.ca"],
+            source: "findoutmore.uwaterloo.ca",
+          },
+          {
+            q: `${org.name} Waterloo program review workload culture`,
+            includeDomains: ["reddit.com"],
+            source: "reddit.com",
+          },
+          {
+            q: `${org.name} Waterloo`,
+            includeDomains: ["uwflow.com"],
+            source: "uwflow.com",
+          },
+          {
+            q: `${org.name} Waterloo capstone thesis fourth year project`,
+            source: "web",
+          },
+        ]
+      : [
+          {
+            q: `${org.name} University of Waterloo student club overview history founded`,
+            includeDomains: orgDomain ? [orgDomain] : undefined,
+            source: orgDomain ?? "web",
+          },
+          {
+            q: `${org.name} University of Waterloo project teams subteams members`,
+            source: "web",
+          },
+          {
+            q: `${org.name} University of Waterloo recruitment apply application interview`,
+            source: "web",
+          },
+          {
+            q: `${org.name} University of Waterloo time commitment hours per week`,
+            source: "web",
+          },
+          {
+            q: `${org.name} University of Waterloo past projects partners sponsors`,
+            source: "web",
+          },
+          {
+            q: `${org.name} University of Waterloo`,
+            includeDomains: ["reddit.com"],
+            source: "reddit.com",
+          },
+          {
+            q: `${org.name} Waterloo`,
+            includeDomains: ["medium.com"],
+            source: "medium.com",
+          },
+        ];
   // De-duplicate org-domain query when no website is known
   const phase1Cleaned = phase1.filter(
     (q) => q.q && (q.q.length > 0) && (!q.includeDomains || q.includeDomains.length > 0),
@@ -568,8 +700,9 @@ async function researchOrg(
 
   // --- Bucket snippets by canonical section + an "Other" catch-all ---
   type BucketSnippet = { url: string; content: string; source: string; title?: string };
+  const sectionTitles = getSectionTitles(org.category);
   const sectionBuckets = new Map<string, BucketSnippet[]>();
-  for (const title of SECTION_TITLES) sectionBuckets.set(title, []);
+  for (const title of sectionTitles) sectionBuckets.set(title, []);
   const otherBucket: BucketSnippet[] = [];
 
   // Only snippets that actually mention the org go into topic buckets.
@@ -585,7 +718,7 @@ async function researchOrg(
   };
 
   for (const snippet of collected) {
-    const matched = matchSections(snippet.content, org.name);
+    const matched = matchSections(snippet.content, org.name, org.category);
     const mentions = orgMentions(snippet.content);
     if (matched.length === 0) {
       // Don't seed Overview with random UW pages that don't mention the org —
@@ -595,7 +728,12 @@ async function researchOrg(
         if (snippet.content.length > 200) otherBucket.push(snippet);
       }
     } else {
-      for (const m of matched) sectionBuckets.get(m)!.push(snippet);
+      for (const m of matched) {
+        // matchSections only returns labels valid for this category, but guard
+        // anyway against any future drift.
+        const bucket = sectionBuckets.get(m);
+        if (bucket) bucket.push(snippet);
+      }
       // Also pool org-mentioning snippets in Overview as a baseline
       if (mentions) sectionBuckets.get("Overview")!.push(snippet);
     }
@@ -610,7 +748,7 @@ async function researchOrg(
   };
 
   const results: ResearchResult[] = [];
-  for (const section of SECTION_TITLES) {
+  for (const section of sectionTitles) {
     const bucket = sectionBuckets.get(section)!;
     const trimmed = bucket
       .slice(0, 6)
@@ -676,13 +814,17 @@ Emit 4-6 highly specific follow-up search queries that would surface concrete fa
   }
 }
 
-function matchSections(content: string, orgName?: string): string[] {
+function matchSections(
+  content: string,
+  orgName?: string,
+  category?: OrgCategory | string,
+): string[] {
   const lower = content.toLowerCase();
   // Only bucket a snippet into a topic section if it actually mentions the org
   // by name (or one of its name tokens). Otherwise generic UW pages — "online
   // interviews", "co-op rights", "civil engineering student life" — get
-  // mis-bucketed into How to Apply / Time Commitment and the LLM either has
-  // to ignore them (good) or accidentally includes them as facts (bad).
+  // mis-bucketed and the LLM either has to ignore them (good) or accidentally
+  // includes them as facts (bad).
   const nameTokens = (orgName ?? "")
     .toLowerCase()
     .split(/\s+/)
@@ -695,6 +837,27 @@ function matchSections(content: string, orgName?: string): string[] {
   const out: string[] = [];
   if (!mentionsOrg) return out;
 
+  // ---- Academic Programs: degree-shaped sections ----
+  if (isProgramCategory(category)) {
+    if (/(curriculum|required course|core course|elective|prereq|prerequisite|capstone|thesis|stream|specialization|option|major|minor|course code|cs\s*\d|ece\s*\d|math\s*\d|stat\s*\d|se\s*\d|mte\s*\d|syde\s*\d)/.test(lower)) {
+      out.push("Curriculum");
+    }
+    if (/(co.?op|co\.?op|work term|study term|internship|employer|hired|salary|wage|new grad|placement|career outcome|job title|industry partner)/.test(lower)) {
+      out.push("Co-op & Career");
+    }
+    if (/(admission|admit|cutoff|admission average|aif|admission information form|deadline|application|supplementary|prerequisite|grade 12|secondary school)/.test(lower)) {
+      out.push("Admissions");
+    }
+    if (/(culture|workload|community|vibe|student life|reddit|r\/uwaterloo|uwflow|chill|intense|grind|social|inclusive|welcoming|gender ratio|cohort|atmosphere|stress)/.test(lower)) {
+      out.push("Culture");
+    }
+    if (/(uwaterloo\.ca|ucalendar\.uwaterloo|findoutmore\.uwaterloo|magazine\.uwaterloo|undergraduate office|advisor|advising|official program|course calendar|uwflow\.com)/.test(lower)) {
+      out.push("Resources");
+    }
+    return out;
+  }
+
+  // ---- Clubs / design teams / societies: original section set ----
   if (/(time commitment|hours per week|hours\/week|\d+\s*hours|full.time|part.time|commitment level|workload|evenings|weekends|per term)/.test(lower)) {
     out.push("Time Commitment");
   }
@@ -830,9 +993,12 @@ async function synthesizeDraftWithLLM(
   }
 
   const knownUrls = extractOrgUrls(org, research);
+  const linkSectionLabel = isProgramCategory(org.category)
+    ? "Resources"
+    : "External Links";
   const urlHint =
     knownUrls.length > 0
-      ? `\nKnown URLs for this org (use these for External Links):\n${knownUrls.map((u) => `- ${u}`).join("\n")}`
+      ? `\nKnown URLs for this org (use these for ${linkSectionLabel}):\n${knownUrls.map((u) => `- ${u}`).join("\n")}`
       : "";
 
   const sourcePoolBlock = urlPool.length
@@ -864,7 +1030,7 @@ ${sourcePoolBlock}
 Write a neutral, third-person Wikipedia-style article. Every factual sentence must cite at least one refId from the section's available pool. Be ruthless: discard evidence that isn't clearly about ${org.name}.
 
 Sections to consider (omit any that lack real evidence — list dropped titles in droppedSections):
-${SECTION_TITLES.map((t) => `- ${t}`).join("\n")}
+${getSectionTitles(org.category).map((t) => `- ${t}`).join("\n")}
 
 Evidence:
 
@@ -915,7 +1081,9 @@ ${evidence || "(no usable evidence)"}`;
         ),
         droppedSections: z.array(z.string()),
       }),
-      system: COLD_START_SYNTHESIS_SYSTEM,
+      system: isProgramCategory(org.category)
+        ? PROGRAM_SYNTHESIS_SYSTEM
+        : COLD_START_SYNTHESIS_SYSTEM,
       prompt: userPrompt,
       maxOutputTokens: 12000,
       temperature: 0.3,
@@ -1241,7 +1409,16 @@ function logSynthesisError(
 function estimatePulse(
   org: OrgMetadataInput,
   research: ResearchResult[],
-): { selectivity: string | null; vibeCheck: null; coopBoost: null } {
+):
+  | { selectivity: string | null; vibeCheck: null; coopBoost: null }
+  | { workload: null; employability: null; community: null } {
+  // Academic Programs use a separate metric set (workload / employability /
+  // community). These are inherently subjective and don't have a defensible
+  // text-heuristic estimator, so we seed nothing — the metrics surface as
+  // "No ratings yet" until real users vote.
+  if (isProgramCategory(org.category)) {
+    return { workload: null, employability: null, community: null };
+  }
   const text = research.map((item) => item.summary).join(" ");
   const selectivity = /application|apply|interview/i.test(text)
     ? "Application-Based"
@@ -1258,6 +1435,9 @@ function estimatePulse(
 async function seedPulseAggregates(orgId: string, estimates: Record<string, unknown>) {
   const client = createAdminClient();
   const rows = [];
+  // Only the club-style categorical `selectivity` guess is durable enough to
+  // seed without a real user vote. Numeric metrics (vibe/co-op, and the new
+  // workload/employability/community for programs) require actual votes.
   if (typeof estimates.selectivity === "string") {
     rows.push({
       org_id: orgId,

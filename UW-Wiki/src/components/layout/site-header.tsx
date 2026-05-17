@@ -60,8 +60,8 @@ export async function SiteHeader() {
                   Sign Out
                 </button>
               </form>
-              <NotificationBell />
               <ThemeToggle />
+              <NotificationBell />
             </div>
           ) : (
             <div className="flex items-center gap-2">

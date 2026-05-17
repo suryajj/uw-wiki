@@ -12,6 +12,7 @@ import { AuthModal } from "@/components/auth/auth-modal";
 import { Button } from "@/components/ui/button";
 import { renderCommentMarkdown } from "@/lib/comments/markdown";
 import { savePendingAction } from "@/lib/pending-actions/storage";
+import { useAction } from "@/lib/ui/use-action";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/utils/time";
 import type { CommentTree } from "@/types/domain";
@@ -38,7 +39,6 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerBody, setComposerBody] = useState("");
   const [composerAnonymous, setComposerAnonymous] = useState(true);
-  const [composerError, setComposerError] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("recent");
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
   const [reportState, setReportState] = useState<ReportState | null>(null);
@@ -270,35 +270,42 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
     return copy;
   }, [comments, sortMode]);
 
-  async function submitComment(parentCommentId?: string) {
-    if (!composerBody.trim()) return;
-    const source = pendingAnchor ?? selection ?? { anchorText: "" };
-    setComposerError(null);
-    const res = await fetch("/api/comments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pageId,
-        body: composerBody,
-        anchorText: source.anchorText,
-        isAnonymous: composerAnonymous,
-        parentCommentId: parentCommentId ?? null,
-      }),
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      comments?: CommentTree[];
-      error?: string;
-    };
-    if (!res.ok) {
-      setComposerError(json.error ?? "Could not add comment.");
-      return;
-    }
-    setComments(json.comments ?? []);
-    setComposerBody("");
-    setComposerOpen(false);
-    setSelection(null);
-    setPendingAnchor(null);
-  }
+  // Merge note: keep useAction (toast + loading state), preserve upstream's
+  // pendingAnchor fallback and the API-driven sectionSlug (server derives it
+  // from anchorText — no need to send it from the client).
+  const submitCommentAction = useAction(
+    async (parentCommentId?: string) => {
+      if (!composerBody.trim()) throw new Error("Comment body required.");
+      const source = pendingAnchor ?? selection ?? { anchorText: "" };
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId,
+          body: composerBody,
+          anchorText: source.anchorText,
+          isAnonymous: composerAnonymous,
+          parentCommentId: parentCommentId ?? null,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        comments?: CommentTree[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Could not add comment.");
+      return json.comments ?? [];
+    },
+    {
+      successMessage: "Comment posted.",
+      onSuccess: (newComments) => {
+        setComments(newComments);
+        setComposerBody("");
+        setComposerOpen(false);
+        setSelection(null);
+        setPendingAnchor(null);
+      },
+    },
+  );
 
   return (
     <section className="relative mt-10 border-t border-border pt-8">
@@ -442,18 +449,14 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
                     </Button>
                     <Button
                       size="sm"
+                      loading={submitCommentAction.pending}
                       disabled={!composerBody.trim()}
-                      onClick={() => submitComment()}
+                      onClick={() => submitCommentAction.run()}
                     >
                       Submit
                     </Button>
                   </div>
                 </div>
-                {composerError ? (
-                  <p className="mt-2 text-xs text-destructive">
-                    {composerError}
-                  </p>
-                ) : null}
               </div>
             ) : null}
 
@@ -515,47 +518,57 @@ function CommentCard({
 }) {
   const [reply, setReply] = useState("");
   const [replyOpen, setReplyOpen] = useState(false);
-  const [voteError, setVoteError] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
-  async function vote(voteType: "up" | "down") {
-    setVoteError(null);
-    const res = await fetch(`/api/comments/${comment.id}/vote`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voteType }),
-    });
-    if (res.status === 401) {
-      savePendingAction(
-        "comment.vote",
-        { commentId: comment.id, voteType },
-        window.location.pathname,
-      );
-      setAuthOpen(true);
-      setVoteError("Sign in to vote. Your vote has been saved.");
-      return;
-    }
-    if (!res.ok) {
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      setVoteError(json.error ?? "Could not vote.");
-      return;
-    }
-    await onReload();
-  }
+  const voteAction = useAction(
+    async (voteType: "up" | "down") => {
+      const res = await fetch(`/api/comments/${comment.id}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voteType }),
+      });
+      if (res.status === 401) {
+        savePendingAction(
+          "comment.vote",
+          { commentId: comment.id, voteType },
+          window.location.pathname,
+        );
+        setAuthOpen(true);
+        throw new Error("Sign in to vote — your vote has been saved.");
+      }
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(json.error ?? "Could not vote.");
+      }
+    },
+    {
+      quietSuccess: true,
+      onSuccess: () => onReload(),
+    },
+  );
 
-  async function submitReply() {
-    if (!reply.trim()) return;
-    const res = await fetch(`/api/comments/${comment.id}/replies`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: reply, isAnonymous: true }),
-    });
-    if (res.ok) {
-      setReply("");
-      setReplyOpen(false);
-      await onReload();
-    }
-  }
+  const replyAction = useAction(
+    async () => {
+      if (!reply.trim()) throw new Error("Reply cannot be empty.");
+      const res = await fetch(`/api/comments/${comment.id}/replies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: reply, isAnonymous: true }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(json.error ?? "Could not post reply.");
+      }
+    },
+    {
+      successMessage: "Reply posted.",
+      onSuccess: async () => {
+        setReply("");
+        setReplyOpen(false);
+        await onReload();
+      },
+    },
+  );
 
   return (
     <article
@@ -598,19 +611,21 @@ function CommentCard({
       />
       <div className="mt-3 flex items-center gap-3 text-xs">
         <button
-          className="text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:opacity-60"
+          disabled={voteAction.pending}
           onClick={(event) => {
             event.stopPropagation();
-            void vote("up");
+            void voteAction.run("up");
           }}
         >
           ▲ {comment.upvotes}
         </button>
         <button
-          className="text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:opacity-60"
+          disabled={voteAction.pending}
           onClick={(event) => {
             event.stopPropagation();
-            void vote("down");
+            void voteAction.run("down");
           }}
         >
           ▼ {comment.downvotes}
@@ -636,9 +651,6 @@ function CommentCard({
           Report
         </button>
       </div>
-      {voteError ? (
-        <p className="mt-2 text-xs text-destructive">{voteError}</p>
-      ) : null}
       <AuthModal
         open={authOpen}
         returnTo={typeof window === "undefined" ? "/" : window.location.pathname}
@@ -656,7 +668,12 @@ function CommentCard({
             className="min-h-16 flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm"
             placeholder="Write a reply..."
           />
-          <Button size="sm" disabled={!reply.trim()} onClick={submitReply}>
+          <Button
+            size="sm"
+            loading={replyAction.pending}
+            disabled={!reply.trim()}
+            onClick={() => replyAction.run()}
+          >
             Reply
           </Button>
         </div>
@@ -687,26 +704,22 @@ function ReportModal({
 }) {
   const [reason, setReason] = useState<"spam" | "harassment" | "misinformation" | "other">("spam");
   const [details, setDetails] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
-  async function submit() {
-    setSubmitting(true);
-    setMessage(null);
-    const res = await fetch(`/api/comments/${commentId}/report`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason, details: details || undefined }),
-    });
-    const json = (await res.json().catch(() => ({}))) as { error?: string };
-    setSubmitting(false);
-    if (!res.ok) {
-      setMessage(json.error ?? "Could not submit report.");
-      return;
-    }
-    setMessage("Report submitted. A reviewer will follow up.");
-    setTimeout(onClose, 1200);
-  }
+  const reportAction = useAction(
+    async () => {
+      const res = await fetch(`/api/comments/${commentId}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, details: details || undefined }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Could not submit report.");
+    },
+    {
+      successMessage: "Report submitted. A reviewer will follow up.",
+      onSuccess: () => onClose(),
+    },
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -741,15 +754,16 @@ function ReportModal({
           className="mt-3 min-h-16 w-full rounded-md border border-border bg-background p-2 text-sm"
           placeholder="Optional details"
         />
-        {message ? (
-          <p className="mt-3 text-xs text-muted-foreground">{message}</p>
-        ) : null}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" disabled={submitting} onClick={submit}>
-            {submitting ? "Submitting..." : "Submit Report"}
+          <Button
+            type="button"
+            loading={reportAction.pending}
+            onClick={() => reportAction.run()}
+          >
+            Submit Report
           </Button>
         </div>
       </div>

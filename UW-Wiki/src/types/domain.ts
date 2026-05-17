@@ -11,13 +11,42 @@ export const ORG_CATEGORIES = [
 
 export type OrgCategory = (typeof ORG_CATEGORIES)[number];
 
+// Universal union of every Pulse metric the DB accepts. The active set for a
+// given org depends on its category — see `getActivePulseMetrics` below.
+//   Clubs / design teams / societies: selectivity / vibe_check / coop_boost
+//   Academic Programs:                 workload / employability / community
 export const PULSE_METRICS = [
   "selectivity",
   "vibe_check",
   "coop_boost",
+  "workload",
+  "employability",
+  "community",
 ] as const;
 
 export type PulseMetric = (typeof PULSE_METRICS)[number];
+
+export const CLUB_PULSE_METRICS = [
+  "selectivity",
+  "vibe_check",
+  "coop_boost",
+] as const satisfies readonly PulseMetric[];
+
+export const PROGRAM_PULSE_METRICS = [
+  "workload",
+  "employability",
+  "community",
+] as const satisfies readonly PulseMetric[];
+
+/**
+ * Which Pulse metrics should be rendered & voted on for a given org category.
+ * Programs use a separate metric set because Selectivity (Open/Application/
+ * Invite) and the club-leaning vibe/co-op axes don't map cleanly to a degree.
+ */
+export function getActivePulseMetrics(category: OrgCategory): PulseMetric[] {
+  if (category === "Academic Programs") return [...PROGRAM_PULSE_METRICS];
+  return [...CLUB_PULSE_METRICS];
+}
 
 export type ChunkType = "content" | "comment";
 
@@ -309,11 +338,21 @@ export type ColdStartOrgMetadata = {
   sources?: string[];
 };
 
-export type ColdStartPulseEstimates = {
-  selectivity?: string | null;
-  vibeCheck?: null;
-  coopBoost?: null;
-};
+// Pulse seeds the cold-start pipeline guesses for the new org. Clubs and
+// programs use disjoint metric sets; the union keeps the shape honest. Numeric
+// metrics are seeded as `null` because we never want a guessed quantitative
+// vote — the model only commits to a categorical selectivity guess for clubs.
+export type ColdStartPulseEstimates =
+  | {
+      selectivity?: string | null;
+      vibeCheck?: null;
+      coopBoost?: null;
+    }
+  | {
+      workload?: null;
+      employability?: null;
+      community?: null;
+    };
 
 export type ColdStartJob = {
   id: string;

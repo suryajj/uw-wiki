@@ -118,10 +118,12 @@ export default async function WikiPage({ params }: PageProps) {
           <aside className="mb-4 w-full lg:float-right lg:ml-8 lg:w-[320px]">
             <PulseSidebar
               orgId={page.orgId}
+              category={page.category}
               aggregates={page.pulseAggregates}
               externalLinks={page.externalLinks}
-              category={page.category}
-              isAdminSeeded={page.isAdminSeeded}
+              externalLinksLabel={
+                page.category === "Academic Programs" ? "Resources" : "External Links"
+              }
             />
           </aside>
 

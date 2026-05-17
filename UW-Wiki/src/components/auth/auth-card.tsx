@@ -1,9 +1,11 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
 import { clientEnv } from "@/lib/config/env-client";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "@/lib/ui/toast";
 
 type Mode = "signIn" | "signUp" | "magic" | "reset";
 
@@ -36,8 +38,6 @@ export function AuthCard({
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const callbackUrl = `${clientEnv.NEXT_PUBLIC_APP_URL}/auth/callback?returnTo=${encodeURIComponent(returnTo)}`;
@@ -46,8 +46,6 @@ export function AuthCard({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
-    setMessage(null);
     try {
       if (mode === "signIn") {
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -55,7 +53,7 @@ export function AuthCard({
           password,
         });
         if (signInError) throw signInError;
-        setMessage("Signed in.");
+        toast.success("Signed in.");
         onSuccess?.();
         window.location.assign(returnTo);
       } else if (mode === "signUp") {
@@ -71,7 +69,7 @@ export function AuthCard({
           },
         });
         if (signUpError) throw signUpError;
-        setMessage("Account created. Check your email to verify your address.");
+        toast.success("Account created. Check your email to verify your address.");
         onSuccess?.();
       } else if (mode === "magic") {
         const { error: magicError } = await supabase.auth.signInWithOtp({
@@ -82,9 +80,9 @@ export function AuthCard({
           },
         });
         if (magicError) {
-          setMessage("If that email exists, a sign-in link has been sent.");
+          toast.info("If that email exists, a sign-in link has been sent.");
         } else {
-          setMessage("Check your email for a sign-in link.");
+          toast.success("Check your email for a sign-in link.");
         }
       } else {
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
@@ -92,13 +90,17 @@ export function AuthCard({
           { redirectTo: resetUrl },
         );
         if (resetError) {
-          setMessage("If that email exists, a reset link has been sent.");
+          toast.info("If that email exists, a reset link has been sent.");
         } else {
-          setMessage("Check your email for a password reset link.");
+          toast.success("Check your email for a password reset link.");
         }
       }
-    } catch {
-      setError("Authentication failed. Check your details and try again.");
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Authentication failed. Check your details and try again.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -106,22 +108,19 @@ export function AuthCard({
 
   async function google() {
     setLoading(true);
-    setError(null);
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: callbackUrl },
     });
     if (oauthError) {
       setLoading(false);
-      setError("Could not start Google sign-in.");
+      toast.error("Could not start Google sign-in.");
     }
   }
 
   function pickMode(next: Mode) {
     setMode(next);
     setShowEmailForm(true);
-    setError(null);
-    setMessage(null);
   }
 
   return (
@@ -140,7 +139,11 @@ export function AuthCard({
           onClick={google}
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
         >
-          <GoogleGlyph />
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <GoogleGlyph />
+          )}
           Continue with Google
         </button>
 
@@ -213,15 +216,15 @@ export function AuthCard({
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+            className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fdfdfd] px-5 text-sm font-medium text-[#141414] transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? "Working…" : MODE_SUBMIT[mode]}
+            {loading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
+            {MODE_SUBMIT[mode]}
           </button>
         </form>
       ) : null}
-
-      {error ? <p className="mt-4 text-sm text-[#ff7a7a]">{error}</p> : null}
-      {message ? <p className="mt-4 text-sm text-[#888888]">{message}</p> : null}
     </div>
   );
 }

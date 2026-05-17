@@ -11,6 +11,8 @@ import { editorExtensions } from "@/lib/editor/extensions";
 import { uploadEditorImage, UploadError } from "@/lib/editor/upload";
 import { renderProseMirrorDoc } from "@/lib/prosemirror/render";
 import { extractSections } from "@/lib/prosemirror/sections";
+import { toast } from "@/lib/ui/toast";
+import { useAction } from "@/lib/ui/use-action";
 import type { ProseMirrorDoc } from "@/types/domain";
 
 type Props = {
@@ -30,12 +32,6 @@ export function WikiArticleShell({
     content: ProseMirrorDoc;
   } | null>(null);
   const [rationale, setRationale] = useState("");
-  const [submitState, setSubmitState] = useState<
-    | { kind: "idle" }
-    | { kind: "submitting" }
-    | { kind: "success"; proposalId: string }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
 
   const sections = useMemo(() => extractSections(initialContent), [initialContent]);
@@ -105,7 +101,7 @@ export function WikiArticleShell({
         editor.chain().focus().setImage({ src: url, alt: file.name }).run();
       } catch (error) {
         const message = error instanceof UploadError ? error.message : "Image upload failed.";
-        setSubmitState({ kind: "error", message });
+        toast.error(message);
       }
     },
     [editor],
@@ -119,39 +115,44 @@ export function WikiArticleShell({
     return true;
   }
 
-  async function submitProposal() {
-    if (!editor || !pageVersionId) return;
-    if (rationale.trim().length < 20) {
-      setSubmitState({ kind: "error", message: "Rationale must be at least 20 characters." });
-      return;
-    }
-    setSubmitState({ kind: "submitting" });
-    const res = await fetch("/api/proposals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pageId,
-        basePageVersionId: pageVersionId,
-        proposedContentJson: editor.getJSON(),
-        rationale,
-        sectionSlugs: selectedSlugs.length > 0 ? selectedSlugs : undefined,
-        isAnonymous: true,
-      }),
-    });
-    const body = (await res.json().catch(() => ({}))) as {
-      proposalId?: string;
-      error?: string;
-    };
-    if (!res.ok || !body.proposalId) {
-      setSubmitState({
-        kind: "error",
-        message: body.error ?? "Could not submit proposal.",
+  const submitAction = useAction(
+    async () => {
+      if (!editor || !pageVersionId) throw new Error("Editor not ready.");
+      if (rationale.trim().length < 20) {
+        throw new Error("Rationale must be at least 20 characters.");
+      }
+      const res = await fetch("/api/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId,
+          basePageVersionId: pageVersionId,
+          proposedContentJson: editor.getJSON(),
+          rationale,
+          sectionSlugs: selectedSlugs.length > 0 ? selectedSlugs : undefined,
+          isAnonymous: true,
+        }),
       });
-      return;
-    }
-    clearDraft(pageId);
-    setSubmitState({ kind: "success", proposalId: body.proposalId });
-  }
+      const body = (await res.json().catch(() => ({}))) as {
+        proposalId?: string;
+        error?: string;
+      };
+      if (!res.ok || !body.proposalId) {
+        throw new Error(body.error ?? "Could not submit proposal.");
+      }
+      return body as { proposalId: string };
+    },
+    {
+      successMessage: "Proposal submitted. Reviewers notified.",
+      onSuccess: () => {
+        // Critical post-action: auto-exit edit mode and return to the article.
+        clearDraft(pageId);
+        setRationale("");
+        setMode("read");
+        setDraftPrompt(null);
+      },
+    },
+  );
 
   if (mode === "read") {
     return (
@@ -190,7 +191,6 @@ export function WikiArticleShell({
             onClick={() => {
               setMode("read");
               setDraftPrompt(null);
-              setSubmitState({ kind: "idle" });
             }}
           >
             Cancel
@@ -198,10 +198,10 @@ export function WikiArticleShell({
           <Button
             type="button"
             size="sm"
-            disabled={submitState.kind === "submitting"}
-            onClick={submitProposal}
+            loading={submitAction.pending}
+            onClick={() => submitAction.run()}
           >
-            {submitState.kind === "submitting" ? "Submitting…" : "Submit Proposal"}
+            Submit Proposal
           </Button>
         </div>
       </header>
@@ -302,16 +302,6 @@ export function WikiArticleShell({
             </div>
           </div>
 
-          {submitState.kind === "success" ? (
-            <p className="border border-border bg-[color:var(--surface-2)] p-3 text-sm text-foreground">
-              Proposal submitted: <code className="font-mono text-xs">{submitState.proposalId}</code>
-            </p>
-          ) : null}
-          {submitState.kind === "error" ? (
-            <p className="border border-[color:var(--color-destructive)] bg-transparent p-3 text-sm text-[color:var(--color-destructive)]">
-              {submitState.message}
-            </p>
-          ) : null}
         </div>
       </div>
     </div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAction } from "@/lib/ui/use-action";
 
 type Props = {
   proposalId: string;
@@ -13,11 +14,14 @@ type Props = {
   canReject: boolean;
 };
 
-type ActionState =
-  | { kind: "idle" }
-  | { kind: "submitting"; action: "accept" | "reject" | "request-changes" | "mergeability" }
-  | { kind: "error"; message: string }
-  | { kind: "success"; message: string };
+type ReviewAction = "accept" | "reject" | "request-changes" | "mergeability";
+
+const SUCCESS_LABELS: Record<ReviewAction, string> = {
+  accept: "Proposal accepted.",
+  reject: "Proposal rejected.",
+  "request-changes": "Changes requested.",
+  mergeability: "Mergeability refreshed.",
+};
 
 export function ReviewerActions({
   proposalId,
@@ -27,30 +31,37 @@ export function ReviewerActions({
   canReject,
 }: Props) {
   const router = useRouter();
-  const [state, setState] = useState<ActionState>({ kind: "idle" });
   const [comment, setComment] = useState("");
+  const [activeAction, setActiveAction] = useState<ReviewAction | null>(null);
 
-  async function call(
-    action: "accept" | "reject" | "request-changes" | "mergeability",
-    body: Record<string, unknown> = {},
-  ) {
-    setState({ kind: "submitting", action });
-    const res = await fetch(`/api/proposals/${proposalId}/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      message?: string;
-      error?: string;
-    };
-    if (!res.ok) {
-      setState({ kind: "error", message: json.error ?? "Action failed." });
-      return;
-    }
-    setState({ kind: "success", message: json.message ?? "Done." });
-    router.refresh();
-  }
+  const reviewAction = useAction(
+    async (payload: { action: ReviewAction; body: Record<string, unknown> }) => {
+      setActiveAction(payload.action);
+      try {
+        const res = await fetch(`/api/proposals/${proposalId}/${payload.action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload.body),
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(json.error ?? "Action failed.");
+        return { action: payload.action, message: json.message };
+      } finally {
+        // active flag cleared in onSuccess/onError
+      }
+    },
+    {
+      successMessage: (r) => r.message ?? SUCCESS_LABELS[r.action],
+      onSuccess: () => {
+        setActiveAction(null);
+        router.refresh();
+      },
+      onError: () => setActiveAction(null),
+    },
+  );
 
   if (!canAct) return null;
 
@@ -69,42 +80,44 @@ export function ReviewerActions({
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
-          disabled={!canAccept || state.kind === "submitting"}
-          onClick={() => void call("accept")}
+          loading={activeAction === "accept" && reviewAction.pending}
+          disabled={!canAccept || reviewAction.pending}
+          onClick={() => reviewAction.run({ action: "accept", body: {} })}
         >
           Accept
         </Button>
         <Button
           type="button"
           variant="outline"
-          disabled={!canRequestChanges || state.kind === "submitting" || comment.length < 10}
-          onClick={() => void call("request-changes", { message: comment })}
+          loading={activeAction === "request-changes" && reviewAction.pending}
+          disabled={!canRequestChanges || reviewAction.pending || comment.length < 10}
+          onClick={() =>
+            reviewAction.run({ action: "request-changes", body: { message: comment } })
+          }
         >
           Request Changes
         </Button>
         <Button
           type="button"
           variant="outline"
-          disabled={!canReject || state.kind === "submitting" || comment.length < 10}
-          onClick={() => void call("reject", { reviewerComment: comment })}
+          loading={activeAction === "reject" && reviewAction.pending}
+          disabled={!canReject || reviewAction.pending || comment.length < 10}
+          onClick={() =>
+            reviewAction.run({ action: "reject", body: { reviewerComment: comment } })
+          }
         >
           Reject
         </Button>
         <Button
           type="button"
           variant="outline"
-          disabled={state.kind === "submitting"}
-          onClick={() => void call("mergeability")}
+          loading={activeAction === "mergeability" && reviewAction.pending}
+          disabled={reviewAction.pending}
+          onClick={() => reviewAction.run({ action: "mergeability", body: {} })}
         >
           Refresh Mergeability
         </Button>
       </div>
-      {state.kind === "error" ? (
-        <p className="mt-3 text-sm text-destructive">{state.message}</p>
-      ) : null}
-      {state.kind === "success" ? (
-        <p className="mt-3 text-sm text-muted-foreground">{state.message}</p>
-      ) : null}
     </section>
   );
 }

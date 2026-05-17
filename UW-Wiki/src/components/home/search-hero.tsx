@@ -3,11 +3,13 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { MagnifierIcon } from "@/components/icons/magnifier";
 import { RagMarkdown } from "@/components/search/rag-markdown";
+import { toast } from "@/lib/ui/toast";
 
 type ToolPart = {
   type: string;
@@ -30,6 +32,14 @@ type SearchToolOutput = {
   found?: boolean;
   chunks?: SearchChunk[];
   suggestedPages?: Array<{ orgName: string; orgSlug: string }>;
+};
+
+type PageContentToolOutput = {
+  found?: boolean;
+  slug?: string;
+  orgName?: string;
+  orgSlug?: string;
+  sections?: Array<{ title: string; slug: string; body: string }>;
 };
 
 export function SearchHero() {
@@ -57,6 +67,11 @@ function SearchHeroInner() {
     autoSubmittedRef.current = true;
     sendMessage({ text: initialQuery });
   }, [initialQuery, sendMessage]);
+
+  // Surface streaming errors as toasts instead of an inline error box
+  useEffect(() => {
+    if (error) toast.error(error.message || "Search failed. Try again.");
+  }, [error]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -90,7 +105,7 @@ function SearchHeroInner() {
       className={
         hasMessages
           ? "flex min-h-screen w-full flex-col gap-6 px-6 pb-40 pt-10 md:px-10 lg:px-16"
-          : "flex min-h-[calc(100vh-65px)] w-full flex-col items-center justify-center gap-8 px-6 pb-20 md:px-10 lg:px-16"
+          : "relative flex min-h-[calc(100vh-65px)] w-full flex-col items-center justify-center gap-8 px-6 pb-20 md:px-10 lg:px-16"
       }
     >
       {hasMessages ? (
@@ -106,12 +121,6 @@ function SearchHeroInner() {
         <EmptyHero />
       )}
 
-      {error ? (
-        <p className="border border-border p-3 text-sm text-foreground">
-          {error.message}
-        </p>
-      ) : null}
-
       <SearchInput
         input={input}
         setInput={setInput}
@@ -119,7 +128,57 @@ function SearchHeroInner() {
         isStreaming={isStreaming}
         floating={hasMessages}
       />
+
+      {!hasMessages ? <ScrollDownCue /> : null}
     </section>
+  );
+}
+
+// Subtle grey arrow at the bottom of the empty hero that hints at the org
+// directory below. Clicking smooth-scrolls to #browse-orgs (defined on the
+// home page). Auto-hides once the directory enters the viewport — pure CSS
+// would require restructuring; an IntersectionObserver keeps it self-contained.
+function ScrollDownCue() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target = document.getElementById("browse-orgs");
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(!entry.isIntersecting),
+      { rootMargin: "0px 0px -40% 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  function handleClick() {
+    const target = document.getElementById("browse-orgs");
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return (
+    <motion.button
+      type="button"
+      onClick={handleClick}
+      aria-label="Browse organizations below"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: visible ? 1 : 0 }}
+      transition={{ duration: 0.4, delay: 0.6 }}
+      style={{ pointerEvents: visible ? "auto" : "none" }}
+      className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 text-muted-foreground/70 transition-colors duration-150 hover:text-foreground focus:outline-none"
+    >
+      <span className="text-xs">or browse organizations below</span>
+      <motion.span
+        animate={{ y: [0, 6, 0] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        aria-hidden="true"
+      >
+        <ChevronDown className="size-5" />
+      </motion.span>
+    </motion.button>
   );
 }
 
@@ -294,11 +353,13 @@ function SearchInput({
         placeholder="Ask anything about UW organizations…"
       />
       <button
-        className="inline-flex h-9 items-center rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity duration-150 hover:opacity-90 disabled:opacity-30"
+        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity duration-150 hover:opacity-90 disabled:opacity-30"
         disabled={isStreaming || input.trim().length === 0}
         type="submit"
+        aria-busy={isStreaming || undefined}
       >
-        {isStreaming ? "Searching…" : "Ask"}
+        {isStreaming ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : null}
+        {isStreaming ? "Searching" : "Ask"}
       </button>
     </motion.form>
   );
@@ -339,6 +400,8 @@ function toolLabel(tool: string): string {
       return "Searching the wiki for";
     case "get_org_data":
       return "Looking up";
+    case "get_page_content":
+      return "Reading the article on";
     case "list_orgs":
       return "Browsing orgs by";
     default:
@@ -346,14 +409,45 @@ function toolLabel(tool: string): string {
   }
 }
 
+// Build the citation list shown beneath the answer. Combines two sources:
+//   - `search_wiki` chunks (each has its own citationIndex 1..N inside the
+//     tool result; the model also references these as inline [N] markers).
+//   - `get_page_content` reads — when the model fetched a full article, we
+//     credit the whole page as a source so the user knows where the synthesis
+//     came from. Indexed after the search_wiki chunks.
 function collectCitations(parts: ToolPart[]): SearchChunk[] {
   const seen = new Map<string, SearchChunk>();
+  let runningIndex = 0;
   for (const part of parts) {
     if (!part.type.startsWith("tool-")) continue;
-    const output = part.output as SearchToolOutput | undefined;
-    if (!output?.found || !output.chunks) continue;
-    for (const chunk of output.chunks) {
-      if (!seen.has(chunk.sourceUrl)) seen.set(chunk.sourceUrl, chunk);
+    const toolName = part.type.slice(5);
+
+    if (toolName === "search_wiki") {
+      const output = part.output as SearchToolOutput | undefined;
+      if (!output?.found || !output.chunks) continue;
+      for (const chunk of output.chunks) {
+        if (!seen.has(chunk.sourceUrl)) {
+          seen.set(chunk.sourceUrl, chunk);
+          runningIndex = Math.max(runningIndex, chunk.citationIndex);
+        }
+      }
+      continue;
+    }
+
+    if (toolName === "get_page_content") {
+      const output = part.output as PageContentToolOutput | undefined;
+      if (!output?.found || !output.orgSlug) continue;
+      const url = `/wiki/${output.orgSlug}`;
+      if (seen.has(url)) continue;
+      runningIndex += 1;
+      seen.set(url, {
+        citationIndex: runningIndex,
+        orgName: output.orgName ?? output.orgSlug,
+        orgSlug: output.orgSlug,
+        sectionTitle: "full article",
+        sectionSlug: null,
+        sourceUrl: url,
+      });
     }
   }
   return [...seen.values()].sort((a, b) => a.citationIndex - b.citationIndex);

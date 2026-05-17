@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/lib/ui/toast";
+import { useAction } from "@/lib/ui/use-action";
 import type { NotificationPreferences } from "@/types/domain";
 
 type Org = {
@@ -29,7 +31,6 @@ export function AffiliationManager({
   const [selectedOrgId, setSelectedOrgId] = useState(orgs[0]?.id ?? "");
   const [roleLabel, setRoleLabel] = useState("");
   const [affiliations, setAffiliations] = useState(initialAffiliations);
-  const [message, setMessage] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = filter.toLowerCase().trim();
@@ -41,21 +42,22 @@ export function AffiliationManager({
     );
   }, [orgs, filter]);
 
-  async function add() {
-    if (!selectedOrgId) return;
-    const res = await fetch("/api/me/affiliations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: selectedOrgId, roleLabel: roleLabel || undefined }),
-    });
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      setMessage(body.error ?? "Could not add affiliation.");
-      return;
-    }
-    setMessage("Affiliation added.");
-    window.location.reload();
-  }
+  const addAction = useAction(
+    async () => {
+      if (!selectedOrgId) throw new Error("Choose an organization.");
+      const res = await fetch("/api/me/affiliations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: selectedOrgId, roleLabel: roleLabel || undefined }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Could not add affiliation.");
+    },
+    {
+      successMessage: "Affiliation added.",
+      onSuccess: () => window.location.reload(),
+    },
+  );
 
   async function remove(orgId: string) {
     const res = await fetch(`/api/me/affiliations/${orgId}`, { method: "DELETE" });
@@ -63,7 +65,10 @@ export function AffiliationManager({
       setAffiliations((items) =>
         items.filter((item) => normalizeOrg(item.organizations)?.id !== orgId),
       );
-      setMessage("Affiliation removed.");
+      toast.success("Affiliation removed.");
+    } else {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(body.error ?? "Could not remove affiliation.");
     }
   }
 
@@ -95,11 +100,10 @@ export function AffiliationManager({
             placeholder="Role label (optional)"
             className="rounded-md border border-border bg-background px-3 py-2"
           />
-          <Button type="button" onClick={add}>
+          <Button type="button" loading={addAction.pending} onClick={() => addAction.run()}>
             Add Affiliation
           </Button>
         </div>
-        {message ? <p className="mt-3 text-sm text-muted-foreground">{message}</p> : null}
       </div>
 
       <div className="rounded-lg border border-border bg-card p-4">
@@ -146,24 +150,30 @@ export function NotificationPreferencesForm({
   initialPreferences: NotificationPreferences;
 }) {
   const [prefs, setPrefs] = useState(initialPreferences);
-  const [message, setMessage] = useState<string | null>(null);
 
-  async function save(next: NotificationPreferences) {
+  const saveAction = useAction(
+    async (next: NotificationPreferences) => {
+      const res = await fetch("/api/me/notification-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inAppPrStatus: next.inAppPrStatus,
+          emailPrStatus: next.emailPrStatus,
+          inAppCommentReply: next.inAppCommentReply,
+          emailCommentReply: next.emailCommentReply,
+          inAppPageUpdate: next.inAppPageUpdate,
+          emailPageUpdateDigest: next.emailPageUpdateDigest,
+          pageUpdateDigestFrequency: next.pageUpdateDigestFrequency,
+        }),
+      });
+      if (!res.ok) throw new Error("Could not save preferences.");
+    },
+    { quietSuccess: true },
+  );
+
+  function save(next: NotificationPreferences) {
     setPrefs(next);
-    const res = await fetch("/api/me/notification-preferences", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        inAppPrStatus: next.inAppPrStatus,
-        emailPrStatus: next.emailPrStatus,
-        inAppCommentReply: next.inAppCommentReply,
-        emailCommentReply: next.emailCommentReply,
-        inAppPageUpdate: next.inAppPageUpdate,
-        emailPageUpdateDigest: next.emailPageUpdateDigest,
-        pageUpdateDigestFrequency: next.pageUpdateDigestFrequency,
-      }),
-    });
-    setMessage(res.ok ? "Notification preferences saved." : "Could not save preferences.");
+    void saveAction.run(next);
   }
 
   return (
@@ -176,39 +186,39 @@ export function NotificationPreferencesForm({
         <PreferenceToggle
           label="In-app proposal status updates"
           checked={prefs.inAppPrStatus}
-          onChange={(checked) => void save({ ...prefs, inAppPrStatus: checked })}
+          onChange={(checked) => save({ ...prefs, inAppPrStatus: checked })}
         />
         <PreferenceToggle
           label="Email proposal status updates"
           checked={prefs.emailPrStatus}
-          onChange={(checked) => void save({ ...prefs, emailPrStatus: checked })}
+          onChange={(checked) => save({ ...prefs, emailPrStatus: checked })}
         />
         <PreferenceToggle
           label="In-app comment replies"
           checked={prefs.inAppCommentReply}
-          onChange={(checked) => void save({ ...prefs, inAppCommentReply: checked })}
+          onChange={(checked) => save({ ...prefs, inAppCommentReply: checked })}
         />
         <PreferenceToggle
           label="Email comment replies"
           checked={prefs.emailCommentReply}
-          onChange={(checked) => void save({ ...prefs, emailCommentReply: checked })}
+          onChange={(checked) => save({ ...prefs, emailCommentReply: checked })}
         />
         <PreferenceToggle
           label="In-app bookmarked page updates"
           checked={prefs.inAppPageUpdate}
-          onChange={(checked) => void save({ ...prefs, inAppPageUpdate: checked })}
+          onChange={(checked) => save({ ...prefs, inAppPageUpdate: checked })}
         />
         <PreferenceToggle
           label="Bookmarked page update digest email"
           checked={prefs.emailPageUpdateDigest}
-          onChange={(checked) => void save({ ...prefs, emailPageUpdateDigest: checked })}
+          onChange={(checked) => save({ ...prefs, emailPageUpdateDigest: checked })}
         />
         <label className="text-sm">
           Page update digest frequency
           <select
             value={prefs.pageUpdateDigestFrequency}
             onChange={(event) =>
-              void save({
+              save({
                 ...prefs,
                 pageUpdateDigestFrequency: event.target.value as "daily" | "weekly" | "never",
               })
@@ -221,7 +231,6 @@ export function NotificationPreferencesForm({
           </select>
         </label>
       </div>
-      {message ? <p className="mt-3 text-sm text-muted-foreground">{message}</p> : null}
     </section>
   );
 }

@@ -1,31 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { toast } from "@/lib/ui/toast";
 
 type UserRow = { id: string; email: string; display_name: string | null; role: string };
 type OrgRow = { id: string; org_name: string; category: string };
 
 export function UsersAdmin({ users, orgs }: { users: UserRow[]; orgs: OrgRow[] }) {
-  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+
   async function setRole(userId: string, role: string) {
     const res = await fetch(`/api/admin/users/${userId}/role`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     });
-    setMessage(res.ok ? "Role updated." : "Could not update role.");
+    if (res.ok) {
+      toast.success(`Role updated to ${role}.`);
+      router.refresh();
+    } else {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(body.error ?? "Could not update role.");
+    }
   }
+
   async function addAffiliation(userId: string, orgId: string) {
     const res = await fetch(`/api/admin/users/${userId}/affiliations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orgId }),
     });
-    setMessage(res.ok ? "Affiliation added." : "Could not add affiliation.");
+    if (res.ok) {
+      toast.success("Affiliation added.");
+      router.refresh();
+    } else {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      toast.error(body.error ?? "Could not add affiliation.");
+    }
   }
+
   return (
     <section className="mt-6 space-y-3">
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
       {users.map((user) => (
         <article key={user.id} className="rounded-lg border border-border bg-card p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

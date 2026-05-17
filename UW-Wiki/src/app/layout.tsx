@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Source_Serif_4 } from "next/font/google";
+import { Toaster } from "sonner";
 
 import { PendingActionResumer } from "@/components/auth/pending-action-resumer";
 import { HeaderWrapper } from "@/components/layout/header-wrapper";
@@ -37,6 +38,18 @@ export default async function RootLayout({
         </HeaderWrapper>
         {children}
         <PendingActionResumer isSignedIn={!!user} />
+        <Toaster
+          position="bottom-right"
+          theme={theme === "dark" ? "dark" : "light"}
+          richColors
+          closeButton
+          duration={4000}
+          toastOptions={{
+            classNames: {
+              toast: "font-serif border border-border",
+            },
+          }}
+        />
       </body>
     </html>
   );
