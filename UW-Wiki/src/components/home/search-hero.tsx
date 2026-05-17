@@ -5,7 +5,15 @@ import { DefaultChatTransport } from "ai";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 import { MagnifierIcon } from "@/components/icons/magnifier";
 import { RagMarkdown } from "@/components/search/rag-markdown";
@@ -42,20 +50,23 @@ type PageContentToolOutput = {
   sections?: Array<{ title: string; slug: string; body: string }>;
 };
 
-export function SearchHero() {
+export function SearchHero({ browseSection }: { browseSection?: ReactNode }) {
   return (
     <Suspense fallback={null}>
-      <SearchHeroInner />
+      <SearchHeroInner browseSection={browseSection} />
     </Suspense>
   );
 }
 
-function SearchHeroInner() {
+function SearchHeroInner({ browseSection }: { browseSection?: ReactNode }) {
   const transport = useMemo(
     () => new DefaultChatTransport({ api: "/api/search" }),
     [],
   );
-  const { messages, status, sendMessage, setMessages, error } = useChat({ transport });
+  // `messages` accumulates user/assistant turns. The /api/search route reads
+  // the full history (capped at HISTORY_MAX_TURNS server-side) so follow-up
+  // questions land with the previous Q&A as context — multi-turn for free.
+  const { messages, status, sendMessage, error } = useChat({ transport });
   const [input, setInput] = useState("");
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q")?.trim() ?? "";
@@ -77,61 +88,129 @@ function SearchHeroInner() {
     event.preventDefault();
     const text = input.trim();
     if (!text) return;
-    setMessages([]);
+    // Do NOT clear `messages` — preserving history is what makes this a
+    // multi-turn conversation. The new user message is appended and the
+    // model sees the full history (including the previous answer).
     sendMessage({ text });
     setInput("");
   }
 
-  const hasMessages = messages.length > 0;
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const assistantText = lastAssistant
-    ? lastAssistant.parts
-        .filter((p) => p.type === "text")
-        .map((p) => ("text" in p ? (p as { text: string }).text : ""))
-        .join("")
-    : "";
-  const citations = lastAssistant
-    ? collectCitations(lastAssistant.parts as ToolPart[])
-    : [];
-  const activeToolCall = lastAssistant
-    ? findActiveToolCall(lastAssistant.parts as ToolPart[])
-    : null;
+  const turns = useMemo(() => groupTurns(messages as UIMessageLike[]), [messages]);
+  const hasMessages = turns.length > 0;
   const isStreaming = status === "streaming" || status === "submitted";
-  const showSkeleton = isStreaming && assistantText.length === 0 && !activeToolCall;
+
+  // After a new user turn lands, snap it instantly to the top of the
+  // viewport so the question is the immediate visual focus and the answer
+  // streams in below. We deliberately use "instant" (not "smooth") so the
+  // follow-up jumps without an animated slide — feels like the page
+  // reloaded around the new question. `scroll-mt-24` on the wrapper offsets
+  // the sticky SiteHeader so the question text isn't clipped.
+  const latestTurnRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!hasMessages) return;
+    latestTurnRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [turns.length, hasMessages]);
 
   return (
-    <section
-      className={
-        hasMessages
-          ? "flex min-h-screen w-full flex-col gap-6 px-6 pb-40 pt-10 md:px-10 lg:px-16"
-          : "relative flex min-h-[calc(100vh-65px)] w-full flex-col items-center justify-center gap-8 px-6 pb-20 md:px-10 lg:px-16"
-      }
-    >
-      {hasMessages ? (
-        <AnsweredView
-          questionText={lastUser ? extractText(lastUser.parts) : ""}
-          assistantText={assistantText}
-          citations={citations}
-          showSkeleton={showSkeleton}
+    <>
+      <section
+        className={
+          hasMessages
+            ? "flex min-h-screen w-full flex-col gap-6 px-6 pb-40 pt-10 md:px-10 lg:px-16"
+            : "relative flex min-h-[calc(100vh-65px)] w-full flex-col items-center justify-center gap-8 px-6 pb-20 md:px-10 lg:px-16"
+        }
+      >
+        {hasMessages ? (
+          <div className="mx-auto flex w-full max-w-4xl flex-col gap-20">
+            {turns.map((turn, index) => {
+              const isLatest = index === turns.length - 1;
+              const assistantParts = (turn.assistant?.parts ?? []) as ToolPart[];
+              const assistantText = turn.assistant
+                ? extractText(turn.assistant.parts)
+                : "";
+              const turnCitations = turn.assistant
+                ? collectCitations(assistantParts)
+                : [];
+              const activeToolCall =
+                isLatest && turn.assistant
+                  ? findActiveToolCall(assistantParts)
+                  : null;
+              const turnIsStreaming = isLatest && isStreaming;
+              const showSkeleton =
+                turnIsStreaming && assistantText.length === 0 && !activeToolCall;
+              return (
+                <div
+                  key={turn.user.id}
+                  ref={isLatest ? latestTurnRef : undefined}
+                  className="scroll-mt-24"
+                >
+                  <AnsweredView
+                    questionText={extractText(turn.user.parts)}
+                    assistantText={assistantText}
+                    citations={turnCitations}
+                    showSkeleton={showSkeleton}
+                    isStreaming={turnIsStreaming}
+                    activeToolCall={activeToolCall}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyHero />
+        )}
+
+        <SearchInput
+          input={input}
+          setInput={setInput}
+          onSubmit={handleSubmit}
           isStreaming={isStreaming}
-          activeToolCall={activeToolCall}
+          floating={hasMessages}
+          placeholder={
+            hasMessages
+              ? "Ask a follow-up…"
+              : "Ask anything about UW organizations…"
+          }
         />
-      ) : (
-        <EmptyHero />
-      )}
 
-      <SearchInput
-        input={input}
-        setInput={setInput}
-        onSubmit={handleSubmit}
-        isStreaming={isStreaming}
-        floating={hasMessages}
-      />
+        {!hasMessages ? <ScrollDownCue /> : null}
+      </section>
 
-      {!hasMessages ? <ScrollDownCue /> : null}
-    </section>
+      {/* Only render the browse-org directory when the user hasn't started
+          a conversation yet. Once they ask their first question, the
+          directory section disappears so the answer view owns the page. */}
+      {!hasMessages ? browseSection : null}
+    </>
   );
+}
+
+// Minimal shape we care about for grouping. `useChat`'s messages already
+// satisfy this; the helper avoids depending on the AI SDK's full message
+// type which evolves between minor versions.
+type UIMessageLike = {
+  id: string;
+  role: string;
+  parts: ReadonlyArray<{ type: string }>;
+};
+
+type ConversationTurn = {
+  user: UIMessageLike;
+  assistant?: UIMessageLike;
+};
+
+function groupTurns(messages: UIMessageLike[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = [];
+  for (const message of messages) {
+    if (message.role === "user") {
+      turns.push({ user: message });
+    } else if (message.role === "assistant" && turns.length > 0) {
+      // Each user turn pairs with at most one assistant message. If the
+      // assistant slot is already filled (shouldn't happen with `useChat`,
+      // but defensive), the later assistant message wins.
+      turns[turns.length - 1].assistant = message;
+    }
+  }
+  return turns;
 }
 
 // Subtle grey arrow at the bottom of the empty hero that hints at the org
@@ -327,12 +406,14 @@ function SearchInput({
   onSubmit,
   isStreaming,
   floating,
+  placeholder,
 }: {
   input: string;
   setInput: (v: string) => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   isStreaming: boolean;
   floating: boolean;
+  placeholder?: string;
 }) {
   const formClass = floating
     ? "fixed bottom-6 left-1/2 z-30 flex w-[min(720px,calc(100%-3rem))] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-[color:var(--background)]/85 px-4 py-2 backdrop-blur transition-colors duration-150 focus-within:border-foreground"
@@ -350,7 +431,7 @@ function SearchInput({
         className="h-9 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground"
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="Ask anything about UW organizations…"
+        placeholder={placeholder ?? "Ask anything about UW organizations…"}
       />
       <button
         className="inline-flex h-9 items-center gap-1.5 rounded-full bg-foreground px-5 text-sm font-medium text-background transition-opacity duration-150 hover:opacity-90 disabled:opacity-30"
@@ -365,7 +446,7 @@ function SearchInput({
   );
 }
 
-function extractText(parts: { type: string }[]): string {
+function extractText(parts: ReadonlyArray<{ type: string }>): string {
   return parts
     .filter((p) => p.type === "text")
     .map((p) => ("text" in p ? (p as { text: string }).text : ""))
