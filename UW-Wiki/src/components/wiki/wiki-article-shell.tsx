@@ -11,7 +11,10 @@ import { transformSuperscriptPaste } from "@/lib/editor/citation-extension";
 import { editorExtensions } from "@/lib/editor/extensions";
 import { uploadEditorImage, UploadError } from "@/lib/editor/upload";
 import { renderProseMirrorDoc } from "@/lib/prosemirror/render";
-import { extractSections } from "@/lib/prosemirror/sections";
+import {
+  ensureSectionSlugs,
+  extractSections,
+} from "@/lib/prosemirror/sections";
 import { toast } from "@/lib/ui/toast";
 import { useAction } from "@/lib/ui/use-action";
 import type { ProseMirrorDoc } from "@/types/domain";
@@ -35,7 +38,12 @@ export function WikiArticleShell({
   const [rationale, setRationale] = useState("");
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
 
-  const sections = useMemo(() => extractSections(initialContent), [initialContent]);
+  // `sections` is reactive: starts from the loaded content and re-derives
+  // every time the editor's doc changes. Without this, brand-new H2 headings
+  // typed by the contributor wouldn't appear in the "Sections in this
+  // proposal" pill list — they'd be invisible to both the contributor and
+  // the reviewer even though they're in the submitted JSON.
+  const [sections, setSections] = useState(() => extractSections(initialContent));
   const isEmpty = sections.length === 0 || sections.every(({ body }) => body.length === 0);
 
   const editor = useEditor({
@@ -97,7 +105,36 @@ export function WikiArticleShell({
 
   useEffect(() => {
     if (mode === "edit") setSelectedSlugs(sectionSlugs);
-  }, [mode, sectionSlugs]);
+    // We want this to fire only on the mode->edit transition; subsequent
+    // edits update selectedSlugs through the editor.on("update") handler
+    // below so the user's manual checkbox toggles aren't clobbered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // Recompute sections live from the editor doc and append any newly-added
+  // slugs to `selectedSlugs` so a brand-new H2 shows up as a selected pill
+  // without the contributor having to do anything. Slugs that no longer
+  // exist (heading was deleted) get pruned out of the selection too.
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => {
+      const next = extractSections(editor.getJSON() as ProseMirrorDoc);
+      setSections(next);
+      setSelectedSlugs((prev) => {
+        const validSlugs = new Set(next.map((s) => s.slug));
+        const prevSet = new Set(prev);
+        const merged = prev.filter((slug) => validSlugs.has(slug));
+        for (const section of next) {
+          if (!prevSet.has(section.slug)) merged.push(section.slug);
+        }
+        return merged;
+      });
+    };
+    editor.on("update", handler);
+    return () => {
+      editor.off("update", handler);
+    };
+  }, [editor]);
 
   const insertImage = useCallback(
     async (file: File) => {
@@ -127,13 +164,22 @@ export function WikiArticleShell({
       if (rationale.trim().length < 20) {
         throw new Error("Rationale must be at least 20 characters.");
       }
+      // Normalize the doc before submit: every H2 gets a `slug` attr so the
+      // server-side diff engine and read-mode renderer agree on which
+      // sections changed. Without this, a brand-new heading inserted via
+      // the toolbar lacks the attr and its identity falls back to the
+      // computed slugify(title) — fine, but persisting the attr is more
+      // robust against future title edits.
+      const proposedContentJson = ensureSectionSlugs(
+        editor.getJSON() as ProseMirrorDoc,
+      );
       const res = await fetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pageId,
           basePageVersionId: pageVersionId,
-          proposedContentJson: editor.getJSON(),
+          proposedContentJson,
           rationale,
           sectionSlugs: selectedSlugs.length > 0 ? selectedSlugs : undefined,
           isAnonymous: true,

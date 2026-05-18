@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: RouteCtx) {
     .eq("id", id)
     .maybeSingle();
   if (!proposal) return apiError("NOT_FOUND", "Proposal not found.");
-  if (proposal.contributor_id === user.id) {
+  if (proposal.contributor_id === user.id && user.role !== "admin") {
     return apiError("FORBIDDEN", "Reviewers cannot reject their own proposal.");
   }
   if (proposal.status !== "pending" && proposal.status !== "changes_requested") {

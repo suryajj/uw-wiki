@@ -240,7 +240,12 @@ export async function refreshMergeability(id: string): Promise<MergeabilityStatu
 export async function acceptProposal(id: string, reviewer: CurrentUser) {
   const detail = await loadProposalDetail(id);
   if (!detail?.currentPatchset) throw new ProposalError("NOT_FOUND", "Proposal not found.");
-  if (detail.proposal.contributor_id === reviewer.id) {
+  // Admins are allowed to self-accept; regular reviewers are still blocked
+  // from reviewing their own proposals (conflict-of-interest guard).
+  if (
+    detail.proposal.contributor_id === reviewer.id &&
+    reviewer.role !== "admin"
+  ) {
     throw new ProposalError("FORBIDDEN", "Reviewers cannot accept their own proposal.");
   }
   if (detail.proposal.status !== "pending") {
