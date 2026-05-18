@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import { Button } from "@/components/ui/button";
 import { CommentsWidget } from "@/components/comments/comments-widget";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/editor/autosave";
+import { transformSuperscriptPaste } from "@/lib/editor/citation-extension";
 import { editorExtensions } from "@/lib/editor/extensions";
 import { uploadEditorImage, UploadError } from "@/lib/editor/upload";
 import { renderProseMirrorDoc } from "@/lib/prosemirror/render";
@@ -47,6 +48,11 @@ export function WikiArticleShell({
           "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-h2:text-3xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-3 prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
       },
       handleDrop: (_view, event) => handleEditorDrop(event as unknown as DragEvent),
+      // Normalize Unicode superscript digits (e.g. ¹²) into [12] BEFORE the
+      // citation paste rule runs. This catches Wikipedia HTML and other rich
+      // sources whose citations don't use literal square brackets. ASCII
+      // `[N]` runs are handled by the paste rule directly.
+      transformPastedText: (text) => transformSuperscriptPaste(text),
     },
   });
 
@@ -331,6 +337,12 @@ function Toolbar({
       <ToolbarDivider />
       <ToolbarButton label="Bullet list" onClick={() => editor.chain().focus().toggleBulletList().run()}>UL</ToolbarButton>
       <ToolbarButton label="Ordered list" onClick={() => editor.chain().focus().toggleOrderedList().run()}>OL</ToolbarButton>
+      <ToolbarButton
+        label="Insert citation"
+        onClick={() => editor.chain().focus().insertNextCitation().run()}
+      >
+        [N]
+      </ToolbarButton>
       <ToolbarButton label="Blockquote" onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</ToolbarButton>
       <ToolbarButton label="Code block" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code</ToolbarButton>
       <ToolbarButton label="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>Rule</ToolbarButton>

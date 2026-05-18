@@ -9,12 +9,17 @@ import TableRow from "@tiptap/extension-table-row";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
-import { CitationNode } from "@/lib/editor/citation-extension";
+import { CitationNode, ListItemWithRefId } from "@/lib/editor/citation-extension";
 
 export const editorExtensions = [
   StarterKit.configure({
     heading: { levels: [2, 3] },
+    // Replace the stock ListItem with our refId-aware variant so the
+    // references list at the bottom of cold-start articles round-trips
+    // through the editor without losing its `id="ref-N"` anchors.
+    listItem: false,
   }),
+  ListItemWithRefId,
   Underline,
   Highlight,
   Link.configure({
