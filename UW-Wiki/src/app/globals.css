@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme inline {
   --color-background: var(--background);
@@ -92,4 +93,18 @@ a {
 ::selection {
   background: var(--foreground);
   color: var(--background);
+}
+
+/* Prose overrides for RAG markdown — ensure paragraphs have breathing room */
+.prose p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.prose > *:first-child {
+  margin-top: 0;
+}
+
+.prose > *:last-child {
+  margin-bottom: 0;
 }

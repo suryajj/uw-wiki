@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+const voteLimiter = createRateLimiter(30, "10 m");
 
 const voteSchema = z.object({
   voteType: z.enum(["up", "down"]).nullable(),
@@ -16,6 +19,8 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Sign in to vote.");
   const { id } = await params;
+  const limit = await checkRateLimit(voteLimiter, `comments:vote:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const parsed = await parseJson(req, voteSchema);
   if (!parsed.ok) return parsed.response;
 

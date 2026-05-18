@@ -2,8 +2,12 @@ import { z } from "zod";
 
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deleteCommentChunk, embedVisibleComment } from "@/lib/comments/service";
+
+const editLimiter = createRateLimiter(10, "1 h");
+const deleteLimiter = createRateLimiter(10, "1 h");
 
 const patchSchema = z.object({
   body: z.string().trim().min(1).max(1500),
@@ -17,6 +21,8 @@ export async function PATCH(req: Request, { params }: RouteCtx) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Sign in to edit comments.");
   const { id } = await params;
+  const limit = await checkRateLimit(editLimiter, `comments:edit:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const parsed = await parseJson(req, patchSchema);
   if (!parsed.ok) return parsed.response;
 
@@ -53,6 +59,8 @@ export async function DELETE(_req: Request, { params }: RouteCtx) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Sign in to delete comments.");
   const { id } = await params;
+  const limit = await checkRateLimit(deleteLimiter, `comments:delete:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const admin = createAdminClient();
   const { data: comment } = await admin
     .from("comments")

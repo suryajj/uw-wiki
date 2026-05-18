@@ -2,6 +2,8 @@ import { DirectoryView } from "@/components/directory/directory-view";
 import { SearchHero } from "@/components/home/search-hero";
 import { listDirectoryOrgs } from "@/lib/wiki/data";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const orgs = await listDirectoryOrgs();
 

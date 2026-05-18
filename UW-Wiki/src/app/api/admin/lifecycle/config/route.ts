@@ -3,8 +3,11 @@ import { z } from "zod";
 import { logAdminActivity } from "@/lib/admin/activity-log";
 import { requireAdminApi } from "@/lib/admin/auth";
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ORG_CATEGORIES } from "@/types/domain";
+
+const lifecycleLimiter = createRateLimiter(10, "1 h");
 
 const rowSchema = z.object({
   category: z.enum(ORG_CATEGORIES),
@@ -20,6 +23,8 @@ export async function POST(req: Request) {
   if (!adminUser.ok) return adminUser.response;
   const parsed = await parseJson(req, schema);
   if (!parsed.ok) return parsed.response;
+  const limit = await checkRateLimit(lifecycleLimiter, `admin:lifecycle:${adminUser.user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   for (const row of parsed.data.rows) {
     if (row.needsUpdateMonths >= row.staleMonths || row.staleMonths >= row.defunctMonths) {
       return apiError("VALIDATION_FAILED", "Thresholds must be needs-update < stale < defunct.");

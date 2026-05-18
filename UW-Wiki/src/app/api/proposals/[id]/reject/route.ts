@@ -5,7 +5,10 @@ import { logAdminActivity } from "@/lib/admin/activity-log";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { emitNotification } from "@/lib/notifications/service";
 import { recordDecisionLog, reviewerAffiliationForProposal } from "@/lib/proposals/service";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+const rejectLimiter = createRateLimiter(20, "1 m");
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -21,6 +24,8 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const parsed = await parseJson(req, rejectSchema);
   if (!parsed.ok) return parsed.response;
   const { id } = await params;
+  const limit = await checkRateLimit(rejectLimiter, `proposals:reject:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const admin = createAdminClient();
   const { data: proposal } = await admin
     .from("edit_proposals")

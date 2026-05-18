@@ -529,6 +529,7 @@ function collectCitations(parts: ToolPart[]): SearchChunk[] {
         sectionSlug: null,
         sourceUrl: url,
       });
+      continue;
     }
   }
   return [...seen.values()].sort((a, b) => a.citationIndex - b.citationIndex);

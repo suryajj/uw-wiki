@@ -1,10 +1,13 @@
-import { logServerError, parseJson } from "@/lib/api/errors";
+import { apiError, logServerError, parseJson } from "@/lib/api/errors";
 import { requireAdminApi } from "@/lib/admin/auth";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import {
   generateDraftForJob,
   type ColdStartProgressEvent,
 } from "@/lib/cold-start/service";
 import { generateInputSchema } from "@/lib/cold-start/schemas";
+
+const generateLimiter = createRateLimiter(10, "1 h");
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,6 +23,8 @@ export async function POST(req: Request) {
   if (!admin.ok) return admin.response;
   const parsed = await parseJson(req, generateInputSchema);
   if (!parsed.ok) return parsed.response;
+  const limit = await checkRateLimit(generateLimiter, `cold-start:generate:${admin.user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
