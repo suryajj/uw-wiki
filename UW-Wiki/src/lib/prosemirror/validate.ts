@@ -54,7 +54,8 @@ const ALLOWED_IMAGE_SRC =
   /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/|^\//i;
 // Reject protocol-relative `//host` and unknown schemes; accept only http(s)
 // and absolute paths starting with a single `/`.
-const ALLOWED_LINK_HREF = /^https?:\/\/[^\s]+$|^\/[^/][^\s]*$|^\/$/i;
+const ALLOWED_LINK_HREF =
+  /^https?:\/\/[^\s]+$|^mailto:[^\s@]+@[^\s@]+$|^\/[^/][^\s]*$|^\/$/i;
 
 export type ValidationOk = { ok: true };
 export type ValidationFail = { ok: false; error: string };
@@ -191,7 +192,7 @@ function validateMark(mark: unknown): ValidationResult {
       }
     }
     if (!ALLOWED_LINK_HREF.test(m.attrs.href)) {
-      return fail("Link href must use http(s) or be an absolute path.");
+      return fail("Link href must use http(s), mailto:, or be an absolute path.");
     }
   }
   return { ok: true };
