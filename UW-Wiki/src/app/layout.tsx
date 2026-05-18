@@ -32,7 +32,10 @@ export default async function RootLayout({
   const theme = themeCookie === "light" ? "light" : "dark";
   return (
     <html lang="en" className={`${serif.variable} ${theme === "dark" ? "dark" : ""}`}>
-      <body className="min-h-screen bg-background text-foreground antialiased">
+      <body
+        className="min-h-screen bg-background text-foreground antialiased"
+        suppressHydrationWarning
+      >
         <HeaderWrapper>
           <SiteHeader />
         </HeaderWrapper>

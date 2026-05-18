@@ -3,6 +3,9 @@ import { z } from "zod";
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { setBookmarkState } from "@/lib/actions/bookmarks";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
+
+const bookmarkLimiter = createRateLimiter(30, "1 m");
 
 export const runtime = "nodejs";
 
@@ -16,6 +19,9 @@ const toggleSchema = z.object({
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Sign in to bookmark pages.");
+
+  const limit = await checkRateLimit(bookmarkLimiter, `bookmarks:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
 
   const parsed = await parseJson(req, toggleSchema);
   if (!parsed.ok) return parsed.response;

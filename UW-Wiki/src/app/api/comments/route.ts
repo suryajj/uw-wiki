@@ -21,8 +21,13 @@ const createCommentSchema = z.object({
 export async function GET(req: Request) {
   const pageId = new URL(req.url).searchParams.get("pageId");
   if (!pageId) return apiError("VALIDATION_FAILED", "pageId is required.");
-  const comments = await listCommentsForPage(pageId);
-  return apiSuccess({ comments });
+  try {
+    const comments = await listCommentsForPage(pageId);
+    return apiSuccess({ comments });
+  } catch (error) {
+    logServerError("comments.list", error);
+    return apiError("UNEXPECTED", "Could not load comments.");
+  }
 }
 
 export async function POST(req: Request) {

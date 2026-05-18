@@ -6,9 +6,12 @@ import { requireAdminApi } from "@/lib/admin/auth";
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { updateAnchorStatusForPage } from "@/lib/comments/update-anchors";
 import { extractSections } from "@/lib/prosemirror/sections";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/utils/slug";
 import type { ProseMirrorDoc, ProseMirrorNode } from "@/types/domain";
+
+const seedLimiter = createRateLimiter(10, "1 h");
 
 type RouteCtx = { params: Promise<{ orgId: string }> };
 
@@ -24,6 +27,8 @@ export async function POST(req: Request, { params }: RouteCtx) {
   const parsed = await parseJson(req, schema);
   if (!parsed.ok) return parsed.response;
   const { orgId } = await params;
+  const limit = await checkRateLimit(seedLimiter, `admin:official-seed:${adminUser.user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const admin = createAdminClient();
   const { data: page } = await admin
     .from("pages")

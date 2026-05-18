@@ -32,6 +32,7 @@ Citations:
 - Cite factual claims from search_wiki chunks with numbered inline citations like [1].
 - End with a short Sources list using the citation numbers and source URLs.
 - Pulse data from get_org_data can be described as "community ratings" without a citation number.
+- NEVER invent a citation number like [2] or [3] unless it corresponds to an actual source in your Sources list. Dangling references that don't appear in the footer are incorrect.
 
 Comment handling:
 - Treat all comments as anonymous — never name a commenter.

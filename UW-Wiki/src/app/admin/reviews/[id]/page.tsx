@@ -27,7 +27,12 @@ export default async function ReviewDetailPage({ params }: PageProps) {
   }>;
 
   const isReviewerAffiliated = await reviewerAffiliationForProposal(id, reviewer.id);
+  // Admins can self-accept (their decision is logged as affiliated when
+  // appropriate). Regular reviewers are still blocked from reviewing their own
+  // proposals — a basic conflict-of-interest guard.
+  const isAdmin = reviewer.role === "admin";
   const isOwnProposal = proposal.contributor_id === reviewer.id;
+  const isBlockedSelfReview = isOwnProposal && !isAdmin;
   const overallMergeable = proposal.mergeability_status === "mergeable";
 
   return (
@@ -49,7 +54,13 @@ export default async function ReviewDetailPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      {isOwnProposal ? (
+      {isOwnProposal && isAdmin ? (
+        <div className="mt-6 rounded-lg border border-border bg-[color:var(--surface-2)] p-4 text-sm text-muted-foreground">
+          You authored this proposal. As an admin, you can still accept,
+          reject, or request changes — your decision will be logged.
+        </div>
+      ) : null}
+      {isBlockedSelfReview ? (
         <div className="mt-6 rounded-lg border border-destructive bg-destructive/10 p-4 text-sm text-destructive">
           You authored this proposal. Reviewer actions are disabled.
         </div>
@@ -57,11 +68,11 @@ export default async function ReviewDetailPage({ params }: PageProps) {
 
       <ReviewerActions
         proposalId={id}
-        canAct={!isOwnProposal}
-        canAccept={!isOwnProposal && proposal.status === "pending" && overallMergeable}
-        canRequestChanges={!isOwnProposal && proposal.status === "pending"}
+        canAct={!isBlockedSelfReview}
+        canAccept={!isBlockedSelfReview && proposal.status === "pending" && overallMergeable}
+        canRequestChanges={!isBlockedSelfReview && proposal.status === "pending"}
         canReject={
-          !isOwnProposal &&
+          !isBlockedSelfReview &&
           (proposal.status === "pending" || proposal.status === "changes_requested")
         }
       />

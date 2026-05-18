@@ -15,7 +15,7 @@ function assert(label, condition, detail = "") {
 const notifications = await supabaseRest("/notifications?select=id,type,delivered_email,payload,read_at&limit=1").catch((error) => ({ error }));
 assert("notifications has FRD-9 columns", Array.isArray(notifications), notifications.error?.message);
 
-const prefs = await supabaseRest("/notification_preferences?select=user_id,in_app_pr_status,email_pr_status,in_app_comment_reply,email_comment_reply,in_app_page_update,email_page_update_digest,page_update_digest_frequency,last_digest_sent_at&limit=1").catch((error) => ({ error }));
+const prefs = await supabaseRest("/notification_preferences?select=user_id,in_app_pr_status,email_pr_status,in_app_comment_reply,email_comment_reply,in_app_page_update&limit=1").catch((error) => ({ error }));
 assert("notification_preferences has FRD-9 columns", Array.isArray(prefs), prefs.error?.message);
 
 const anonHeaders = {

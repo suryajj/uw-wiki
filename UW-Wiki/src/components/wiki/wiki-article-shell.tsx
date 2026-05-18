@@ -7,10 +7,14 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react
 import { Button } from "@/components/ui/button";
 import { CommentsWidget } from "@/components/comments/comments-widget";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/editor/autosave";
+import { transformSuperscriptPaste } from "@/lib/editor/citation-extension";
 import { editorExtensions } from "@/lib/editor/extensions";
 import { uploadEditorImage, UploadError } from "@/lib/editor/upload";
 import { renderProseMirrorDoc } from "@/lib/prosemirror/render";
-import { extractSections } from "@/lib/prosemirror/sections";
+import {
+  ensureSectionSlugs,
+  extractSections,
+} from "@/lib/prosemirror/sections";
 import { toast } from "@/lib/ui/toast";
 import { useAction } from "@/lib/ui/use-action";
 import type { ProseMirrorDoc } from "@/types/domain";
@@ -34,7 +38,12 @@ export function WikiArticleShell({
   const [rationale, setRationale] = useState("");
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
 
-  const sections = useMemo(() => extractSections(initialContent), [initialContent]);
+  // `sections` is reactive: starts from the loaded content and re-derives
+  // every time the editor's doc changes. Without this, brand-new H2 headings
+  // typed by the contributor wouldn't appear in the "Sections in this
+  // proposal" pill list — they'd be invisible to both the contributor and
+  // the reviewer even though they're in the submitted JSON.
+  const [sections, setSections] = useState(() => extractSections(initialContent));
   const isEmpty = sections.length === 0 || sections.every(({ body }) => body.length === 0);
 
   const editor = useEditor({
@@ -47,6 +56,11 @@ export function WikiArticleShell({
           "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-h2:text-3xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-3 prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
       },
       handleDrop: (_view, event) => handleEditorDrop(event as unknown as DragEvent),
+      // Normalize Unicode superscript digits (e.g. ¹²) into [12] BEFORE the
+      // citation paste rule runs. This catches Wikipedia HTML and other rich
+      // sources whose citations don't use literal square brackets. ASCII
+      // `[N]` runs are handled by the paste rule directly.
+      transformPastedText: (text) => transformSuperscriptPaste(text),
     },
   });
 
@@ -91,7 +105,36 @@ export function WikiArticleShell({
 
   useEffect(() => {
     if (mode === "edit") setSelectedSlugs(sectionSlugs);
-  }, [mode, sectionSlugs]);
+    // We want this to fire only on the mode->edit transition; subsequent
+    // edits update selectedSlugs through the editor.on("update") handler
+    // below so the user's manual checkbox toggles aren't clobbered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // Recompute sections live from the editor doc and append any newly-added
+  // slugs to `selectedSlugs` so a brand-new H2 shows up as a selected pill
+  // without the contributor having to do anything. Slugs that no longer
+  // exist (heading was deleted) get pruned out of the selection too.
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => {
+      const next = extractSections(editor.getJSON() as ProseMirrorDoc);
+      setSections(next);
+      setSelectedSlugs((prev) => {
+        const validSlugs = new Set(next.map((s) => s.slug));
+        const prevSet = new Set(prev);
+        const merged = prev.filter((slug) => validSlugs.has(slug));
+        for (const section of next) {
+          if (!prevSet.has(section.slug)) merged.push(section.slug);
+        }
+        return merged;
+      });
+    };
+    editor.on("update", handler);
+    return () => {
+      editor.off("update", handler);
+    };
+  }, [editor]);
 
   const insertImage = useCallback(
     async (file: File) => {
@@ -121,13 +164,22 @@ export function WikiArticleShell({
       if (rationale.trim().length < 20) {
         throw new Error("Rationale must be at least 20 characters.");
       }
+      // Normalize the doc before submit: every H2 gets a `slug` attr so the
+      // server-side diff engine and read-mode renderer agree on which
+      // sections changed. Without this, a brand-new heading inserted via
+      // the toolbar lacks the attr and its identity falls back to the
+      // computed slugify(title) — fine, but persisting the attr is more
+      // robust against future title edits.
+      const proposedContentJson = ensureSectionSlugs(
+        editor.getJSON() as ProseMirrorDoc,
+      );
       const res = await fetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pageId,
           basePageVersionId: pageVersionId,
-          proposedContentJson: editor.getJSON(),
+          proposedContentJson,
           rationale,
           sectionSlugs: selectedSlugs.length > 0 ? selectedSlugs : undefined,
           isAnonymous: true,
@@ -331,6 +383,12 @@ function Toolbar({
       <ToolbarDivider />
       <ToolbarButton label="Bullet list" onClick={() => editor.chain().focus().toggleBulletList().run()}>UL</ToolbarButton>
       <ToolbarButton label="Ordered list" onClick={() => editor.chain().focus().toggleOrderedList().run()}>OL</ToolbarButton>
+      <ToolbarButton
+        label="Insert citation"
+        onClick={() => editor.chain().focus().insertNextCitation().run()}
+      >
+        [N]
+      </ToolbarButton>
       <ToolbarButton label="Blockquote" onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</ToolbarButton>
       <ToolbarButton label="Code block" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code</ToolbarButton>
       <ToolbarButton label="Horizontal rule" onClick={() => editor.chain().focus().setHorizontalRule().run()}>Rule</ToolbarButton>

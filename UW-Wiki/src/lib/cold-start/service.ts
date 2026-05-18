@@ -1036,66 +1036,90 @@ Evidence:
 
 ${evidence || "(no usable evidence)"}`;
 
+  // SCHEMA NOTE: Gemini's structured-output mode compiles the JSON schema
+  // into a finite-state automaton for token-level constrained decoding. Every
+  // .min/.max/.int/.positive constraint adds states; nested bounded arrays
+  // (sections > blocks > sentences > citations) multiply them. Gemini errors
+  // out with "too many states for serving" if the schema is too rich.
+  //
+  // We therefore keep ONLY the structural shape + the `kind` enum, and rely
+  // on the downstream renderer (`prosemirrorFromSynthesis`) to gracefully
+  // truncate/skip overly long content. The prompt still tells the model the
+  // soft limits in prose; only the schema-level enforcement is dropped.
   const blockSchema = z.object({
     kind: z.enum(["paragraph", "bulletList", "linkList"]),
     sentences: z
       .array(
         z.object({
-          text: z.string().min(1).max(800),
-          citations: z.array(z.number().int().positive()).max(6).default([]),
+          text: z.string(),
+          citations: z.array(z.number()).default([]),
         }),
       )
-      .max(20)
       .optional(),
     items: z
       .array(
         z.object({
-          text: z.string().min(1).max(400),
-          citations: z.array(z.number().int().positive()).max(6).default([]),
+          text: z.string(),
+          citations: z.array(z.number()).default([]),
         }),
       )
-      .max(30)
       .optional(),
     links: z
       .array(
         z.object({
-          label: z.string().min(1).max(120),
-          url: z.string().min(4).max(500),
+          label: z.string(),
+          url: z.string(),
         }),
       )
-      .max(20)
       .optional(),
+  });
+
+  // Output-token budget for synthesis. 6000 is a generous ceiling for the
+  // structured JSON we expect (6-8 sections × ~20 sentences × ~50 tokens
+  // overhead) while staying inside OpenRouter's per-request credit cap on
+  // low-balance accounts. If even 6000 is unaffordable (HTTP 402), the
+  // retry loop below halves it until success — beats a hard failure when
+  // credits dip mid-run.
+  const SYNTHESIS_BUDGET_STEPS = [6000, 3500, 2000] as const;
+  const synthesisSchema = z.object({
+    sections: z.array(
+      z.object({
+        title: z.string(),
+        blocks: z.array(blockSchema),
+      }),
+    ),
+    droppedSections: z.array(z.string()),
   });
 
   let synthesized: SynthesizedDraft | null = null;
   let lastError: unknown = null;
-  try {
-    const { object } = await generateObject({
-      model: openrouter.chat("google/gemini-2.5-flash"),
-      schema: z.object({
-        sections: z.array(
-          z.object({
-            title: z.string().min(1).max(120),
-            blocks: z.array(blockSchema).min(1).max(20),
-          }),
-        ),
-        droppedSections: z.array(z.string()),
-      }),
-      system: isProgramCategory(org.category)
-        ? PROGRAM_SYNTHESIS_SYSTEM
-        : COLD_START_SYNTHESIS_SYSTEM,
-      prompt: userPrompt,
-      maxOutputTokens: 12000,
-      temperature: 0.3,
-    });
-    synthesized = object as SynthesizedDraft;
-  } catch (error) {
-    lastError = error;
-    logSynthesisError(error, {
-      org: org.name,
-      urlPoolSize: urlPool.length,
-      promptChars: userPrompt.length,
-    });
+  for (const budget of SYNTHESIS_BUDGET_STEPS) {
+    try {
+      const { object } = await generateObject({
+        model: openrouter.chat("google/gemini-2.5-flash"),
+        schema: synthesisSchema,
+        system: isProgramCategory(org.category)
+          ? PROGRAM_SYNTHESIS_SYSTEM
+          : COLD_START_SYNTHESIS_SYSTEM,
+        prompt: userPrompt,
+        maxOutputTokens: budget,
+        temperature: 0.3,
+      });
+      synthesized = object as SynthesizedDraft;
+      break;
+    } catch (error) {
+      lastError = error;
+      logSynthesisError(error, {
+        org: org.name,
+        urlPoolSize: urlPool.length,
+        promptChars: userPrompt.length,
+        attemptedBudget: budget,
+      });
+      // Only retry on HTTP 402 ("requires more credits, or fewer max_tokens").
+      // Every other failure (validation, network, model error) bails after the
+      // first attempt so we don't burn money on hopeless retries.
+      if (!isCreditBudgetError(error)) break;
+    }
   }
 
   if (!synthesized) {
@@ -1357,9 +1381,35 @@ function isSafeHttpUrl(url: string): boolean {
   return /^https?:\/\/[^\s]+$/i.test(url);
 }
 
+/**
+ * OpenRouter returns HTTP 402 with a message like
+ * "This request requires more credits, or fewer max_tokens. You requested
+ *  up to X tokens, but can only afford Y."
+ * when the account balance is too low to underwrite the requested output
+ * budget. We detect this so the synthesis retry loop can lower
+ * `maxOutputTokens` and try again instead of giving up.
+ */
+function isCreditBudgetError(error: unknown): boolean {
+  const err = error as
+    | (Error & { statusCode?: unknown; responseBody?: unknown })
+    | undefined;
+  if (!err) return false;
+  if (err.statusCode === 402) return true;
+  const message = err.message ?? "";
+  const body = typeof err.responseBody === "string" ? err.responseBody : "";
+  return /requires more credits|fewer max_tokens|can only afford/i.test(
+    `${message} ${body}`,
+  );
+}
+
 function logSynthesisError(
   error: unknown,
-  context: { org: string; urlPoolSize: number; promptChars: number },
+  context: {
+    org: string;
+    urlPoolSize: number;
+    promptChars: number;
+    attemptedBudget?: number;
+  },
 ): void {
   const err = error as
     | (Error & {
@@ -1376,6 +1426,7 @@ function logSynthesisError(
     org: context.org,
     urlPoolSize: context.urlPoolSize,
     promptChars: context.promptChars,
+    attemptedBudget: context.attemptedBudget,
     name: err?.name,
     message: err?.message ?? String(error),
     statusCode: err?.statusCode,

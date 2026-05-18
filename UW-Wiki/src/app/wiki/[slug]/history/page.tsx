@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { formatLongDate } from "@/lib/utils/time";
 import { getPageVersionHistory, getWikiPage } from "@/lib/wiki/data";
 
+export const dynamic = "force-dynamic";
+
 type PageProps = {
   params: Promise<{ slug: string }>;
 };

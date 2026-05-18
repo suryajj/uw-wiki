@@ -264,23 +264,77 @@ function ScrollDownCue() {
 function EmptyHero() {
   return (
     <div className="flex w-full max-w-3xl flex-col items-center gap-4 text-center">
-      <motion.h1
-        initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      <BlurReveal
+        text="Ask UW Wiki"
+        as="h1"
         className="text-5xl font-semibold tracking-tight text-foreground md:text-6xl"
-      >
-        Ask UW Wiki
-      </motion.h1>
-      <motion.p
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.15 }}
+        baseDelay={0.05}
+        wordStagger={0.09}
+      />
+      <BlurReveal
+        text="Ask about UW clubs, design teams, and campus organizations."
+        as="p"
         className="max-w-xl text-base text-muted-foreground"
-      >
-        Ask about UW clubs, design teams, and campus organizations.
-      </motion.p>
+        baseDelay={0.45}
+        wordStagger={0.04}
+      />
     </div>
+  );
+}
+
+/**
+ * Reveals `text` one word at a time using framer-motion springs: each word
+ * starts blurred (10px), translated down 12px, and faded out, then springs
+ * into place. Words are wrapped in `inline-block` spans (with non-breaking
+ * spaces between them) so the per-word animation doesn't break the line
+ * layout. The whole sequence is staggered by `wordStagger` seconds and
+ * delayed initially by `baseDelay` so a follow-up paragraph can start
+ * after the heading finishes.
+ */
+function BlurReveal({
+  text,
+  as = "span",
+  className,
+  baseDelay = 0,
+  wordStagger = 0.06,
+}: {
+  text: string;
+  as?: "h1" | "h2" | "p" | "span";
+  className?: string;
+  baseDelay?: number;
+  wordStagger?: number;
+}) {
+  const words = text.split(" ");
+  const MotionTag =
+    as === "h1"
+      ? motion.h1
+      : as === "h2"
+        ? motion.h2
+        : as === "p"
+          ? motion.p
+          : motion.span;
+  return (
+    <MotionTag className={className} aria-label={text}>
+      {words.map((word, i) => (
+        <motion.span
+          key={`${word}-${i}`}
+          aria-hidden="true"
+          initial={{ opacity: 0, y: 12, filter: "blur(10px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{
+            type: "spring",
+            stiffness: 240,
+            damping: 22,
+            mass: 0.6,
+            delay: baseDelay + i * wordStagger,
+          }}
+          className="inline-block will-change-transform"
+        >
+          {word}
+          {i < words.length - 1 ? " " : ""}
+        </motion.span>
+      ))}
+    </MotionTag>
   );
 }
 
@@ -529,6 +583,7 @@ function collectCitations(parts: ToolPart[]): SearchChunk[] {
         sectionSlug: null,
         sourceUrl: url,
       });
+      continue;
     }
   }
   return [...seen.values()].sort((a, b) => a.citationIndex - b.citationIndex);

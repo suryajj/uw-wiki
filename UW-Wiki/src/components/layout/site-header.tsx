@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { LogoLink } from "@/components/layout/logo-link";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
 export async function SiteHeader() {
@@ -9,13 +10,7 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
       <div className="flex w-full items-center justify-between px-6 py-4 md:px-10">
-        <Link
-          href="/"
-          className="flex items-baseline gap-2 text-2xl font-semibold tracking-tight text-foreground transition-colors duration-150 hover:opacity-80"
-        >
-          <span>UW Wiki</span>
-          <span className="text-xs font-normal italic text-muted-foreground">v0.1</span>
-        </Link>
+        <LogoLink />
 
         <nav className="flex items-center gap-1 text-sm">
           <Link

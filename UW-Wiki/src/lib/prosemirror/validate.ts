@@ -32,7 +32,20 @@ const ALLOWED_MARKS = new Set([
 
 const ALLOWED_NODE_KEYS = new Set(["type", "attrs", "content", "marks", "text"]);
 const ALLOWED_MARK_KEYS = new Set(["type", "attrs"]);
-const ALLOWED_LINK_ATTR_KEYS = new Set(["href", "target", "rel"]);
+// `class` and `title` are declared by the TipTap Link extension's
+// addAttributes() (class defaults from `HTMLAttributes.class` in
+// extensions.ts). When a contributor edits an article and the link mark
+// round-trips through the editor, those attrs get serialized onto the JSON.
+// Without allowing them here, every edit-touched link would fail validation
+// with "Unexpected key 'class' on link mark." href is the only one that
+// affects rendering security; class/title/target/rel are presentational.
+const ALLOWED_LINK_ATTR_KEYS = new Set([
+  "href",
+  "target",
+  "rel",
+  "class",
+  "title",
+]);
 
 const ALLOWED_HEADING_LEVELS = new Set([2, 3]);
 const SECTION_HEADING_LEVELS = new Set([2]);

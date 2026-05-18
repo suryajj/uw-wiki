@@ -2,10 +2,13 @@ import { z } from "zod";
 
 import { apiError, apiSuccess, logServerError, parseJson } from "@/lib/api/errors";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { checkRateLimit, createRateLimiter } from "@/lib/rate-limit";
 import {
   ensureNotificationPreferences,
   updateNotificationPreferences,
 } from "@/lib/notifications/service";
+
+const prefsLimiter = createRateLimiter(10, "1 m");
 
 const prefsSchema = z.object({
   inAppPrStatus: z.boolean().optional(),
@@ -30,6 +33,8 @@ export async function GET() {
 export async function PUT(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Sign in required.");
+  const limit = await checkRateLimit(prefsLimiter, `notification-preferences:${user.id}`);
+  if (!limit.success) return apiError("RATE_LIMITED", "Too many requests. Please slow down.");
   const parsed = await parseJson(req, prefsSchema);
   if (!parsed.ok) return parsed.response;
   try {
