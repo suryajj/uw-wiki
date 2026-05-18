@@ -60,11 +60,25 @@ export type ValidationOk = { ok: true };
 export type ValidationFail = { ok: false; error: string };
 export type ValidationResult = ValidationOk | ValidationFail;
 
+/**
+ * Walking context kept while we recurse the doc. `path` is a human-readable
+ * breadcrumb ("Curriculum > paragraph #2 > link") so error messages can
+ * pinpoint the exact spot the contributor needs to fix. `sectionTitle`
+ * remembers the last H2 we passed so link errors mention which section
+ * they're in.
+ */
+type WalkContext = {
+  path: string;
+  sectionTitle: string | null;
+};
+
+const ROOT_CTX: WalkContext = { path: "doc", sectionTitle: null };
+
 export function validateProposalDoc(doc: unknown): ValidationResult {
   if (!isObject(doc)) return fail("Expected a ProseMirror document object.");
   const root = doc as ProseMirrorDoc;
   if (root.type !== "doc") return fail("Root node must have type 'doc'.");
-  return validateNode(root, true);
+  return validateNode(root, true, ROOT_CTX);
 }
 
 export function validateProposalSection(node: unknown): ValidationResult {
@@ -82,7 +96,11 @@ export function validateProposalSection(node: unknown): ValidationResult {
   if ("official" in (heading.attrs ?? {})) {
     return fail("Contributors cannot toggle attrs.official on a section heading.");
   }
-  return validateNode(heading, false);
+  const ctx: WalkContext = {
+    path: `section "${collectText(heading) || "untitled"}"`,
+    sectionTitle: collectText(heading) || null,
+  };
+  return validateNode(heading, false, ctx);
 }
 
 function validateNode(

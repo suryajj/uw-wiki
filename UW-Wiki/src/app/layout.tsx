@@ -31,7 +31,16 @@ export default async function RootLayout({
   const themeCookie = cookieStore.get("uw-wiki-theme")?.value;
   const theme = themeCookie === "light" ? "light" : "dark";
   return (
-    <html lang="en" className={`${serif.variable} ${theme === "dark" ? "dark" : ""}`}>
+    <html
+      lang="en"
+      className={`${serif.variable} ${theme === "dark" ? "dark" : ""}`}
+      // Browser extensions like QuillBot ("data-qb-installed") and
+      // password managers inject attributes onto <html>/<body> BEFORE
+      // React hydrates, producing a non-fatal mismatch warning. We
+      // suppress it on the two outer-most elements only — anything
+      // inside still hydrates strictly.
+      suppressHydrationWarning
+    >
       <body
         className="min-h-screen bg-background text-foreground antialiased"
         suppressHydrationWarning
