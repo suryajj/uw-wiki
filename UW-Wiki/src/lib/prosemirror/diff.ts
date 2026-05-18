@@ -14,10 +14,10 @@ export type DiffSegment = {
  */
 export function diffSections(
   original: ProseMirrorDoc | ProseMirrorNode | null,
-  proposed: ProseMirrorDoc | ProseMirrorNode,
+  proposed: ProseMirrorDoc | ProseMirrorNode | null,
 ): DiffSegment[] {
   const before = original ? toPlain(original) : "";
-  const after = toPlain(proposed);
+  const after = proposed ? toPlain(proposed) : "";
   return diffWords(before, after);
 }
 

@@ -116,6 +116,39 @@ export function replaceSection(
   };
 }
 
+/**
+ * Append a section (heading + body) to the end of `doc.content`. Used by
+ * the proposal-accept path when a contributor introduces a section that
+ * doesn't exist on the live page yet — `replaceSection` only handles the
+ * replace-in-place case, so without this helper the accept path would
+ * throw on any pure addition.
+ */
+export function appendSection(
+  doc: ProseMirrorDoc,
+  heading: ProseMirrorNode,
+  body: ProseMirrorNode[],
+): ProseMirrorDoc {
+  return {
+    type: "doc",
+    content: [...(doc.content ?? []), heading, ...body],
+  };
+}
+
+/**
+ * Drop a section (heading + body) from `doc.content`. Used by the
+ * proposal-accept path when a contributor deletes a section in the
+ * editor — `replaceSection` requires a replacement body, which is the
+ * wrong primitive for "remove this entirely".
+ */
+export function removeSection(
+  doc: ProseMirrorDoc,
+  section: Section,
+): ProseMirrorDoc {
+  const before = (doc.content ?? []).slice(0, section.startIndex);
+  const after = (doc.content ?? []).slice(section.endIndex);
+  return { type: "doc", content: [...before, ...after] };
+}
+
 export function ensureSectionSlugs(doc: ProseMirrorDoc): ProseMirrorDoc {
   const seen = new Set<string>();
   const content = (doc.content ?? []).map((node) => {

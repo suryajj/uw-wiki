@@ -251,11 +251,19 @@ export type MergeabilityStatus =
   | "needs_rebase"
   | "conflict";
 
+/**
+ * A single per-section diff entry in a proposal patchset. The kind of
+ * change is inferred from which of `originalSectionJson` and
+ * `proposedSectionJson` are null:
+ *   - both populated → modification (replace section in place)
+ *   - original null, proposed populated → addition (append new section)
+ *   - original populated, proposed null → deletion (remove section)
+ */
 export type SectionDiffEntry = {
   sectionSlug: string;
   baseSectionHash: string;
   originalSectionJson: ProseMirrorDoc | null;
-  proposedSectionJson: ProseMirrorDoc;
+  proposedSectionJson: ProseMirrorDoc | null;
   diffJson: unknown;
   mergeabilityStatus: MergeabilityStatus;
 };

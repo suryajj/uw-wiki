@@ -38,13 +38,47 @@ export function WikiArticleShell({
   const [rationale, setRationale] = useState("");
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
 
-  // `sections` is reactive: starts from the loaded content and re-derives
-  // every time the editor's doc changes. Without this, brand-new H2 headings
-  // typed by the contributor wouldn't appear in the "Sections in this
-  // proposal" pill list — they'd be invisible to both the contributor and
-  // the reviewer even though they're in the submitted JSON.
-  const [sections, setSections] = useState(() => extractSections(initialContent));
-  const isEmpty = sections.length === 0 || sections.every(({ body }) => body.length === 0);
+  // Track BOTH the base sections (what shipped on the live page when this
+  // edit session opened) and the current proposed sections (live editor
+  // doc). `displaySections` is the union — every base section + every
+  // brand-new section the user typed. Each entry carries a `kind` so the
+  // pill UI can show "modified", "added", or "removed". Without tracking
+  // the base side, deletions are invisible to both the contributor and
+  // the reviewer and never apply on accept.
+  const baseSections = useMemo(() => extractSections(initialContent), [initialContent]);
+  const [proposedSections, setProposedSections] = useState(baseSections);
+  const displaySections = useMemo(() => {
+    const proposedBySlug = new Map(proposedSections.map((s) => [s.slug, s]));
+    const baseSlugs = new Set(baseSections.map((s) => s.slug));
+    // 1) Walk proposed sections in their authored order. Each is either
+    //    "kept" (also in base) or "new" (only in proposed). Explicit type
+    //    annotation so the push of "deleted" entries below stays valid.
+    type DisplayEntry = {
+      slug: string;
+      title: string;
+      kind: "kept" | "new" | "deleted";
+    };
+    const ordered: DisplayEntry[] = proposedSections.map((section) => ({
+      slug: section.slug,
+      title: section.title,
+      kind: baseSlugs.has(section.slug) ? "kept" : "new",
+    }));
+    // 2) Append any base sections that no longer appear in the proposed
+    //    doc — those are deletions.
+    for (const baseSection of baseSections) {
+      if (!proposedBySlug.has(baseSection.slug)) {
+        ordered.push({
+          slug: baseSection.slug,
+          title: baseSection.title,
+          kind: "deleted",
+        });
+      }
+    }
+    return ordered;
+  }, [baseSections, proposedSections]);
+  const isEmpty =
+    proposedSections.length === 0 ||
+    proposedSections.every(({ body }) => body.length === 0);
 
   const editor = useEditor({
     extensions: editorExtensions,
@@ -53,7 +87,14 @@ export function WikiArticleShell({
     editorProps: {
       attributes: {
         class:
-          "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-h2:text-3xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-3 prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
+          // `text-foreground` is added explicitly so the editor's body text
+          // follows the theme variable in BOTH light and dark modes. Without
+          // it, prose-neutral's hard-coded body color wins in light mode and
+          // the typed text renders as the dark-mode tone on a light surface
+          // (low contrast). The `[--tw-prose-body:var(--foreground)]`
+          // override alone isn't reliable across Tailwind versions because
+          // cascade order with `prose-neutral` isn't guaranteed.
+          "min-h-[60vh] w-full bg-transparent p-6 outline-none prose prose-neutral dark:prose-invert max-w-none font-serif text-foreground [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground prose-li:text-foreground prose-h2:text-3xl prose-h2:font-semibold prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-xl prose-h3:font-medium prose-h3:mt-6 prose-h3:mb-3 prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30",
       },
       handleDrop: (_view, event) => handleEditorDrop(event as unknown as DragEvent),
       // Normalize Unicode superscript digits (e.g. ¹²) into [12] BEFORE the
@@ -98,43 +139,57 @@ export function WikiArticleShell({
     };
   }, [mode, editor, pageId, pageVersionId]);
 
-  const sectionSlugs = useMemo(
-    () => sections.map((section) => section.slug),
-    [sections],
+  const allSectionSlugs = useMemo(
+    () => displaySections.map((section) => section.slug),
+    [displaySections],
   );
 
   useEffect(() => {
-    if (mode === "edit") setSelectedSlugs(sectionSlugs);
-    // We want this to fire only on the mode->edit transition; subsequent
-    // edits update selectedSlugs through the editor.on("update") handler
-    // below so the user's manual checkbox toggles aren't clobbered.
+    // On mode → edit, default-select EVERY relevant slug (kept, new, AND
+    // deleted). The user can opt out via checkbox if they want to scope
+    // their proposal narrower than what they actually changed.
+    if (mode === "edit") setSelectedSlugs(allSectionSlugs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Recompute sections live from the editor doc and append any newly-added
-  // slugs to `selectedSlugs` so a brand-new H2 shows up as a selected pill
-  // without the contributor having to do anything. Slugs that no longer
-  // exist (heading was deleted) get pruned out of the selection too.
+  // Live-sync the proposed section list as the user types. Auto-include
+  // both freshly added headings AND the slugs of headings the user just
+  // deleted (so deletions actually flow through to the server). The
+  // user's manual opt-outs survive.
   useEffect(() => {
     if (!editor) return;
     const handler = () => {
       const next = extractSections(editor.getJSON() as ProseMirrorDoc);
-      setSections(next);
+      setProposedSections(next);
+      const baseSlugs = new Set(baseSections.map((s) => s.slug));
+      const proposedSlugs = new Set(next.map((s) => s.slug));
+      // Valid universe: any slug that's in base or in proposed.
+      const validSlugs = new Set<string>([...baseSlugs, ...proposedSlugs]);
       setSelectedSlugs((prev) => {
-        const validSlugs = new Set(next.map((s) => s.slug));
         const prevSet = new Set(prev);
-        const merged = prev.filter((slug) => validSlugs.has(slug));
+        // Drop slugs that aren't in the valid universe (shouldn't really
+        // happen but defensive — e.g. stale slug from a discarded draft).
+        const kept = prev.filter((slug) => validSlugs.has(slug));
+        const result = [...kept];
+        // Auto-add any new heading the user typed.
         for (const section of next) {
-          if (!prevSet.has(section.slug)) merged.push(section.slug);
+          if (!prevSet.has(section.slug)) result.push(section.slug);
         }
-        return merged;
+        // Auto-add any base section the user just deleted (slug in base
+        // but not in proposed AND not already tracked).
+        for (const baseSection of baseSections) {
+          if (!proposedSlugs.has(baseSection.slug) && !prevSet.has(baseSection.slug)) {
+            result.push(baseSection.slug);
+          }
+        }
+        return result;
       });
     };
     editor.on("update", handler);
     return () => {
       editor.off("update", handler);
     };
-  }, [editor]);
+  }, [editor, baseSections]);
 
   const insertImage = useCallback(
     async (file: File) => {
@@ -303,17 +358,37 @@ export function WikiArticleShell({
               Sections in this proposal
             </legend>
             <div className="flex flex-wrap gap-2">
-              {sections.map((section) => {
+              {displaySections.map((section) => {
                 const checked = selectedSlugs.includes(section.slug);
+                // Visual cue for each pill: kept (default), new (emerald
+                // outline when unchecked, green when checked), deleted
+                // (red outline + strikethrough). Tells the contributor at
+                // a glance what each section means in the proposal.
+                const isNew = section.kind === "new";
+                const isDeleted = section.kind === "deleted";
+                const baseClass =
+                  "cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors duration-150";
+                const checkedClass = isDeleted
+                  ? "border-destructive bg-destructive text-background line-through"
+                  : isNew
+                    ? "border-emerald-500 bg-emerald-500 text-background"
+                    : "border-foreground bg-foreground text-background";
+                const uncheckedClass = isDeleted
+                  ? "border-destructive/60 text-destructive line-through hover:border-destructive"
+                  : isNew
+                    ? "border-emerald-500/60 text-emerald-500 hover:border-emerald-500"
+                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground";
                 return (
                   <label
                     key={section.slug}
-                    className={
-                      "cursor-pointer rounded-full border px-3 py-1 text-xs transition-colors duration-150 " +
-                      (checked
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border text-muted-foreground hover:border-foreground hover:text-foreground")
+                    title={
+                      isDeleted
+                        ? "This section will be removed when the proposal is accepted."
+                        : isNew
+                          ? "This section will be added."
+                          : "This section will be modified."
                     }
+                    className={`${baseClass} ${checked ? checkedClass : uncheckedClass}`}
                   >
                     <input
                       type="checkbox"
@@ -328,6 +403,7 @@ export function WikiArticleShell({
                       }}
                     />
                     {section.title}
+                    {isDeleted ? " (remove)" : isNew ? " (new)" : ""}
                   </label>
                 );
               })}

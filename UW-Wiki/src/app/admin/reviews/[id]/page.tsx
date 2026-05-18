@@ -23,6 +23,12 @@ export default async function ReviewDetailPage({ params }: PageProps) {
   const sectionDiffs = (patchset?.sectionDiffs ?? []) as Array<{
     sectionSlug: string;
     mergeabilityStatus: string;
+    // `originalSectionJson === null` → addition (no live counterpart).
+    // `proposedSectionJson === null` → deletion (contributor removed the
+    // section entirely). Both nulls would be malformed and rejected by
+    // the server, so they can't reach this surface.
+    originalSectionJson: unknown | null;
+    proposedSectionJson: unknown | null;
     diffJson: Array<{ kind: string; text: string }>;
   }>;
 
@@ -69,7 +75,16 @@ export default async function ReviewDetailPage({ params }: PageProps) {
       <ReviewerActions
         proposalId={id}
         canAct={!isBlockedSelfReview}
-        canAccept={!isBlockedSelfReview && proposal.status === "pending" && overallMergeable}
+        // Accept whenever the proposal is in an actionable state AND fully
+        // mergeable. `changes_requested` is a soft pause — if the
+        // contributor (or a rebase) brings the proposal back to mergeable,
+        // the admin should be able to land it without first asking the
+        // contributor to re-submit.
+        canAccept={
+          !isBlockedSelfReview &&
+          (proposal.status === "pending" || proposal.status === "changes_requested") &&
+          overallMergeable
+        }
         canRequestChanges={!isBlockedSelfReview && proposal.status === "pending"}
         canReject={
           !isBlockedSelfReview &&
@@ -86,9 +101,20 @@ export default async function ReviewDetailPage({ params }: PageProps) {
               key={diff.sectionSlug}
               className="rounded-lg border border-border bg-card p-4"
             >
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="font-semibold">{diff.sectionSlug}</h2>
-                <MergeabilityBadge status={diff.mergeabilityStatus} />
+                <div className="flex items-center gap-2">
+                  {diff.proposedSectionJson === null ? (
+                    <span className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-destructive">
+                      Will delete
+                    </span>
+                  ) : diff.originalSectionJson === null ? (
+                    <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-emerald-500">
+                      New section
+                    </span>
+                  ) : null}
+                  <MergeabilityBadge status={diff.mergeabilityStatus} />
+                </div>
               </div>
               <p className="text-sm leading-6">
                 {(diff.diffJson ?? []).map((segment, index) => (

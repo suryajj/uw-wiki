@@ -11,9 +11,9 @@ type Props = {
 };
 
 export function DirectoryView({ orgs }: Props) {
-  // Default to grid (tile) view — surfaces tagline + dense visual scan; the
-  // List/Grid toggle below is preserved for users who prefer the compact list.
-  const [view, setView] = useState<"grid" | "list">("grid");
+  // Default to list — it's the denser, scan-friendlier layout. The toggle
+  // below stays so users who prefer the visual tile/grid can switch.
+  const [view, setView] = useState<"grid" | "list">("list");
 
   return (
     <div className="flex flex-col gap-10">
@@ -90,7 +90,7 @@ export function DirectoryView({ orgs }: Props) {
 
       {orgs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No organizations yet.
+          No articles yet.
         </p>
       ) : null}
     </div>

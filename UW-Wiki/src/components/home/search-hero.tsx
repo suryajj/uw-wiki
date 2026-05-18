@@ -169,7 +169,7 @@ function SearchHeroInner({ browseSection }: { browseSection?: ReactNode }) {
           placeholder={
             hasMessages
               ? "Ask a follow-up…"
-              : "Ask anything about UW organizations…"
+              : "Ask anything about UW articles…"
           }
         />
 
@@ -242,14 +242,14 @@ function ScrollDownCue() {
     <motion.button
       type="button"
       onClick={handleClick}
-      aria-label="Browse organizations below"
+      aria-label="Browse articles below"
       initial={{ opacity: 0 }}
       animate={{ opacity: visible ? 1 : 0 }}
       transition={{ duration: 0.4, delay: 0.6 }}
       style={{ pointerEvents: visible ? "auto" : "none" }}
       className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 text-muted-foreground/70 transition-colors duration-150 hover:text-foreground focus:outline-none"
     >
-      <span className="text-xs">or browse organizations below</span>
+      <span className="text-xs">or browse articles below</span>
       <motion.span
         animate={{ y: [0, 6, 0] }}
         transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
@@ -272,7 +272,7 @@ function EmptyHero() {
         wordStagger={0.09}
       />
       <BlurReveal
-        text="Ask about UW clubs, design teams, and campus organizations."
+        text="Ask about UW clubs, design teams, university programs, and more."
         as="p"
         className="max-w-xl text-base text-muted-foreground"
         baseDelay={0.45}

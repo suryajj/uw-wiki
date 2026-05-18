@@ -10,9 +10,11 @@ import { diffSections } from "@/lib/prosemirror/diff";
 import { emitNotification } from "@/lib/notifications/service";
 import { hashSection } from "@/lib/prosemirror/hash";
 import {
+  appendSection,
   extractSections,
   findSectionBySlug,
   preserveOfficialAttributes,
+  removeSection,
   replaceSection,
   sectionToProseMirrorDoc,
 } from "@/lib/prosemirror/sections";
@@ -54,8 +56,19 @@ export async function createProposal(
 
   const currentDoc = page.content_json as ProseMirrorDoc;
   const proposedDoc = input.proposedContentJson as ProseMirrorDoc;
-  const selectedSlugs =
-    input.sectionSlugs ?? extractChangedSectionSlugs(currentDoc, proposedDoc);
+  // CRITICAL: compute the change set from the actual doc diff and UNION
+  // with whatever the client sent. The client's hint is treated as
+  // additive only — it can ADD slugs to the proposal scope (e.g. include
+  // a section the contributor wants flagged for review even though they
+  // didn't materially change it) but it cannot REMOVE slugs that the
+  // diff says are changed. Without this, a stale client or autosaved
+  // draft could silently drop deletions: the user removes a section in
+  // the editor, but the cached client never includes the deleted slug
+  // in `sectionSlugs`, the server takes the client's word, and the
+  // deletion never lands on accept.
+  const computedSlugs = extractChangedSectionSlugs(currentDoc, proposedDoc);
+  const clientSlugs = input.sectionSlugs ?? [];
+  const selectedSlugs = Array.from(new Set([...computedSlugs, ...clientSlugs]));
   if (selectedSlugs.length === 0) {
     throw new ProposalError("VALIDATION_FAILED", "No changed sections found.");
   }
@@ -130,7 +143,25 @@ export async function createPatchset(
 
   const currentDoc = page.content_json as ProseMirrorDoc;
   const proposedDoc = input.proposedContentJson as ProseMirrorDoc;
-  const selectedSlugs = input.sectionSlugs ?? (detail.proposal.section_slugs as string[]);
+  // Same safety net as `createProposal`: always include the diff-derived
+  // slugs (so deletions can never be silently dropped by a stale client),
+  // then union with the client's hint and the original proposal's slug
+  // list (to keep continuity across patchsets).
+  const computedSlugs = extractChangedSectionSlugs(currentDoc, proposedDoc);
+  const clientSlugs = input.sectionSlugs ?? [];
+  const carryOver = (detail.proposal.section_slugs as string[]) ?? [];
+  // Filter the union down to slugs that actually exist on at least one
+  // side. A carry-over slug that's gone from both current and proposed
+  // (e.g. a previous patchset added a section, the page admin removed
+  // it, the new patchset doesn't add it back) would otherwise throw
+  // VALIDATION_FAILED inside buildSectionDiffs.
+  const validSlugs = new Set([
+    ...extractSections(currentDoc).map((s) => s.slug),
+    ...extractSections(proposedDoc).map((s) => s.slug),
+  ]);
+  const selectedSlugs = Array.from(
+    new Set([...computedSlugs, ...clientSlugs, ...carryOver]),
+  ).filter((slug) => validSlugs.has(slug));
   const sectionDiffs = buildSectionDiffs(currentDoc, proposedDoc, selectedSlugs);
   const mergeability = computeOverallMergeability(sectionDiffs);
   const nextPatchsetNumber = Number(detail.proposal.current_patchset_number ?? 1) + 1;
@@ -218,11 +249,36 @@ export async function refreshMergeability(id: string): Promise<MergeabilityStatu
   const diffs = (detail.currentPatchset.sectionDiffs ?? []) as SectionDiffEntry[];
   const refreshed = diffs.map((diff) => {
     const currentSection = findSectionBySlug(currentDoc, diff.sectionSlug);
-    const status: MergeabilityStatus = !currentSection
-      ? "conflict"
-      : hashSection(sectionToProseMirrorDoc(currentSection)) === diff.baseSectionHash
-        ? "mergeable"
-        : "needs_rebase";
+    const isDeletion = diff.proposedSectionJson === null;
+    let status: MergeabilityStatus;
+
+    if (isDeletion) {
+      // Three sub-cases for "delete this section":
+      //   - section is already gone (someone else deleted it after this PR
+      //     was opened) → mergeable, the accept will be a no-op
+      //   - section still exists AND base hash matches → mergeable, accept
+      //     removes it
+      //   - section still exists BUT base hash differs → conflict, the
+      //     contributor would be deleting content they didn't see; force
+      //     a rebase so they can re-confirm
+      if (!currentSection) status = "mergeable";
+      else if (
+        hashSection(sectionToProseMirrorDoc(currentSection)) === diff.baseSectionHash
+      ) {
+        status = "mergeable";
+      } else {
+        status = "needs_rebase";
+      }
+    } else if (!currentSection) {
+      // Pure addition — nothing on the live page to conflict with.
+      status = "mergeable";
+    } else {
+      // Modification — must match the base the contributor branched from.
+      status =
+        hashSection(sectionToProseMirrorDoc(currentSection)) === diff.baseSectionHash
+          ? "mergeable"
+          : "needs_rebase";
+    }
     return { ...diff, mergeabilityStatus: status };
   });
   const overall = computeOverallMergeability(refreshed);
@@ -248,8 +304,18 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
   ) {
     throw new ProposalError("FORBIDDEN", "Reviewers cannot accept their own proposal.");
   }
-  if (detail.proposal.status !== "pending") {
-    throw new ProposalError("INVALID_STATE", "Only pending proposals can be accepted.");
+  // Accept from either `pending` or `changes_requested` — a proposal that
+  // was sent back for changes is still alive and can be landed once it's
+  // mergeable again (e.g. after the contributor rebased or the admin
+  // approves the existing content as-is).
+  if (
+    detail.proposal.status !== "pending" &&
+    detail.proposal.status !== "changes_requested"
+  ) {
+    throw new ProposalError(
+      "INVALID_STATE",
+      `Cannot accept proposal in '${detail.proposal.status}' state.`,
+    );
   }
   const overall = await refreshMergeability(id);
   if (overall !== "mergeable") {
@@ -272,20 +338,22 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
   const sectionSlugs = detail.proposal.section_slugs as string[];
   const diffs = detail.currentPatchset.sectionDiffs as SectionDiffEntry[];
 
-  // FRD-4 §6.1 step 5: every targeted section must still exist on the live
-  // page. Silently skipping a missing slug would commit a "successful"
-  // accept that didn't apply the contributor's intended edits.
+  // Apply each diff to the live page doc.
+  //   - Deletion (proposedSectionJson is null) → drop the matching section
+  //     from the live doc. If it's already gone (someone else deleted it
+  //     after this PR was opened), no-op.
+  //   - Modification (matching section exists in live doc) → replace in
+  //     place, preserving the admin-set `official` flag on the heading.
+  //   - Addition (no matching section in live doc) → append to the end.
+  //     Order follows `diffs` (proposed-doc order).
+  // The "modification but base shifted" case is caught upstream by the
+  // `refreshMergeability` → `overall !== "mergeable"` guard at the top of
+  // this function.
   for (const diff of diffs) {
-    const current = findSectionBySlug(mergedDoc, diff.sectionSlug);
-    if (!current) {
-      await admin
-        .from("edit_proposals")
-        .update({ status: "needs_rebase", mergeability_status: "conflict" })
-        .eq("id", id);
-      throw new ProposalError(
-        "CONFLICT",
-        `Section "${diff.sectionSlug}" is no longer on the page. Rebase required.`,
-      );
+    if (diff.proposedSectionJson === null) {
+      const current = findSectionBySlug(mergedDoc, diff.sectionSlug);
+      if (current) mergedDoc = removeSection(mergedDoc, current);
+      continue;
     }
     const proposedSection = extractSections(diff.proposedSectionJson)[0];
     if (!proposedSection) {
@@ -294,12 +362,21 @@ export async function acceptProposal(id: string, reviewer: CurrentUser) {
         `Patchset section "${diff.sectionSlug}" has no content.`,
       );
     }
-    mergedDoc = replaceSection(
-      mergedDoc,
-      current,
-      preserveOfficialAttributes(current, proposedSection.heading),
-      proposedSection.body,
-    );
+    const current = findSectionBySlug(mergedDoc, diff.sectionSlug);
+    if (current) {
+      mergedDoc = replaceSection(
+        mergedDoc,
+        current,
+        preserveOfficialAttributes(current, proposedSection.heading),
+        proposedSection.body,
+      );
+    } else {
+      mergedDoc = appendSection(
+        mergedDoc,
+        proposedSection.heading,
+        proposedSection.body,
+      );
+    }
   }
 
   const isReviewerAffiliated = await isUserAffiliated(reviewer.id, org.id);
@@ -440,22 +517,38 @@ async function loadPage(pageId: string) {
   return { ...data, organizations: org };
 }
 
+/**
+ * Compute the set of section slugs the proposal needs to act on:
+ *   - any section in `proposed` that is missing from `current` (new),
+ *   - any section in `proposed` whose hash differs from `current` (modified),
+ *   - any section in `current` that is missing from `proposed` (deleted).
+ *
+ * Without the deletion arm, contributors who removed an entire section
+ * would have the change silently dropped on accept — the page would keep
+ * the section the user explicitly deleted.
+ */
 function extractChangedSectionSlugs(
   currentDoc: ProseMirrorDoc,
   proposedDoc: ProseMirrorDoc,
 ): string[] {
   const current = extractSections(currentDoc);
   const proposed = extractSections(proposedDoc);
-  return proposed
-    .filter((section) => {
-      const match = current.find((base) => base.slug === section.slug);
-      return (
-        !match ||
-        hashSection(sectionToProseMirrorDoc(match)) !==
-          hashSection(sectionToProseMirrorDoc(section))
-      );
-    })
-    .map((section) => section.slug);
+  const proposedSlugs = new Set(proposed.map((s) => s.slug));
+  const changed: string[] = [];
+  for (const section of proposed) {
+    const match = current.find((base) => base.slug === section.slug);
+    if (
+      !match ||
+      hashSection(sectionToProseMirrorDoc(match)) !==
+        hashSection(sectionToProseMirrorDoc(section))
+    ) {
+      changed.push(section.slug);
+    }
+  }
+  for (const baseSection of current) {
+    if (!proposedSlugs.has(baseSection.slug)) changed.push(baseSection.slug);
+  }
+  return changed;
 }
 
 function buildSectionDiffs(
@@ -466,16 +559,31 @@ function buildSectionDiffs(
   return sectionSlugs.map((slug) => {
     const original = findSectionBySlug(currentDoc, slug);
     const proposed = findSectionBySlug(proposedDoc, slug);
-    if (!proposed) throw new ProposalError("VALIDATION_FAILED", `Missing proposed section ${slug}.`);
+    // It's legitimate for either side to be null:
+    //   - original null, proposed populated → addition
+    //   - original populated, proposed null → deletion
+    //   - both null is a malformed selection (caller passed a slug that
+    //     doesn't exist anywhere); reject it explicitly.
+    if (!original && !proposed) {
+      throw new ProposalError(
+        "VALIDATION_FAILED",
+        `Section '${slug}' is not present in either the live page or the proposed doc.`,
+      );
+    }
     const originalDoc = original ? sectionToProseMirrorDoc(original) : null;
-    const proposedDocSection = sectionToProseMirrorDoc(proposed);
+    const proposedDocSection = proposed ? sectionToProseMirrorDoc(proposed) : null;
     return {
       sectionSlug: slug,
       baseSectionHash: originalDoc ? hashSection(originalDoc) : "",
       originalSectionJson: originalDoc,
       proposedSectionJson: proposedDocSection,
       diffJson: diffSections(originalDoc, proposedDocSection),
-      mergeabilityStatus: original ? "mergeable" : "conflict",
+      // All three change kinds (add, modify, delete) start mergeable. If
+      // the base shifts under a modification or deletion before accept,
+      // `refreshMergeability` flips them to `needs_rebase`. Pure additions
+      // can never conflict because nothing on the live page changes when
+      // we append them.
+      mergeabilityStatus: "mergeable",
     };
   });
 }
@@ -601,7 +709,7 @@ function mapPatchset(row: unknown): EditProposalPatchsetRow {
       section_slug: string;
       base_section_hash: string;
       original_section_json: ProseMirrorDoc | null;
-      proposed_section_json: ProseMirrorDoc;
+      proposed_section_json: ProseMirrorDoc | null;
       diff_json: unknown;
       mergeability_status: MergeabilityStatus;
     }>;

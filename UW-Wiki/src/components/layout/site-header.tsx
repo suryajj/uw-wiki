@@ -17,7 +17,7 @@ export async function SiteHeader() {
             className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
             href="/orgs"
           >
-            Orgs
+            Articles
           </Link>
           {user?.role === "reviewer" || user?.role === "admin" ? (
             <Link

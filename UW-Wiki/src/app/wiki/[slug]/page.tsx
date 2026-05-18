@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BookmarkButton } from "@/components/bookmarks/bookmark-button";
+import { EditableArticleTitle } from "@/components/wiki/editable-article-title";
 import {
   ProposeEditButton,
   ViewHistoryButton,
@@ -98,21 +99,24 @@ export default async function WikiPage({ params }: PageProps) {
             <span>Last updated {formatRelativeTime(page.lastModifiedAt)}</span>
           </p>
 
-          <header className="mb-6 flex items-start justify-between gap-4">
-            <h1 className="flex-1 text-5xl font-semibold tracking-tight text-foreground">
-              {page.orgName}
-            </h1>
-            <div className="flex shrink-0 items-center gap-1.5 pt-2">
-              <BookmarkButton
-                pageId={page.pageId}
-                initialState={bookmarkState}
-                isSignedIn={!!user}
-                returnTo={`/wiki/${page.pageSlug}`}
-              />
-              <ViewHistoryButton href={`/wiki/${page.pageSlug}/history`} />
-              <ProposeEditButton />
-            </div>
-          </header>
+          <EditableArticleTitle
+            orgId={page.orgId}
+            initialOrgName={page.orgName}
+            initialTagline={page.tagline}
+            canEdit={user?.role === "admin"}
+            rightSlot={
+              <>
+                <BookmarkButton
+                  pageId={page.pageId}
+                  initialState={bookmarkState}
+                  isSignedIn={!!user}
+                  returnTo={`/wiki/${page.pageSlug}`}
+                />
+                <ViewHistoryButton href={`/wiki/${page.pageSlug}/history`} />
+                <ProposeEditButton />
+              </>
+            }
+          />
 
           {/* Float Pulse to the right so article text wraps beneath it */}
           <aside className="mb-4 w-full lg:float-right lg:ml-8 lg:w-[320px]">

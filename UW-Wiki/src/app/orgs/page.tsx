@@ -8,12 +8,12 @@ export default async function OrgsPage() {
 
   return (
     <main className="flex min-h-screen w-full flex-col gap-10 px-6 py-10 md:px-10 lg:px-16">
-      <header className="flex flex-col gap-2 pt-4">
+      <header className="flex flex-col items-center gap-2 pt-4 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-          Teams &amp; Organizations
+          Articles
         </h1>
         <p className="text-sm text-muted-foreground">
-          Browse UW design teams, engineering clubs, and other campus orgs.
+          Every UW design team, club, and university program in the wiki.
         </p>
       </header>
 
