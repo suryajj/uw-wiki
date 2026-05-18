@@ -6,7 +6,7 @@ import {
 } from "ai";
 import { z } from "zod";
 
-import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
+import { buildSystemPrompt } from "@/lib/ai/prompts";
 import { ragTools } from "@/lib/ai/tools";
 import { openrouter } from "@/lib/ai/provider";
 import { apiError, logServerError, parseJson } from "@/lib/api/errors";
@@ -17,6 +17,7 @@ import {
   retryAfterSeconds,
 } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { listDirectoryOrgs } from "@/lib/wiki/data";
 
 export const runtime = "nodejs";
 
@@ -71,9 +72,21 @@ export async function POST(req: Request) {
     );
   }
 
+  // Pull the full catalog of articles once per request so the model has a
+  // deterministic list of known slugs + names + categories baked into the
+  // system prompt. This eliminates a large class of fuzzy-name failures
+  // (e.g. "midnight solar" → "Midnight Sun Solar Rayce Car") that used to
+  // bottom out at "I don't have info on X". Lightweight Supabase query;
+  // failures here degrade to an empty catalog so the assistant still runs.
+  const catalog = await listDirectoryOrgs().catch((err) => {
+    logServerError("api.search.catalog", err);
+    return [];
+  });
+  const systemPrompt = buildSystemPrompt(catalog);
+
   const result = streamText({
     model: openrouter.chat("google/gemini-2.5-flash"),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: convertToModelMessages(messages),
     tools: ragTools,
     // 8 steps is enough for: get_org_data → get_page_content → optional
