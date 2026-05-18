@@ -13,8 +13,6 @@ const prefsSchema = z.object({
   inAppCommentReply: z.boolean().optional(),
   emailCommentReply: z.boolean().optional(),
   inAppPageUpdate: z.boolean().optional(),
-  emailPageUpdateDigest: z.boolean().optional(),
-  pageUpdateDigestFrequency: z.enum(["daily", "weekly", "never"]).optional(),
 });
 
 export async function GET() {

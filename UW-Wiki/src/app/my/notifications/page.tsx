@@ -24,7 +24,7 @@ export default async function MyNotificationsPage({ searchParams }: PageProps) {
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl font-semibold tracking-tight text-foreground">Notifications</h1>
-          <p className="text-muted-foreground">Proposal updates, replies, and page digests.</p>
+          <p className="text-muted-foreground">Proposal updates and replies.</p>
         </div>
         <MarkAllNotificationsReadButton />
       </header>

@@ -162,8 +162,6 @@ export function NotificationPreferencesForm({
           inAppCommentReply: next.inAppCommentReply,
           emailCommentReply: next.emailCommentReply,
           inAppPageUpdate: next.inAppPageUpdate,
-          emailPageUpdateDigest: next.emailPageUpdateDigest,
-          pageUpdateDigestFrequency: next.pageUpdateDigestFrequency,
         }),
       });
       if (!res.ok) throw new Error("Could not save preferences.");
@@ -208,28 +206,6 @@ export function NotificationPreferencesForm({
           checked={prefs.inAppPageUpdate}
           onChange={(checked) => save({ ...prefs, inAppPageUpdate: checked })}
         />
-        <PreferenceToggle
-          label="Bookmarked page update digest email"
-          checked={prefs.emailPageUpdateDigest}
-          onChange={(checked) => save({ ...prefs, emailPageUpdateDigest: checked })}
-        />
-        <label className="text-sm">
-          Page update digest frequency
-          <select
-            value={prefs.pageUpdateDigestFrequency}
-            onChange={(event) =>
-              save({
-                ...prefs,
-                pageUpdateDigestFrequency: event.target.value as "daily" | "weekly" | "never",
-              })
-            }
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2"
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="never">Never</option>
-          </select>
-        </label>
       </div>
     </section>
   );

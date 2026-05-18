@@ -17,8 +17,6 @@ const DEFAULT_PREFS = {
   in_app_comment_reply: true,
   email_comment_reply: true,
   in_app_page_update: true,
-  email_page_update_digest: true,
-  page_update_digest_frequency: "weekly",
 };
 
 export async function ensureNotificationPreferences(userId: string): Promise<NotificationPreferences> {
@@ -121,8 +119,6 @@ export async function updateNotificationPreferences(
     inAppCommentReply: boolean;
     emailCommentReply: boolean;
     inAppPageUpdate: boolean;
-    emailPageUpdateDigest: boolean;
-    pageUpdateDigestFrequency: "daily" | "weekly" | "never";
   }>,
 ) {
   await ensureNotificationPreferences(userId);
@@ -135,8 +131,6 @@ export async function updateNotificationPreferences(
       in_app_comment_reply: updates.inAppCommentReply,
       email_comment_reply: updates.emailCommentReply,
       in_app_page_update: updates.inAppPageUpdate,
-      email_page_update_digest: updates.emailPageUpdateDigest,
-      page_update_digest_frequency: updates.pageUpdateDigestFrequency,
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId)
@@ -189,7 +183,6 @@ function inAppPrefEnabled(prefs: NotificationPreferences, type: NotificationType
 function emailPrefEnabled(prefs: NotificationPreferences, type: NotificationType) {
   if (type.startsWith("pr.")) return prefs.emailPrStatus;
   if (type === "comment.reply") return prefs.emailCommentReply;
-  if (type === "page.updated") return prefs.emailPageUpdateDigest;
   return false;
 }
 
@@ -230,9 +223,6 @@ function mapPreferences(row: Record<string, unknown>): NotificationPreferences {
     inAppCommentReply: row.in_app_comment_reply as boolean,
     emailCommentReply: row.email_comment_reply as boolean,
     inAppPageUpdate: (row.in_app_page_update as boolean | undefined) ?? true,
-    emailPageUpdateDigest: row.email_page_update_digest as boolean,
-    pageUpdateDigestFrequency: row.page_update_digest_frequency as "daily" | "weekly" | "never",
-    lastDigestSentAt: row.last_digest_sent_at as string | null,
     updatedAt: row.updated_at as string,
   };
 }

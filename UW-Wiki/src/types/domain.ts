@@ -439,8 +439,5 @@ export type NotificationPreferences = {
   inAppCommentReply: boolean;
   emailCommentReply: boolean;
   inAppPageUpdate: boolean;
-  emailPageUpdateDigest: boolean;
-  pageUpdateDigestFrequency: "daily" | "weekly" | "never";
-  lastDigestSentAt: string | null;
   updatedAt: string;
 };
