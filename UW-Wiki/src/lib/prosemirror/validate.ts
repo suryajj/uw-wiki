@@ -106,7 +106,11 @@ export function validateProposalSection(node: unknown): ValidationResult {
 
 function validateNode(
   node: ProseMirrorNode,
-  isRoot: boolean,
+  // Reserved: callers still pass `isRoot` (the doc root vs. a descendant)
+  // in case future rules need it. The previous "only H2 at root, only H2
+  // deeper" branching was removed when we standardized on allowing H2+H3
+  // anywhere inside the body (matches editor StarterKit config).
+  _isRoot: boolean,
   ctx: WalkContext,
 ): ValidationResult {
   if (!isObject(node)) return fail(`Encountered a non-object node at ${ctx.path}.`);
@@ -126,19 +130,31 @@ function validateNode(
   }
 
   // Update the walk context as we descend so error messages downstream
-  // can pinpoint which section the contributor needs to inspect.
+  // can pinpoint which section the contributor needs to inspect. We
+  // intentionally skip the doc root in the breadcrumb (otherwise root → its
+  // own children would render as "doc > doc > ...", which is meaningless
+  // and historically confused contributors looking at error messages).
   let nextCtx = ctx;
   if (node.type === "heading" && Number(node.attrs?.level) === 2) {
     const title = collectText(node).trim() || "untitled";
     nextCtx = { path: `section "${title}"`, sectionTitle: title };
-  } else if (node.type !== "text") {
+  } else if (node.type !== "text" && node.type !== "doc") {
     nextCtx = { ...ctx, path: `${ctx.path} > ${node.type}` };
   }
 
   if (node.type === "heading") {
     const level = Number(node.attrs?.level);
-    if (isRoot ? !ALLOWED_HEADING_LEVELS.has(level) : !SECTION_HEADING_LEVELS.has(level)) {
-      return fail(`Heading nodes must be level 2 or 3 (at ${ctx.path}).`);
+    // Allow H2 and H3 ANYWHERE inside the doc body — this matches the
+    // editor's StarterKit config (`heading: { levels: [2, 3] }`). H2s
+    // delimit sections; H3s are valid sub-headings within a section.
+    // The stricter "must be H2" rule is enforced only in
+    // `validateProposalSection`, which validates a single section heading
+    // submitted on its own. Putting it here too rejected any contributor
+    // who used an H3 sub-heading, even though the editor produced it.
+    if (!ALLOWED_HEADING_LEVELS.has(level)) {
+      return fail(
+        `Heading at ${ctx.path} has level ${level || "(missing)"}; only H2 (##) and H3 (###) are allowed.`,
+      );
     }
     if (node.attrs && "official" in node.attrs) {
       return fail(
