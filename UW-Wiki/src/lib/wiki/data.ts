@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { computeLifecycleStatus } from "@/lib/lifecycle";
 import { ensureSectionSlugs } from "@/lib/prosemirror/sections";
+import { getLatestHeaderImage } from "@/lib/storage/org-images";
 import type {
   DirectoryOrg,
   ExternalLink,
@@ -145,6 +146,12 @@ export async function getWikiPage(slug: string): Promise<WikiPageData | null> {
     }),
   );
 
+  // Latest accepted header image (if any). Separate query — the join via
+  // `pages → organizations → org_images` would have to filter on status
+  // AND order/limit on a child relation, which Supabase's nested select
+  // can't express cleanly. One extra round-trip is fine for an SSR page.
+  const headerImage = await getLatestHeaderImage(org.id);
+
   // FRD-2 §2.5 #1: render the wiki body from the current page_version, not
   // the legacy `pages.content_json` mirror. Fall back to the mirror only when
   // the FK is null (e.g. a freshly seeded page without a version row).
@@ -168,6 +175,7 @@ export async function getWikiPage(slug: string): Promise<WikiPageData | null> {
     isAdminSeeded,
     pulseAggregates,
     externalLinks,
+    headerImage,
     lifecycleStatus,
     lifecycleConfig,
   };

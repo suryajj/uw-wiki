@@ -17,7 +17,9 @@ export type AdminAction =
   | "add_affiliation"
   | "revoke_affiliation"
   | "publish_cold_start"
-  | "update_org_metadata";
+  | "update_org_metadata"
+  | "accept_org_image"
+  | "reject_org_image";
 
 export async function logAdminActivity(input: {
   actorId: string | null;

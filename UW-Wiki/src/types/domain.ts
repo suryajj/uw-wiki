@@ -141,6 +141,33 @@ export type ExternalLink = {
   displayOrder: number;
 };
 
+/**
+ * One row from `org_images`. `kind='header'` is the article banner shown
+ * above The Pulse on the wiki page; `kind='inline'` is reserved for
+ * editor-embedded images. `status='pending'` rows are admin-only;
+ * visitors only ever see `accepted` rows on the live page.
+ */
+export type OrgImageKind = "header" | "inline";
+export type OrgImageStatus = "pending" | "accepted" | "rejected";
+
+export type OrgImage = {
+  id: string;
+  orgId: string;
+  kind: OrgImageKind;
+  status: OrgImageStatus;
+  /** Path inside the `wiki-images` Supabase bucket. */
+  storagePath: string;
+  /** Public-facing URL (resolved server-side from `storagePath`). */
+  url: string;
+  alt: string;
+  caption: string | null;
+  uploadedBy: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+};
+
 export type DirectoryOrg = {
   id: string;
   orgSlug: string;
@@ -166,6 +193,8 @@ export type WikiPageData = {
   isAdminSeeded: boolean;
   pulseAggregates: PulseAggregate[];
   externalLinks: ExternalLink[];
+  /** Latest accepted `kind='header'` image, or null. */
+  headerImage: OrgImage | null;
   lifecycleStatus: LifecycleStatus;
   lifecycleConfig: LifecycleConfig | null;
 };

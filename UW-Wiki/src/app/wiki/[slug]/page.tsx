@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BookmarkButton } from "@/components/bookmarks/bookmark-button";
+import { ArticleHeaderImage } from "@/components/wiki/article-header-image";
 import { EditableArticleTitle } from "@/components/wiki/editable-article-title";
 import {
   ProposeEditButton,
@@ -118,8 +119,18 @@ export default async function WikiPage({ params }: PageProps) {
             }
           />
 
-          {/* Float Pulse to the right so article text wraps beneath it */}
+          {/* Float Pulse (and its header image, if any) to the right so
+              article text wraps beneath them. ArticleHeaderImage renders
+              nothing when there's no image AND the viewer can't upload
+              one — so the layout stays unchanged on un-imaged articles
+              for anonymous visitors. */}
           <aside className="mb-4 w-full lg:float-right lg:ml-8 lg:w-[320px]">
+            <ArticleHeaderImage
+              orgId={page.orgId}
+              current={page.headerImage}
+              canSubmit={!!user}
+              isAdmin={user?.role === "admin"}
+            />
             <PulseSidebar
               orgId={page.orgId}
               category={page.category}

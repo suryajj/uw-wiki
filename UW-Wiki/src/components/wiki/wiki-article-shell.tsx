@@ -271,7 +271,17 @@ export function WikiArticleShell({
         ) : (
           <div
             id="wiki-article-body"
-            className="prose prose-neutral dark:prose-invert max-w-none font-serif [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-a:text-foreground prose-a:underline-offset-4 prose-blockquote:border-foreground/30"
+            // Mirrors the editor wrapper's color overrides (line ~97).
+            // The `[--tw-prose-bold:var(--foreground)]` arbitrary property
+            // alone is unreliable: Tailwind Typography's `prose-neutral`
+            // sets its own --tw-prose-bold and the cascade order isn't
+            // guaranteed, so in light mode `<strong>` text rendered near
+            // bullet labels ("Education", "Events", etc.) ended up
+            // invisible. Adding explicit `prose-strong:text-foreground`
+            // beats prose's own bold color via higher specificity, in
+            // both modes. Same belt-and-braces for headings/paragraphs/
+            // list items so theme switching never produces unreadable text.
+            className="prose prose-neutral dark:prose-invert max-w-none font-serif text-foreground [--tw-prose-body:var(--foreground)] [--tw-prose-headings:var(--foreground)] [--tw-prose-lead:var(--muted-foreground)] [--tw-prose-bold:var(--foreground)] [--tw-prose-counters:var(--muted-foreground)] [--tw-prose-bullets:var(--border)] [--tw-prose-hr:var(--border)] [--tw-prose-quotes:var(--foreground)] [--tw-prose-quote-borders:var(--border)] [--tw-prose-captions:var(--muted-foreground)] [--tw-prose-code:var(--foreground)] [--tw-prose-pre-code:var(--foreground)] [--tw-prose-pre-bg:var(--surface-2)] [--tw-prose-th-borders:var(--border)] [--tw-prose-td-borders:var(--border)] prose-headings:font-serif prose-headings:text-foreground prose-p:text-foreground prose-li:text-foreground prose-a:text-foreground prose-a:underline-offset-4 prose-strong:text-foreground prose-blockquote:border-foreground/30"
           >
             {renderProseMirrorDoc(initialContent, { decorateSections: true })}
           </div>
