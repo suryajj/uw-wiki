@@ -53,13 +53,13 @@ export function ArticleHeaderImage({
   return (
     <div className="mb-4 w-full lg:w-[320px]">
       {current ? (
-        <figure className="overflow-hidden rounded-md border border-border bg-[color:var(--surface)]">
+        <figure className="overflow-hidden rounded-md border border-border bg-background">
           {/* Box stays a stable 16:9 so the article layout doesn't shift
               with each uploader's aspect ratio. `object-contain` shows the
               FULL image (no cropping) and leaves letterbox / pillarbox
-              space painted with surface-2 so it reads as intentional
-              padding rather than a broken layout. */}
-          <div className="group relative aspect-[16/9] w-full bg-[color:var(--surface-2)]">
+              space painted with the page background so it blends in
+              seamlessly in both light and dark mode. */}
+          <div className="group relative aspect-[16/9] w-full bg-background">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={current.url}
