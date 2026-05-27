@@ -108,3 +108,44 @@ a {
 .prose > *:last-child {
   margin-bottom: 0;
 }
+
+/* ---------------------------------------------------------------------
+ * Citation back-link highlight.
+ *
+ * When the user clicks an inline `[N]` superscript in the article body,
+ * the URL hash becomes `#ref-N` and the browser scrolls to the matching
+ * <li> or <p> (which the renderer tags with `id="ref-N"` either from
+ * schema attr or text-content fallback). The `:target` pseudo-class then
+ * flashes a soft yellow highlight for ~1.6s so the reader's eye locks
+ * onto the matched reference even when the page didn't actually move
+ * (e.g. they clicked a reference whose target was already on-screen).
+ *
+ * Wikipedia uses this same pattern; the colour stays light enough not to
+ * obscure the text and fades to transparent so the effect is a one-shot
+ * acknowledgement, not a persistent style.
+ * ------------------------------------------------------------------- */
+@keyframes ref-target-flash {
+  0% {
+    background-color: rgb(255 235 59 / 0.45);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.ref-target:target {
+  animation: ref-target-flash 1.6s ease-out;
+  border-radius: 0.25rem;
+  /* Tiny inset so the flash reads as a highlight around the whole entry
+     rather than a bar that hugs only the text glyphs. */
+  padding: 0 0.25rem;
+  margin-left: -0.25rem;
+  margin-right: -0.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ref-target:target {
+    animation: none;
+    background-color: rgb(255 235 59 / 0.2);
+  }
+}

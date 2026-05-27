@@ -24,18 +24,57 @@ export function renderProseMirrorDoc(
   return content.map((node, index) => renderNode(node, `${index}`, options));
 }
 
+/**
+ * Pull the leading `[N]` from a block-level node so we can synthesize an
+ * `id="ref-N"` anchor for citation back-links — even when the contributor
+ * authored the References section as plain paragraphs / listItems WITHOUT
+ * the schema-level `refId` attribute the cold-start pipeline emits.
+ *
+ * This is the "make the link target findable" half of citation scroll-to;
+ * the body's `<a href="#ref-N">[N]</a>` is unchanged.
+ */
+function leadingRefId(node: ProseMirrorNode): number | null {
+  const text = collectText(node).trimStart();
+  const match = text.match(/^\[(\d+)\]/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+function collectText(node: ProseMirrorNode): string {
+  if (node.type === "text") return node.text ?? "";
+  const children = node.content;
+  if (!children) return "";
+  return children.map(collectText).join("");
+}
+
 function renderNode(
   node: ProseMirrorNode,
   key: string,
   options: RenderOptions,
 ): ReactNode {
   switch (node.type) {
-    case "paragraph":
+    case "paragraph": {
+      // Anchor fallback: if this paragraph's text starts with `[N]` (i.e.
+      // it's a plain-text reference entry like "[1] — Source — URL"),
+      // expose it as the `#ref-N` scroll target. Without this, citation
+      // back-links navigate to a hash that has no matching element when
+      // the contributor wrote References as paragraphs rather than the
+      // cold-start bulletList shape.
+      const paraRefId = leadingRefId(node);
+      const paraId = paraRefId !== null ? `ref-${paraRefId}` : undefined;
       return (
-        <p key={key} className="mb-4 leading-7 text-foreground">
+        <p
+          key={key}
+          id={paraId}
+          className={`mb-4 leading-7 text-foreground${
+            paraId ? " ref-target scroll-mt-24" : ""
+          }`}
+        >
           {renderChildren(node, key, options)}
         </p>
       );
+    }
     case "heading": {
       const level = Number(node.attrs?.level) || 2;
       const slug =
@@ -86,13 +125,23 @@ function renderNode(
         </ol>
       );
     case "listItem": {
+      // Two paths to the same anchor:
+      //   1) Schema-level refId attr (cold-start emits this on its
+      //      generated References bulletList).
+      //   2) Leading `[N]` text fallback (covers entries authored as a
+      //      plain list where the schema attr never made it, including
+      //      pre-`ListItemWithRefId` articles).
       const refIdAttr = Number(node.attrs?.refId);
-      const id =
-        Number.isInteger(refIdAttr) && refIdAttr >= 1
-          ? `ref-${refIdAttr}`
-          : undefined;
+      const fromAttr =
+        Number.isInteger(refIdAttr) && refIdAttr >= 1 ? refIdAttr : null;
+      const refId = fromAttr ?? leadingRefId(node);
+      const id = refId !== null ? `ref-${refId}` : undefined;
       return (
-        <li key={key} id={id} className={id ? "scroll-mt-20" : undefined}>
+        <li
+          key={key}
+          id={id}
+          className={id ? "ref-target scroll-mt-24" : undefined}
+        >
           {renderChildren(node, key, options)}
         </li>
       );
