@@ -97,7 +97,7 @@ export function EditableArticleTitle({
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-5xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground break-words sm:text-4xl md:text-5xl">
                 {orgName}
               </h1>
               {canEdit ? (

@@ -109,6 +109,14 @@ a {
   margin-bottom: 0;
 }
 
+/* Safety net: any link rendered inside prose (including ones that bypass
+   the ProseMirror link mark) wraps its URL on narrow viewports instead of
+   forcing horizontal page scroll. `anywhere` is gentler than `break-all`
+   on normal-word link text. */
+.prose a {
+  overflow-wrap: anywhere;
+}
+
 /* ---------------------------------------------------------------------
  * Citation back-link highlight.
  *

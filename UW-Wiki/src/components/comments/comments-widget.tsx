@@ -327,7 +327,7 @@ export function CommentsWidget({ pageId }: { pageId: string }) {
         </button>
       ) : null}
 
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Comments</h2>
           <p className="text-sm text-muted-foreground">

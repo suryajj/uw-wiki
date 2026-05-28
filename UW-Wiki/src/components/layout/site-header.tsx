@@ -3,23 +3,27 @@ import Link from "next/link";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LogoLink } from "@/components/layout/logo-link";
+import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
 export async function SiteHeader() {
   const user = await getCurrentUser();
+  const isAdmin = user?.role === "reviewer" || user?.role === "admin";
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
       <div className="flex w-full items-center justify-between px-6 py-4 md:px-10">
         <LogoLink />
 
-        <nav className="flex items-center gap-1 text-sm">
+        {/* Desktop nav — unchanged at md+ widths. Hidden below md so the
+            mobile drawer takes over without overflow. */}
+        <nav className="hidden items-center gap-1 text-sm md:flex">
           <Link
             className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
             href="/orgs"
           >
             Articles
           </Link>
-          {user?.role === "reviewer" || user?.role === "admin" ? (
+          {isAdmin ? (
             <Link
               className="rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
               href="/admin/reviews"
@@ -70,6 +74,20 @@ export async function SiteHeader() {
             </div>
           )}
         </nav>
+
+        {/* Mobile cluster — theme + bell stay visible as quick actions; the
+            hamburger opens the drawer with everything else. md:hidden so this
+            entire group disappears at the desktop breakpoint. */}
+        <div className="flex items-center gap-1 md:hidden">
+          <ThemeToggle />
+          {user ? <NotificationBell /> : null}
+          <MobileNavDrawer
+            isAuthenticated={!!user}
+            displayName={user?.displayName ?? null}
+            email={user?.email ?? null}
+            showAdmin={isAdmin}
+          />
+        </div>
       </div>
       {user && !user.emailVerifiedAt ? (
         <div className="border-t border-border bg-[color:var(--surface-2)] px-6 py-2 text-center text-xs text-muted-foreground md:px-10">

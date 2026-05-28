@@ -108,7 +108,7 @@ function OrgRow({ org }: { org: DirectoryOrg }) {
       href={href}
       className="group flex items-baseline justify-between gap-6 border-b border-border py-4 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
     >
-      <span className="min-w-[200px] text-lg font-medium text-foreground">
+      <span className="text-lg font-medium text-foreground sm:min-w-[200px]">
         {org.orgName}
       </span>
       <span className="hidden flex-1 truncate text-sm text-muted-foreground md:inline">

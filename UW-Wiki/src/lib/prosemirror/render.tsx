@@ -67,7 +67,7 @@ function renderNode(
         <p
           key={key}
           id={paraId}
-          className={`mb-4 leading-7 text-foreground${
+          className={`mb-4 break-words leading-7 text-foreground${
             paraId ? " ref-target scroll-mt-24" : ""
           }`}
         >
@@ -114,13 +114,13 @@ function renderNode(
     }
     case "bulletList":
       return (
-        <ul key={key} className="mb-4 list-disc space-y-1 pl-6 text-foreground">
+        <ul key={key} className="mb-4 list-disc space-y-1 break-words pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ul>
       );
     case "orderedList":
       return (
-        <ol key={key} className="mb-4 list-decimal space-y-1 pl-6 text-foreground">
+        <ol key={key} className="mb-4 list-decimal space-y-1 break-words pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ol>
       );
@@ -280,7 +280,7 @@ function applyMark(content: ReactNode, mark: Mark, key: string): ReactNode {
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline-offset-4 hover:underline"
+          className="break-all text-primary underline-offset-4 hover:underline"
         >
           {content}
         </a>
