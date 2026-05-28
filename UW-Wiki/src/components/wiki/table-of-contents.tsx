@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -54,8 +55,17 @@ export function TableOfContents({ entries }: { entries: TocEntry[] }) {
           }
         }}
       >
-        <summary className="flex cursor-pointer items-center justify-between py-3 text-sm text-muted-foreground">
-          <span className="uppercase tracking-[0.16em] text-[11px]">On this page</span>
+        <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2">
+            <ChevronRight
+              className={cn(
+                "size-3.5 shrink-0 transition-transform duration-150",
+                mobileOpen && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+            <span className="text-[11px] uppercase tracking-[0.16em]">On this page</span>
+          </span>
           <span className="text-xs">{entries.length} sections</span>
         </summary>
         <div className="pb-4">

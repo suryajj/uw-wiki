@@ -64,21 +64,25 @@ export function DirectoryView({ orgs }: Props) {
         if (inCategory.length === 0) return null;
 
         return (
-          <section key={category} aria-labelledby={`cat-${category}`} className="flex flex-col gap-3">
+          <section key={category} aria-labelledby={`cat-${category}`} className="flex flex-col">
+            {/* Section heading doubles as the top rule for the rows below.
+                `border-b` extends edge-to-edge across the screen so the
+                section reads as a single visual block even when there's
+                only one row in it. */}
             <h2
               id={`cat-${category}`}
-              className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
+              className="border-b border-border pb-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
             >
               {category}
             </h2>
             {view === "list" ? (
-              <div className="flex flex-col border-t border-border">
+              <div className="flex flex-col">
                 {inCategory.map((org) => (
                   <OrgRow key={org.id} org={org} />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-t border-l border-border">
+              <div className="grid grid-cols-1 border-l border-border md:grid-cols-2 lg:grid-cols-3">
                 {inCategory.map((org) => (
                   <OrgTile key={org.id} org={org} />
                 ))}
@@ -114,9 +118,6 @@ function OrgRow({ org }: { org: DirectoryOrg }) {
       <span className="hidden flex-1 truncate text-sm text-muted-foreground md:inline">
         {org.tagline ?? "No tagline yet."}
       </span>
-      <span className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        {org.category}
-      </span>
     </Link>
   );
 }
@@ -132,9 +133,6 @@ function OrgTile({ org }: { org: DirectoryOrg }) {
       <p className="line-clamp-3 text-sm text-muted-foreground">
         {org.tagline ?? "No tagline yet."}
       </p>
-      <span className="mt-auto pt-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        {org.category}
-      </span>
     </Link>
   );
 }
