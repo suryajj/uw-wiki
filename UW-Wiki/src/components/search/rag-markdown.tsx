@@ -36,7 +36,7 @@ export function RagMarkdown({ children }: { children: string }) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground underline-offset-4 hover:underline"
+              className="!text-[color:var(--link)] underline-offset-4 hover:underline"
               {...props}
             >
               {linkChildren}

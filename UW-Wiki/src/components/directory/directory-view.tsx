@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LayoutGrid, List as ListIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -11,49 +12,41 @@ type Props = {
 };
 
 export function DirectoryView({ orgs }: Props) {
-  // Default to list — it's the denser, scan-friendlier layout. The toggle
-  // below stays so users who prefer the visual tile/grid can switch.
   const [view, setView] = useState<"grid" | "list">("list");
 
   return (
     <div className="flex flex-col gap-10">
-      <div className="flex items-center justify-end">
-        <div
-          role="group"
-          aria-label="Layout"
-          className="flex overflow-hidden rounded-full border border-border"
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          aria-pressed={view === "list"}
+          aria-label="List layout"
+          title="List"
+          onClick={() => setView("list")}
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
+            view === "list"
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <button
-            type="button"
-            aria-pressed={view === "list"}
-            aria-label="List layout"
-            title="List"
-            onClick={() => setView("list")}
-            className={cn(
-              "px-3 py-1.5 text-xs transition-colors duration-150",
-              view === "list"
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            List
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === "grid"}
-            aria-label="Grid layout"
-            title="Grid"
-            onClick={() => setView("grid")}
-            className={cn(
-              "border-l border-border px-3 py-1.5 text-xs transition-colors duration-150",
-              view === "grid"
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Grid
-          </button>
-        </div>
+          <ListIcon className="size-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          aria-pressed={view === "grid"}
+          aria-label="Grid layout"
+          title="Grid"
+          onClick={() => setView("grid")}
+          className={cn(
+            "inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
+            view === "grid"
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <LayoutGrid className="size-4" aria-hidden="true" />
+        </button>
       </div>
 
       {ORG_CATEGORIES.map((category) => {
@@ -65,10 +58,6 @@ export function DirectoryView({ orgs }: Props) {
 
         return (
           <section key={category} aria-labelledby={`cat-${category}`} className="flex flex-col">
-            {/* Section heading doubles as the top rule for the rows below.
-                `border-b` extends edge-to-edge across the screen so the
-                section reads as a single visual block even when there's
-                only one row in it. */}
             <h2
               id={`cat-${category}`}
               className="border-b border-border pb-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
@@ -82,7 +71,7 @@ export function DirectoryView({ orgs }: Props) {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 border-l border-border md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 pt-3">
                 {inCategory.map((org) => (
                   <OrgTile key={org.id} org={org} />
                 ))}
@@ -110,12 +99,12 @@ function OrgRow({ org }: { org: DirectoryOrg }) {
   return (
     <Link
       href={href}
-      className="group flex items-baseline justify-between gap-6 border-b border-border py-4 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
+      className="group grid grid-cols-[minmax(0,18rem)_1fr] items-baseline gap-8 py-3 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
     >
-      <span className="text-lg font-medium text-foreground sm:min-w-[200px]">
+      <span className="text-lg font-medium text-foreground">
         {org.orgName}
       </span>
-      <span className="hidden flex-1 truncate text-sm text-muted-foreground md:inline">
+      <span className="hidden truncate text-sm text-muted-foreground md:inline">
         {org.tagline ?? "No tagline yet."}
       </span>
     </Link>
@@ -127,7 +116,7 @@ function OrgTile({ org }: { org: DirectoryOrg }) {
   return (
     <Link
       href={href}
-      className="flex flex-col gap-2 border-b border-r border-border bg-background p-6 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
+      className="flex flex-col gap-1.5 p-4 transition-colors duration-150 hover:bg-[color:var(--surface-2)]"
     >
       <span className="text-lg font-medium text-foreground">{org.orgName}</span>
       <p className="line-clamp-3 text-sm text-muted-foreground">

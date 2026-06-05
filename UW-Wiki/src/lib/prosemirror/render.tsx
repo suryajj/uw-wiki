@@ -112,18 +112,61 @@ function renderNode(
         </HeadingTag>
       );
     }
-    case "bulletList":
+    case "bulletList": {
+      // If every listItem in this bulletList carries a refId (either via
+      // schema attr or a leading `[N]` text fallback), treat the list as
+      // the References section and render it as a 2-column layout.
+      const children = node.content ?? [];
+      const isReferenceList =
+        children.length > 0 &&
+        children.every((child) => {
+          if (child.type !== "listItem") return false;
+          const attr = Number(child.attrs?.refId);
+          if (Number.isInteger(attr) && attr >= 1) return true;
+          return leadingRefId(child) !== null;
+        });
+      if (isReferenceList) {
+        return (
+          <ul
+            key={key}
+            className="mb-4 list-none break-words pl-0 text-foreground md:columns-2 md:gap-x-10 [&>li]:break-inside-avoid [&>li]:mb-1.5"
+          >
+            {renderChildren(node, key, options)}
+          </ul>
+        );
+      }
       return (
         <ul key={key} className="mb-4 list-disc space-y-1 break-words pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ul>
       );
-    case "orderedList":
+    }
+    case "orderedList": {
+      const children = node.content ?? [];
+      const isReferenceList =
+        children.length > 0 &&
+        children.every((child) => {
+          if (child.type !== "listItem") return false;
+          const attr = Number(child.attrs?.refId);
+          if (Number.isInteger(attr) && attr >= 1) return true;
+          return leadingRefId(child) !== null;
+        });
+      if (isReferenceList) {
+        return (
+          <ol
+            key={key}
+            className="mb-4 list-none break-words pl-0 text-foreground md:columns-2 md:gap-x-10 [&>li]:break-inside-avoid [&>li]:mb-1.5"
+          >
+            {renderChildren(node, key, options)}
+          </ol>
+        );
+      }
       return (
         <ol key={key} className="mb-4 list-decimal space-y-1 break-words pl-6 text-foreground">
           {renderChildren(node, key, options)}
         </ol>
       );
+    }
     case "listItem": {
       // Two paths to the same anchor:
       //   1) Schema-level refId attr (cold-start emits this on its
@@ -212,7 +255,7 @@ function renderNode(
         <sup key={key} className="ml-0.5 text-[10px] font-medium leading-none">
           <a
             href={`#ref-${refId}`}
-            className="text-primary underline-offset-4 hover:underline"
+            className="!text-[color:var(--link)] underline-offset-4 hover:underline"
           >
             [{refId}]
           </a>
@@ -280,7 +323,7 @@ function applyMark(content: ReactNode, mark: Mark, key: string): ReactNode {
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="break-all text-primary underline-offset-4 hover:underline"
+          className="break-all !text-[color:var(--link)] underline-offset-4 hover:underline"
         >
           {content}
         </a>

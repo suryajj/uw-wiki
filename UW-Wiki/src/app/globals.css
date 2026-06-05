@@ -43,6 +43,7 @@
   --primary-foreground: #fdfdfd;
   --ring: #141414;
   --radius: 0.5rem;
+  --link: #1d4ed8;
 }
 
 .dark {
@@ -55,6 +56,7 @@
   --primary: #fdfdfd;
   --primary-foreground: #141414;
   --ring: #fdfdfd;
+  --link: #ccd8f3;
 }
 
 * {

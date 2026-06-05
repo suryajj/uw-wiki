@@ -17,26 +17,11 @@ export default async function SignInPage({
           <Link href="/" className="text-base font-semibold tracking-tight text-[#fdfdfd]">
             UW Wiki
           </Link>
-          <span className="rounded-full border border-[#2a2a2a] px-3 py-1 text-xs text-[#888888]">
-            You are signing into <span className="text-[#fdfdfd]">UW Wiki</span>
-          </span>
         </div>
 
         <div className="my-auto flex w-full justify-center py-12">
           <AuthCard returnTo={sanitizeReturnTo(returnTo)} />
         </div>
-
-        <p className="text-center text-xs text-[#666666]">
-          By continuing, you agree to UW Wiki&rsquo;s{" "}
-          <Link href="/terms" className="underline-offset-4 hover:underline">
-            Terms of Service
-          </Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="underline-offset-4 hover:underline">
-            Privacy Policy
-          </Link>
-          .
-        </p>
       </div>
 
       {/* Right: ambient panel */}

@@ -11,21 +11,21 @@ export async function SiteHeader() {
   const isAdmin = user?.role === "reviewer" || user?.role === "admin";
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-      <div className="flex w-full items-center justify-between px-6 py-4 md:px-10">
+      <div className="flex w-full items-center justify-between px-6 py-2 md:px-10">
         <LogoLink />
 
         {/* Desktop nav — unchanged at md+ widths. Hidden below md so the
             mobile drawer takes over without overflow. */}
         <nav className="hidden items-center gap-1 text-sm md:flex">
           <Link
-            className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
+            className="hidden rounded-full px-3 py-1 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
             href="/orgs"
           >
             Articles
           </Link>
           {isAdmin ? (
             <Link
-              className="rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
+              className="rounded-full px-3 py-1 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
               href="/admin/reviews"
             >
               Admin
@@ -34,26 +34,20 @@ export async function SiteHeader() {
           {user ? (
             <div className="flex items-center gap-1">
               <Link
-                className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
+                className="hidden rounded-full px-3 py-1 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] md:inline-flex"
                 href="/my/bookmarks"
               >
                 Bookmarks
               </Link>
               <Link
-                className="hidden rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)] lg:inline-flex"
-                href="/my/contributions"
-              >
-                Contributions
-              </Link>
-              <Link
-                className="rounded-full px-3 py-1.5 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
+                className="rounded-full px-3 py-1 text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[color:var(--surface-2)]"
                 href="/my/profile"
               >
-                {user.displayName ?? user.email}
+                Profile
               </Link>
               <form action="/api/auth/sign-out" method="post">
                 <button
-                  className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground"
+                  className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:border-foreground hover:text-foreground"
                   type="submit"
                 >
                   Sign Out
@@ -67,7 +61,7 @@ export async function SiteHeader() {
               <ThemeToggle />
               <Link
                 href="/auth/sign-in"
-                className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--surface-2)] hover:text-foreground"
+                className="rounded-full px-3 py-1 text-sm text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--surface-2)] hover:text-foreground"
               >
                 Sign In
               </Link>
@@ -83,8 +77,6 @@ export async function SiteHeader() {
           {user ? <NotificationBell /> : null}
           <MobileNavDrawer
             isAuthenticated={!!user}
-            displayName={user?.displayName ?? null}
-            email={user?.email ?? null}
             showAdmin={isAdmin}
           />
         </div>

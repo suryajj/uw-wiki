@@ -73,20 +73,20 @@ export function AffiliationManager({
   }
 
   return (
-    <section className="mt-6 space-y-6">
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="font-semibold">Add affiliation</h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
+    <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold">Add affiliation</h2>
+        <div className="grid gap-2 md:grid-cols-2">
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Search organizations..."
-            className="rounded-md border border-border bg-background px-3 py-2"
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
           />
           <select
             value={selectedOrgId}
             onChange={(event) => setSelectedOrgId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2"
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
           >
             {filtered.map((org) => (
               <option key={org.id} value={org.id}>
@@ -98,17 +98,22 @@ export function AffiliationManager({
             value={roleLabel}
             onChange={(event) => setRoleLabel(event.target.value)}
             placeholder="Role label (optional)"
-            className="rounded-md border border-border bg-background px-3 py-2"
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
           />
-          <Button type="button" loading={addAction.pending} onClick={() => addAction.run()}>
+          <Button
+            type="button"
+            size="sm"
+            loading={addAction.pending}
+            onClick={() => addAction.run()}
+          >
             Add Affiliation
           </Button>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-4">
-        <h2 className="font-semibold">Current affiliations</h2>
-        <div className="mt-3 space-y-2">
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
+        <h2 className="text-sm font-semibold">Current affiliations</h2>
+        <div className="flex flex-col gap-1.5">
           {affiliations.length === 0 ? (
             <p className="text-sm text-muted-foreground">No affiliations yet.</p>
           ) : (
@@ -118,10 +123,10 @@ export function AffiliationManager({
               return (
                 <div
                   key={affiliation.id}
-                  className="flex items-center justify-between rounded-md border border-border px-3 py-2"
+                  className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5"
                 >
                   <div>
-                    <p className="font-medium">{org.org_name}</p>
+                    <p className="text-sm font-medium">{org.org_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {affiliation.role_label ?? "Member"} · {org.category}
                     </p>
@@ -175,12 +180,12 @@ export function NotificationPreferencesForm({
   }
 
   return (
-    <section className="mt-6 rounded-lg border border-border bg-card p-4">
-      <h2 className="font-semibold">Notifications</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
+    <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4">
+      <h2 className="text-sm font-semibold">Notifications</h2>
+      <p className="text-xs text-muted-foreground">
         Choose which updates should appear in-app or by email.
       </p>
-      <div className="mt-4 grid gap-3">
+      <div className="mt-1 grid gap-1.5">
         <PreferenceToggle
           label="In-app proposal status updates"
           checked={prefs.inAppPrStatus}
@@ -221,7 +226,7 @@ function PreferenceToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+    <label className="flex items-center justify-between gap-3 rounded-md border border-border px-2.5 py-1.5 text-sm">
       <span>{label}</span>
       <input
         type="checkbox"

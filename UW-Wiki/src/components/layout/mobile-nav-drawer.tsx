@@ -17,15 +17,11 @@ import { Dialog as DialogPrimitive } from "radix-ui";
  */
 export type MobileNavDrawerProps = {
   isAuthenticated: boolean;
-  displayName: string | null;
-  email: string | null;
   showAdmin: boolean;
 };
 
 export function MobileNavDrawer({
   isAuthenticated,
-  displayName,
-  email,
   showAdmin,
 }: MobileNavDrawerProps) {
   const [open, setOpen] = useState(false);
@@ -83,11 +79,8 @@ export function MobileNavDrawer({
                 <DrawerLink href="/my/bookmarks" onSelect={close}>
                   Bookmarks
                 </DrawerLink>
-                <DrawerLink href="/my/contributions" onSelect={close}>
-                  Contributions
-                </DrawerLink>
                 <DrawerLink href="/my/profile" onSelect={close}>
-                  {displayName ?? email ?? "Profile"}
+                  Profile
                 </DrawerLink>
 
                 <div className="my-3 border-t border-border" />

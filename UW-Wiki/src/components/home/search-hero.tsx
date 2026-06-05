@@ -265,7 +265,7 @@ function EmptyHero() {
   return (
     <div className="flex w-full max-w-3xl flex-col items-center gap-4 text-center">
       <BlurReveal
-        text="Ask UW Wiki"
+        text="What's on campus?"
         as="h1"
         className="text-5xl font-semibold tracking-tight text-foreground md:text-6xl"
         baseDelay={0.05}
@@ -410,9 +410,9 @@ function AnsweredView({
         >
           {citations.map((c) => (
             <li key={`${c.citationIndex}-${c.sourceUrl}`}>
-              <span className="text-foreground">[{c.citationIndex}]</span>{" "}
+              <span className="text-[color:var(--link)]">[{c.citationIndex}]</span>{" "}
               <a
-                className="underline-offset-4 hover:underline"
+                className="text-[color:var(--link)] underline-offset-4 hover:underline"
                 href={c.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
